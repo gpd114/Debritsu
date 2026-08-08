@@ -18,6 +18,7 @@ jobs:
 
       - uses: android-actions/setup-android@v3
 
+      # No gradle wrapper jar is committed, so Gradle is provisioned here instead.
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
