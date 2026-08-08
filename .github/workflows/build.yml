@@ -8,6 +8,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: debritsu
+
     steps:
       - uses: actions/checkout@v4
 
@@ -18,15 +23,24 @@ jobs:
 
       - uses: android-actions/setup-android@v3
 
-      # No gradle wrapper jar is committed, so Gradle is provisioned here instead.
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
+      # Rebuilds the keystore from the secret and tells Gradle where it is.
+      # Skipped when the secret isn't set, in which case the build falls back
+      # to a debug key and updates will still need an uninstall.
+      - name: Restore keystore
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/debritsu.jks"
+          echo "KEYSTORE_PATH=$RUNNER_TEMP/debritsu.jks" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        run: gradle assembleRelease --no-daemon
 
       - uses: actions/upload-artifact@v4
         with:
-          name: debritsu-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: debritsu-apk
+          path: app/build/outputs/apk/release/*.apk

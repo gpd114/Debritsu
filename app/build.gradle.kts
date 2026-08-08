@@ -13,14 +13,30 @@ android {
         applicationId = "com.debritsu.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
+    }
+
+    signingConfigs {
+        create("release") {
+            // Populated by CI from repository secrets. Falls back to the debug
+            // key locally so the project still builds without a keystore.
+            val storePath = System.getenv("KEYSTORE_PATH")
+            if (storePath != null) {
+                storeFile = file(storePath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig =
+                if (System.getenv("KEYSTORE_PATH") != null) signingConfigs.getByName("release")
+                else signingConfigs.getByName("debug")
         }
     }
     compileOptions {
