@@ -1,5 +1,7 @@
 package com.debritsu.app.data
 
+import kotlinx.serialization.Serializable
+
 data class Anime(
     val id: Int,
     val title: String,
@@ -10,8 +12,10 @@ data class Anime(
     val progress: Int = 0
 )
 
+@Serializable
 data class Subtitle(val url: String, val lang: String)
 
+@Serializable
 data class StreamOption(
     val addon: String,
     val name: String,

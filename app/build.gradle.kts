@@ -5,6 +5,13 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// Your AniList client ID lives in anilist.properties, which is yours alone and
+// is never shipped in project updates — so it survives every upgrade.
+val anilistProps = java.util.Properties().apply {
+    val f = rootProject.file("anilist.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.debritsu.app"
     compileSdk = 34
@@ -13,8 +20,14 @@ android {
         applicationId = "com.debritsu.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "0.5.2"
+        versionCode = 14
+        versionName = "0.7.0"
+
+        buildConfigField(
+            "String",
+            "ANILIST_CLIENT_ID",
+            "\"${anilistProps.getProperty("clientId", "")}\""
+        )
     }
 
     signingConfigs {
@@ -44,7 +57,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
 
@@ -60,6 +76,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
     implementation("androidx.navigation:navigation-compose:2.8.1")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 

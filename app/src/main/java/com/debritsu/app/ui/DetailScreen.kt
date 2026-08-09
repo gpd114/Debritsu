@@ -4,6 +4,8 @@ import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -20,11 +22,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.debritsu.app.data.*
 import com.debritsu.app.player.PlayerActivity
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,6 +48,16 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit) {
     var status by remember { mutableStateOf<String?>(null) }
     var showSheet by remember { mutableStateOf(false) }
     var subtitles by remember { mutableStateOf<List<Subtitle>>(emptyList()) }
+    // Bumped on return from the player so resume bars redraw.
+    var progressTick by remember { mutableStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) progressTick++
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
 
     LaunchedEffect(anilistId) {
         anime = runCatching { AniList.media(anilistId) }.getOrNull()
@@ -87,6 +103,13 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit) {
                     val subs = (stream.subtitles + subtitles).distinctBy { it.url }
                     context.startActivity(
                         Intent(context, PlayerActivity::class.java)
+                            // Pass the whole list so sources can be swapped mid-episode.
+                            .putExtra(
+                                PlayerActivity.EXTRA_SOURCES,
+                                runCatching {
+                                    json.encodeToString(ListSerializer(StreamOption.serializer()), streams)
+                                }.getOrDefault("[]")
+                            )
                             .putExtra(PlayerActivity.EXTRA_SUB_URLS, subs.map { it.url }.toTypedArray())
                             .putExtra(PlayerActivity.EXTRA_SUB_LANGS, subs.map { it.lang }.toTypedArray())
                             .putExtra(PlayerActivity.EXTRA_URL, url)
@@ -152,8 +175,14 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit) {
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
+                        val resumeFrac = remember(selectedEpisode, progressTick) {
+                            Progress.fraction(anilistId, selectedEpisode)
+                        }
                         Text(
-                            "Play episode ${selectedEpisode.toString().padStart(2, '0')}",
+                            if (resumeFrac > 0f)
+                                "Resume episode ${selectedEpisode.toString().padStart(2, '0')} · ${(resumeFrac * 100).toInt()}%"
+                            else
+                                "Play episode ${selectedEpisode.toString().padStart(2, '0')}",
                             style = MaterialTheme.typography.labelLarge
                         )
                     }
@@ -181,6 +210,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit) {
                     items((1..total).toList()) { ep ->
                         val selected = ep == selectedEpisode
                         val watched = ep <= (anime?.progress ?: 0)
+                        val resume = remember(ep, progressTick) { Progress.fraction(anilistId, ep) }
                         Box(
                             Modifier
                                 .size(54.dp)
@@ -198,8 +228,26 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit) {
                                     else -> Ink.Bone
                                 }
                             )
-                            if (watched && !selected) {
-                                Box(
+                            when {
+                                // Part-watched wins over the watched dot: it is
+                                // the more actionable state.
+                                resume > 0f -> Box(
+                                    Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                        .fillMaxWidth()
+                                        .height(3.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(Ink.Edge)
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth(resume)
+                                            .fillMaxHeight()
+                                            .background(Ink.Orchid)
+                                    )
+                                }
+                                watched && !selected -> Box(
                                     Modifier
                                         .align(Alignment.BottomCenter)
                                         .padding(bottom = 7.dp)
@@ -221,13 +269,19 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit) {
             onDismissRequest = { showSheet = false },
             containerColor = Ink.Veil
         ) {
-            Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 32.dp)) {
+            Column(
+                Modifier
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 Text(
                     "Sources",
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(
-                    "EPISODE ${selectedEpisode.toString().padStart(2, '0')}",
+                    "EPISODE ${selectedEpisode.toString().padStart(2, '0')}" +
+                        if (streams.isNotEmpty()) "  ·  ${streams.size} FOUND" else "",
                     style = MaterialTheme.typography.labelSmall,
                     color = Ink.Mist
                 )

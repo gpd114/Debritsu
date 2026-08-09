@@ -54,19 +54,33 @@ object AniList {
     private const val MEDIA_FIELDS =
         "id title { romaji english } coverImage { large } bannerImage episodes description"
 
-    suspend fun trending(): List<Anime> {
+    /** One page of results plus whether another page exists. */
+    data class Page(val items: List<Anime>, val hasMore: Boolean)
+
+    suspend fun trending(page: Int = 1): Page {
         val d = query(
-            "query { Page(perPage: 40) { media(type: ANIME, sort: TRENDING_DESC) { $MEDIA_FIELDS } } }"
+            "query (\$p: Int) { Page(page: \$p, perPage: 40) { pageInfo { hasNextPage } " +
+                "media(type: ANIME, sort: TRENDING_DESC) { $MEDIA_FIELDS } } }",
+            buildJsonObject { put("p", page) }
         )
-        return d.obj("Page").arr("media")?.map { mediaOf(it) } ?: emptyList()
+        return pageOf(d)
     }
 
-    suspend fun search(term: String): List<Anime> {
+    suspend fun search(term: String, page: Int = 1): Page {
         val d = query(
-            "query (\$s: String) { Page(perPage: 40) { media(type: ANIME, search: \$s) { $MEDIA_FIELDS } } }",
-            buildJsonObject { put("s", term) }
+            "query (\$s: String, \$p: Int) { Page(page: \$p, perPage: 40) { pageInfo { hasNextPage } " +
+                "media(type: ANIME, search: \$s) { $MEDIA_FIELDS } } }",
+            buildJsonObject { put("s", term); put("p", page) }
         )
-        return d.obj("Page").arr("media")?.map { mediaOf(it) } ?: emptyList()
+        return pageOf(d)
+    }
+
+    private fun pageOf(d: JsonElement): Page {
+        val p = d.obj("Page")
+        return Page(
+            items = p.arr("media")?.map { mediaOf(it) } ?: emptyList(),
+            hasMore = p.obj("pageInfo").str("hasNextPage") == "true"
+        )
     }
 
     suspend fun media(id: Int): Anime? {

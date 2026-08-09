@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -14,6 +15,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,20 +37,51 @@ fun HomeScreen(onOpen: (Int) -> Unit, onSettings: () -> Unit, authFlash: Int) {
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var browse by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var page by remember { mutableStateOf(1) }
+    var hasMore by remember { mutableStateOf(true) }
+    var loadingMore by remember { mutableStateOf(false) }
+    val gridState = rememberLazyGridState()
+
+    suspend fun fetch(p: Int) =
+        if (query.length >= 3) AniList.search(query, p) else AniList.trending(p)
 
     LaunchedEffect(authFlash) {
-        loading = true
         watching = runCatching { AniList.watching() }.getOrDefault(emptyList())
-        browse = runCatching { AniList.trending() }.getOrDefault(emptyList())
+    }
+
+    // Reset to page one whenever the query changes.
+    LaunchedEffect(query, authFlash) {
+        if (query.isNotEmpty() && query.length < 3) return@LaunchedEffect
+        loading = true
+        page = 1
+        val res = runCatching { fetch(1) }.getOrNull()
+        if (res != null) {
+            browse = res.items
+            hasMore = res.hasMore
+        }
         loading = false
     }
 
-    LaunchedEffect(query) {
-        if (query.length >= 3) {
-            browse = runCatching { AniList.search(query) }.getOrDefault(browse)
-        } else if (query.isEmpty()) {
-            browse = runCatching { AniList.trending() }.getOrDefault(browse)
-        }
+    // Pull the next page as the grid nears its end.
+    LaunchedEffect(gridState, browse.size, hasMore, query) {
+        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
+            .collect { last ->
+                if (hasMore && !loadingMore && !loading && browse.isNotEmpty() &&
+                    last >= browse.size - 8
+                ) {
+                    loadingMore = true
+                    val next = page + 1
+                    val res = runCatching { fetch(next) }.getOrNull()
+                    if (res != null) {
+                        browse = browse + res.items
+                        hasMore = res.hasMore
+                        page = next
+                    } else {
+                        hasMore = false
+                    }
+                    loadingMore = false
+                }
+            }
     }
 
     Scaffold(
@@ -122,6 +155,7 @@ fun HomeScreen(onOpen: (Int) -> Unit, onSettings: () -> Unit, authFlash: Int) {
             }
 
             LazyVerticalGrid(
+                state = gridState,
                 columns = GridCells.Adaptive(112.dp),
                 contentPadding = PaddingValues(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -133,6 +167,13 @@ fun HomeScreen(onOpen: (Int) -> Unit, onSettings: () -> Unit, authFlash: Int) {
                     item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("Trending", browse.size) }
                 }
                 items(browse) { PosterCard(it, onOpen) }
+                if (loadingMore) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = Ink.Iris, strokeWidth = 2.dp)
+                        }
+                    }
+                }
             }
         }
     }
