@@ -12,4 +12,4 @@ package com.debritsu.app.data
  * under Settings → Advanced. There is no secret here — AniList's implicit
  * grant is designed for public clients, so this is safe to commit.
  */
-const val DEFAULT_ANILIST_CLIENT_ID = "48123"
+const val DEFAULT_ANILIST_CLIENT_ID = ""

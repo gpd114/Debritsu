@@ -50,11 +50,18 @@ object Stremio {
         }
     }
 
-    /** Queries every configured addon in parallel and flattens the results. */
-    suspend fun streams(type: String, id: String): List<StreamOption> = coroutineScope {
+    /** What one addon gave back, including why it gave back nothing. */
+    data class AddonResult(
+        val addon: String,
+        val streams: List<StreamOption>,
+        val error: String? = null
+    )
+
+    /** Queries every configured addon in parallel, keeping failures visible. */
+    suspend fun streams(type: String, id: String): List<AddonResult> = coroutineScope {
         Settings.addons.map { base ->
             async(Dispatchers.IO) { streamsFrom(base, type, id) }
-        }.flatMap { it.await() }
+        }.map { it.await() }
     }
 
     /**
@@ -79,13 +86,18 @@ object Stremio {
         }.flatMap { it.await() }.distinctBy { it.url }
     }
 
-    private fun streamsFrom(addonBase: String, type: String, id: String): List<StreamOption> =
-        runCatching {
+    private fun streamsFrom(addonBase: String, type: String, id: String): AddonResult {
+        val host = addonBase.substringAfter("://").substringBefore("/")
+        return runCatching {
             val encoded = URLEncoder.encode(id, "UTF-8").replace("+", "%20")
             val req = Request.Builder().url("$addonBase/stream/$type/$encoded.json").build()
             Http.client.newCall(req).execute().use { res ->
-                val root = json.parseToJsonElement(res.body?.string().orEmpty())
-                root.arr("streams")?.map { s ->
+                if (!res.isSuccessful) {
+                    return AddonResult(host, emptyList(), "HTTP ${res.code}")
+                }
+                val body = res.body?.string().orEmpty()
+                val root = json.parseToJsonElement(body)
+                val parsed = root.arr("streams")?.map { s ->
                     StreamOption(
                         addon = addonBase.substringAfter("://").substringBefore("/"),
                         name = s.str("name") ?: "Stream",
@@ -97,7 +109,15 @@ object Stremio {
                             sub.str("url")?.let { Subtitle(it, sub.str("lang") ?: "und") }
                         } ?: emptyList()
                     )
-                } ?: emptyList()
+                }?.filter { it.url != null || it.infoHash != null }
+                when {
+                    parsed == null -> AddonResult(host, emptyList(), "no streams field in response")
+                    parsed.isEmpty() -> AddonResult(host, emptyList(), "nothing for this episode")
+                    else -> AddonResult(host, parsed)
+                }
             }
-        }.getOrDefault(emptyList())
+        }.getOrElse { e ->
+            AddonResult(host, emptyList(), e.message?.take(90) ?: e.javaClass.simpleName)
+        }
+    }
 }

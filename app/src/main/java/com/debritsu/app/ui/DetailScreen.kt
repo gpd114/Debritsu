@@ -36,7 +36,8 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit) {
 
     var anime by remember { mutableStateOf<Anime?>(null) }
     var selectedEpisode by remember { mutableStateOf(1) }
-    var streams by remember { mutableStateOf<List<StreamOption>>(emptyList()) }
+    var results by remember { mutableStateOf<List<Stremio.AddonResult>>(emptyList()) }
+    val streams = results.flatMap { it.streams }
     var searching by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var showSheet by remember { mutableStateOf(false) }
@@ -51,17 +52,24 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit) {
         scope.launch {
             searching = true
             status = null
-            streams = emptyList()
+            results = emptyList()
             showSheet = true
-            val ids = Mappings.forAniList(anilistId)
+            val ids = Mappings.forAniList(anilistId, anime?.title)
             val movie = (anime?.episodes ?: 1) <= 1
             val target = Stremio.contentId(ids, episode, movie)
             if (target == null) {
-                status = "No Kitsu/IMDb mapping found for this title."
+                status = "Couldn't map this title to a Kitsu or IMDb ID — the addons " +
+                    "index by those, so there is nothing to ask for. Very new shows " +
+                    "often aren't in the mapping tables yet."
             } else {
-                streams = Stremio.streams(target.first, target.second)
+                results = Stremio.streams(target.first, target.second)
                 subtitles = Stremio.subtitles(target.first, target.second)
-                if (streams.isEmpty()) status = "No streams returned by your addons."
+                if (results.none { it.streams.isNotEmpty() }) {
+                    // Show what each addon actually said rather than a blanket failure.
+                    status = results.joinToString("\n") { r ->
+                        "${r.addon}: ${r.error ?: "no streams"}"
+                    }.ifEmpty { "No addons configured." }
+                }
             }
             searching = false
         }
