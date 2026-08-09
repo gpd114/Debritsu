@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -7,7 +9,7 @@ plugins {
 
 // Your AniList client ID lives in anilist.properties, which is yours alone and
 // is never shipped in project updates — so it survives every upgrade.
-val anilistProps = java.util.Properties().apply {
+val anilistProps = Properties().apply {
     val f = rootProject.file("anilist.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
@@ -20,8 +22,8 @@ android {
         applicationId = "com.debritsu.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 14
-        versionName = "0.7.0"
+        versionCode = 15
+        versionName = "0.7.1"
 
         buildConfigField(
             "String",
