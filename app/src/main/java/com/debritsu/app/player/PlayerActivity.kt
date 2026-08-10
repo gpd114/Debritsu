@@ -4,11 +4,15 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.util.TypedValue
+import android.app.Dialog
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
-import android.view.ViewGroup
-import android.widget.FrameLayout
+import android.view.View
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
-import android.app.AlertDialog
 import androidx.activity.ComponentActivity
 import androidx.annotation.OptIn
 import androidx.lifecycle.lifecycleScope
@@ -21,6 +25,7 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import com.debritsu.app.data.AniList
+import com.debritsu.app.R
 import com.debritsu.app.data.Debrid
 import com.debritsu.app.data.Progress
 import com.debritsu.app.data.StreamOption
@@ -55,46 +60,16 @@ class PlayerActivity : ComponentActivity() {
         val subUrls = intent.getStringArrayExtra(EXTRA_SUB_URLS).orEmpty()
         val subLangs = intent.getStringArrayExtra(EXTRA_SUB_LANGS).orEmpty()
 
-        val view = PlayerView(this).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            setKeepContentOnPlayerReset(true)
-            // Adds the CC button to the control bar, which opens the built-in
-            // track picker listing embedded and side-loaded subtitle tracks.
-            setShowSubtitleButton(true)
-            setShowNextButton(false)
-            setShowPreviousButton(false)
-        }
-        val root = FrameLayout(this).apply { addView(view) }
+        setContentView(R.layout.activity_player)
+        val view = findViewById<PlayerView>(R.id.player_view)
+        view.setKeepContentOnPlayerReset(true)
 
-        // Release names rarely say whether a stream is subbed or dubbed, so the
-        // switcher has to be reachable once playback has started.
-        val switcher = TextView(this).apply {
-            text = "SOURCES"
-            setTextColor(Color.WHITE)
-            textSize = 12f
-            setPadding(28, 16, 28, 16)
-            setBackgroundColor(Color.argb(150, 8, 7, 13))
-            visibility = android.view.View.GONE
-            setOnClickListener { showSourcePicker() }
-        }
-        root.addView(
-            switcher,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP or Gravity.END
-            ).apply { topMargin = 48; rightMargin = 32 }
-        )
-        // Follow the transport controls so it fades with them.
-        view.setControllerVisibilityListener(
-            PlayerView.ControllerVisibilityListener { vis ->
-                switcher.visibility = if (sources.size > 1) vis else android.view.View.GONE
-            }
-        )
-        setContentView(root)
+        // The Sources button lives in the control bar, so it fades with the
+        // rest of the transport controls rather than sitting over the video.
+        val sourcesButton = findViewById<ImageButton>(R.id.sources_button)
+        sourcesButton.visibility = if (sources.size > 1) View.VISIBLE else View.GONE
+        sourcesButton.setOnClickListener { showSourcePicker() }
+
         applySubtitleStyle(view.subtitleView)
 
         subtitleConfigs = subUrls.mapIndexed { i, subUrl ->
@@ -156,15 +131,85 @@ class PlayerActivity : ComponentActivity() {
     /** Swap source without losing your place in the episode. */
     private fun showSourcePicker() {
         if (sources.isEmpty()) return
-        val labels = sources.map { s ->
-            val tag = if (s.isDirect) "direct" else "debrid"
-            "${s.name}  ·  $tag\n${s.description.replace("\n", " ").take(90)}"
-        }.toTypedArray()
 
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Sources")
-            .setItems(labels) { _, which -> switchTo(sources[which]) }
-            .show()
+        val dp = resources.displayMetrics.density
+        fun px(v: Int) = (v * dp).toInt()
+
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(px(20), px(18), px(20), px(24))
+            background = GradientDrawable().apply {
+                setColor(0xFF171226.toInt())
+                cornerRadii = floatArrayOf(
+                    px(20).toFloat(), px(20).toFloat(), px(20).toFloat(), px(20).toFloat(),
+                    0f, 0f, 0f, 0f
+                )
+            }
+        }
+
+        content.addView(TextView(this).apply {
+            text = "Sources"
+            setTextColor(0xFFF1EEF8.toInt())
+            textSize = 16f
+            setTypeface(Typeface.DEFAULT_BOLD)
+        })
+        content.addView(TextView(this).apply {
+            text = "${sources.size} AVAILABLE"
+            setTextColor(0xFFB9B3CC.toInt())
+            textSize = 10.5f
+            typeface = Typeface.MONOSPACE
+            setPadding(0, px(2), 0, px(12))
+        })
+
+        val dialog = Dialog(this, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen)
+
+        sources.forEach { s ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, px(12), 0, px(12))
+                isClickable = true
+                setOnClickListener { dialog.dismiss(); switchTo(s) }
+            }
+            row.addView(TextView(this).apply {
+                text = s.name
+                setTextColor(0xFFF1EEF8.toInt())
+                textSize = 12f
+                typeface = Typeface.MONOSPACE
+                maxLines = 1
+            })
+            row.addView(TextView(this).apply {
+                text = s.description.replace("\n", " ").take(110)
+                setTextColor(0xFFB9B3CC.toInt())
+                textSize = 11.5f
+                maxLines = 2
+            })
+            row.addView(TextView(this).apply {
+                text = if (s.isDirect) "DIRECT" else "DEBRID"
+                setTextColor(if (s.isDirect) 0xFF8B5CF6.toInt() else 0xFFB9B3CC.toInt())
+                textSize = 9.5f
+                typeface = Typeface.MONOSPACE
+                setPadding(0, px(3), 0, 0)
+            })
+            content.addView(row)
+            content.addView(View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, px(1)
+                )
+                setBackgroundColor(0xFF221A36.toInt())
+            })
+        }
+
+        val scroller = ScrollView(this).apply { addView(content) }
+        dialog.setContentView(scroller)
+        dialog.window?.apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0x99000000.toInt()))
+            setLayout(
+                (resources.displayMetrics.widthPixels * 0.62).toInt(),
+                (resources.displayMetrics.heightPixels * 0.80).toInt()
+            )
+            setGravity(Gravity.BOTTOM or Gravity.END)
+        }
+        dialog.show()
     }
 
     private fun switchTo(stream: StreamOption) {
