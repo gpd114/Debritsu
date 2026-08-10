@@ -45,7 +45,8 @@ class MainActivity : ComponentActivity() {
                         composable("detail/{id}") { entry ->
                             DetailScreen(
                                 anilistId = entry.arguments?.getString("id")?.toIntOrNull() ?: 0,
-                                onBack = { nav.popBackStack() }
+                                onBack = { nav.popBackStack() },
+                                onOpen = { nav.navigate("detail/$it") }
                             )
                         }
                         composable("settings") {

@@ -1,9 +1,5 @@
 # Debritsu
 
-Night-violet UI, monospace for the technical readout — episode numbers, stream
-names and quality tags are set in mono so the source picker reads like the
-torrent metadata it actually is.
-
 An AniList-driven anime client for Android that gets its video from **Stremio addons**
 instead of scraping streaming sites. Point it at a debrid-backed addon
 (AIOStreams, Comet, MediaFusion, Torrentio + RD) and playback is a cached direct
@@ -28,6 +24,15 @@ link from your debrid provider.
   listed under the CC button. Size, colour, background and outline are
   configurable, and English is auto-selected where available.
 - **Playback** — Media3/ExoPlayer, landscape, PiP-capable.
+
+## Install
+
+Grab the APK from [Releases](../../releases) and open it on your phone. Android
+will ask you to allow installs from whichever app you downloaded it with.
+
+For automatic updates, add the repository to
+[Obtainium](https://github.com/ImranR98/Obtainium) — it watches GitHub Releases
+and installs new versions as they appear.
 
 ## Build
 
@@ -66,6 +71,19 @@ APK lands in `app/build/outputs/apk/debug/`.
 - No local download/offline support.
 - Debrid fallback resolves cached content only; nothing is queued for download.
 - Debug-signed only; the release build reuses the debug key.
+
+## Releasing
+
+Releases are cut by tag:
+
+```
+git tag v0.7.1
+git push origin v0.7.1
+```
+
+That builds a signed APK and publishes it to the Releases page. The workflow
+fails deliberately if no signing key is configured, because a debug-signed
+release can never be updated in place.
 
 ## Legal
 

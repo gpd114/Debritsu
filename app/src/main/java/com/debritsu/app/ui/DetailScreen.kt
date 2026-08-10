@@ -13,6 +13,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,9 +37,9 @@ import com.debritsu.app.player.PlayerActivity
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun DetailScreen(anilistId: Int, onBack: () -> Unit) {
+fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {}) {
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -50,6 +54,8 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit) {
     var subtitles by remember { mutableStateOf<List<Subtitle>>(emptyList()) }
     // Bumped on return from the player so resume bars redraw.
     var progressTick by remember { mutableStateOf(0) }
+    var relations by remember { mutableStateOf<List<Relation>>(emptyList()) }
+    var showListEditor by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val obs = LifecycleEventObserver { _, event ->
@@ -59,9 +65,12 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
 
-    LaunchedEffect(anilistId) {
+    LaunchedEffect(anilistId, progressTick) {
         anime = runCatching { AniList.media(anilistId) }.getOrNull()
         selectedEpisode = ((anime?.progress ?: 0) + 1).coerceAtLeast(1)
+    }
+    LaunchedEffect(anilistId) {
+        relations = runCatching { AniList.relations(anilistId) }.getOrDefault(emptyList())
     }
 
     fun findStreams(episode: Int) {
@@ -167,6 +176,38 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit) {
                         style = MaterialTheme.typography.labelSmall,
                         color = Ink.Mist
                     )
+                    if (Settings.aniListToken.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        Surface(
+                            onClick = { showListEditor = true },
+                            color = Ink.Veil,
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    anime?.listStatus?.replace('_', ' ') ?: "NOT ON LIST",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (anime?.listStatus != null) Ink.Iris else Ink.Mist
+                                )
+                                if ((anime?.score ?: 0.0) > 0) {
+                                    Text(
+                                        "  ·  ${anime?.score?.toInt()}/10",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = Ink.Mist
+                                    )
+                                }
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "Edit list entry",
+                                    tint = Ink.Mist,
+                                    modifier = Modifier.padding(start = 8.dp).size(15.dp)
+                                )
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(12.dp))
                     Button(
                         onClick = { findStreams(selectedEpisode) },
@@ -260,6 +301,52 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit) {
                     }
                 }
             }
+            if (relations.isNotEmpty()) {
+                item {
+                    Text(
+                        "Related",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(start = 16.dp, top = 26.dp, bottom = 10.dp)
+                    )
+                }
+                item {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(relations) { rel ->
+                            Column(
+                                Modifier
+                                    .width(104.dp)
+                                    .clickable { onOpen(rel.anime.id) }
+                            ) {
+                                AsyncImage(
+                                    model = rel.anime.cover,
+                                    contentDescription = rel.anime.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(2f / 3f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Ink.Veil)
+                                )
+                                Text(
+                                    rel.type.uppercase(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Ink.Orchid,
+                                    modifier = Modifier.padding(top = 6.dp)
+                                )
+                                Text(
+                                    rel.anime.title,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             item { Spacer(Modifier.height(32.dp)) }
         }
     }
@@ -342,6 +429,132 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit) {
                         )
                     }
                     HorizontalDivider(color = Color(0xFF221A36))
+                }
+            }
+        }
+    }
+
+    if (showListEditor) {
+        val statuses = listOf(
+            "CURRENT" to "Watching",
+            "PLANNING" to "Planning",
+            "COMPLETED" to "Completed",
+            "PAUSED" to "Paused",
+            "DROPPED" to "Dropped",
+            "REPEATING" to "Rewatching"
+        )
+        var pendingProgress by remember(anime?.progress) { mutableStateOf(anime?.progress ?: 0) }
+        var pendingScore by remember(anime?.score) { mutableStateOf(anime?.score ?: 0.0) }
+
+        ModalBottomSheet(
+            onDismissRequest = { showListEditor = false },
+            containerColor = Ink.Veil
+        ) {
+            Column(
+                Modifier
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text("List entry", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    anime?.title?.uppercase()?.take(40) ?: "",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Ink.Mist
+                )
+                Spacer(Modifier.height(14.dp))
+
+                Text("Status", style = MaterialTheme.typography.bodySmall, color = Ink.Mist)
+                Spacer(Modifier.height(8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    statuses.forEach { (value, label) ->
+                        val on = anime?.listStatus == value
+                        Surface(
+                            onClick = {
+                                scope.launch {
+                                    runCatching { AniList.saveEntry(anilistId, status = value) }
+                                    progressTick++
+                                }
+                            },
+                            color = if (on) Ink.Iris else Ink.Edge,
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (on) MaterialTheme.colorScheme.onPrimary else Ink.Bone,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    "Episodes watched — ${pendingProgress}${anime?.episodes?.let { " / $it" } ?: ""}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Ink.Mist
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { if (pendingProgress > 0) pendingProgress-- }) {
+                        Icon(Icons.Default.Remove, contentDescription = "One fewer", tint = Ink.Bone)
+                    }
+                    Text(
+                        pendingProgress.toString().padStart(2, '0'),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    IconButton(onClick = {
+                        val max = anime?.episodes ?: Int.MAX_VALUE
+                        if (pendingProgress < max) pendingProgress++
+                    }) {
+                        Icon(Icons.Default.Add, contentDescription = "One more", tint = Ink.Bone)
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Score — ${if (pendingScore > 0) pendingScore.toInt().toString() else "none"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Ink.Mist
+                )
+                Slider(
+                    value = pendingScore.toFloat(),
+                    onValueChange = { pendingScore = it.toDouble() },
+                    valueRange = 0f..10f,
+                    steps = 9
+                )
+
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                runCatching {
+                                    AniList.saveEntry(
+                                        anilistId,
+                                        progress = pendingProgress,
+                                        score = pendingScore
+                                    )
+                                }
+                                progressTick++
+                                showListEditor = false
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("Save", style = MaterialTheme.typography.labelLarge) }
+
+                    anime?.entryId?.let { id ->
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    runCatching { AniList.deleteEntry(id) }
+                                    progressTick++
+                                    showListEditor = false
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp)
+                        ) { Text("Remove", color = Ink.Orchid) }
+                    }
                 }
             }
         }

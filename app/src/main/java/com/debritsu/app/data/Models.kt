@@ -9,8 +9,16 @@ data class Anime(
     val banner: String? = null,
     val episodes: Int? = null,
     val description: String? = null,
-    val progress: Int = 0
+    val progress: Int = 0,
+    /** AniList list status: CURRENT, PLANNING, COMPLETED, DROPPED, PAUSED, REPEATING. */
+    val listStatus: String? = null,
+    /** Id of the user's list entry, needed to delete it. */
+    val entryId: Int? = null,
+    val score: Double = 0.0
 )
+
+/** A prequel, sequel or side story hanging off a title. */
+data class Relation(val anime: Anime, val type: String)
 
 @Serializable
 data class Subtitle(val url: String, val lang: String)

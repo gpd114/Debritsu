@@ -86,14 +86,17 @@ object AniList {
     suspend fun media(id: Int): Anime? {
         val d = query(
             "query (\$id: Int) { Media(id: \$id, type: ANIME) { $MEDIA_FIELDS format nextAiringEpisode { episode } " +
-                "mediaListEntry { progress } } }",
+                "mediaListEntry { id status progress score(format: POINT_10) } } }",
             buildJsonObject { put("id", id) }
         )
         val m = d.obj("Media") ?: return null
         val aired = m.obj("nextAiringEpisode").int("episode")?.minus(1)
-        val progress = m.obj("mediaListEntry").int("progress") ?: 0
-        return mediaOf(m, progress).copy(
-            episodes = m.int("episodes") ?: aired ?: 1
+        val entry = m.obj("mediaListEntry")
+        return mediaOf(m, entry.int("progress") ?: 0).copy(
+            episodes = m.int("episodes") ?: aired ?: 1,
+            listStatus = entry.str("status"),
+            entryId = entry.int("id"),
+            score = entry.str("score")?.toDoubleOrNull() ?: 0.0
         )
     }
 
@@ -119,6 +122,68 @@ object AniList {
             ?.flatMap { l -> l.arr("entries") ?: JsonArray(emptyList()) }
             ?.map { e -> mediaOf((e as? JsonObject)?.get("media"), e.int("progress") ?: 0) }
             ?: emptyList()
+    }
+
+    /**
+     * Prequels, sequels and side stories. AniList models these as a relation
+     * graph, so this keeps only the edges worth surfacing in a viewer.
+     */
+    suspend fun relations(id: Int): List<Relation> {
+        val wanted = setOf("PREQUEL", "SEQUEL", "SIDE_STORY", "PARENT", "ALTERNATIVE")
+        val d = query(
+            "query (\$id: Int) { Media(id: \$id) { relations { edges { relationType " +
+                "node { id type title { romaji english } coverImage { large } episodes } } } } }",
+            buildJsonObject { put("id", id) }
+        )
+        return d.obj("Media").obj("relations").arr("edges")
+            ?.mapNotNull { e ->
+                val type = e.str("relationType") ?: return@mapNotNull null
+                val node = (e as? JsonObject)?.get("node")
+                if (type !in wanted || node.str("type") != "ANIME") return@mapNotNull null
+                Relation(mediaOf(node), type.lowercase().replace('_', ' '))
+            }
+            ?: emptyList()
+    }
+
+    /** Set list status, progress or score in one call. */
+    suspend fun saveEntry(
+        mediaId: Int,
+        status: String? = null,
+        progress: Int? = null,
+        score: Double? = null
+    ) {
+        if (Settings.aniListToken.isEmpty()) return
+        val fields = buildList {
+            add("mediaId: \$id")
+            if (status != null) add("status: \$st")
+            if (progress != null) add("progress: \$pr")
+            if (score != null) add("score: \$sc")
+        }.joinToString(", ")
+        val params = buildList {
+            add("\$id: Int")
+            if (status != null) add("\$st: MediaListStatus")
+            if (progress != null) add("\$pr: Int")
+            if (score != null) add("\$sc: Float")
+        }.joinToString(", ")
+
+        query(
+            "mutation ($params) { SaveMediaListEntry($fields) { id status progress score } }",
+            buildJsonObject {
+                put("id", mediaId)
+                status?.let { put("st", it) }
+                progress?.let { put("pr", it) }
+                score?.let { put("sc", it) }
+            }
+        )
+    }
+
+    /** Remove the title from the user's list entirely. */
+    suspend fun deleteEntry(entryId: Int) {
+        if (Settings.aniListToken.isEmpty()) return
+        query(
+            "mutation (\$id: Int) { DeleteMediaListEntry(id: \$id) { deleted } }",
+            buildJsonObject { put("id", entryId) }
+        )
     }
 
     /** Push watch progress back to AniList after an episode finishes. */
