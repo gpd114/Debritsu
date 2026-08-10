@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -31,7 +32,12 @@ import com.debritsu.app.data.Settings
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(onOpen: (Int) -> Unit, onSettings: () -> Unit, authFlash: Int) {
+fun HomeScreen(
+    onOpen: (Int) -> Unit,
+    onSettings: () -> Unit,
+    onDownloads: () -> Unit,
+    authFlash: Int
+) {
 
     var query by remember { mutableStateOf("") }
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
@@ -100,6 +106,9 @@ fun HomeScreen(onOpen: (Int) -> Unit, onSettings: () -> Unit, authFlash: Int) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = onDownloads) {
+                        Icon(Icons.Default.Download, contentDescription = "Downloads")
+                    }
                     IconButton(onClick = onSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }

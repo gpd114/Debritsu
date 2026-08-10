@@ -24,6 +24,7 @@ import com.debritsu.app.data.AniList
 import com.debritsu.app.data.Debrid
 import com.debritsu.app.data.Progress
 import com.debritsu.app.data.StreamOption
+import com.debritsu.app.data.SyncQueue
 import com.debritsu.app.data.json
 import com.debritsu.app.data.Settings
 import kotlinx.coroutines.launch
@@ -134,7 +135,11 @@ class PlayerActivity : ComponentActivity() {
                         progressPushed = true
                         Progress.clear(anilistId, episode)
                         lifecycleScope.launch {
-                            runCatching { AniList.setProgress(anilistId, episode) }
+                            // Offline finishes still count — park them for later.
+                            val sent = runCatching {
+                                AniList.setProgress(anilistId, episode)
+                            }.isSuccess
+                            if (!sent) SyncQueue.queue(anilistId, episode)
                         }
                     }
                 }

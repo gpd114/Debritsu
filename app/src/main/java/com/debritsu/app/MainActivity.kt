@@ -15,8 +15,12 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.lifecycle.lifecycleScope
 import com.debritsu.app.data.Settings
+import com.debritsu.app.data.SyncQueue
+import kotlinx.coroutines.launch
 import com.debritsu.app.ui.DetailScreen
+import com.debritsu.app.ui.DownloadsScreen
 import com.debritsu.app.ui.HomeScreen
 import com.debritsu.app.ui.DebritsuTheme
 import com.debritsu.app.ui.SettingsScreen
@@ -30,6 +34,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         handleAuth(intent)
 
+        // Replay anything watched offline as soon as we're up.
+        lifecycleScope.launch { runCatching { SyncQueue.flush() } }
+
         setContent {
             DebritsuTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -39,6 +46,7 @@ class MainActivity : ComponentActivity() {
                             HomeScreen(
                                 onOpen = { nav.navigate("detail/$it") },
                                 onSettings = { nav.navigate("settings") },
+                                onDownloads = { nav.navigate("downloads") },
                                 authFlash = authFlash
                             )
                         }
@@ -48,6 +56,9 @@ class MainActivity : ComponentActivity() {
                                 onBack = { nav.popBackStack() },
                                 onOpen = { nav.navigate("detail/$it") }
                             )
+                        }
+                        composable("downloads") {
+                            DownloadsScreen(onBack = { nav.popBackStack() })
                         }
                         composable("settings") {
                             SettingsScreen(onBack = { nav.popBackStack() })

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.PlayArrow
@@ -35,7 +36,22 @@ import coil.compose.AsyncImage
 import com.debritsu.app.data.*
 import com.debritsu.app.player.PlayerActivity
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/** AniList's API words are not the words people use. */
+private val STATUS_LABELS = listOf(
+    "CURRENT" to "Watching",
+    "PLANNING" to "Plan to watch",
+    "COMPLETED" to "Completed",
+    "PAUSED" to "Paused",
+    "DROPPED" to "Dropped",
+    "REPEATING" to "Rewatching"
+)
+
+private fun statusLabel(raw: String?) =
+    STATUS_LABELS.firstOrNull { it.first == raw }?.second ?: "Not on list"
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -74,6 +90,21 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     }
 
     fun findStreams(episode: Int) {
+        // Already on disk? Play it locally and never touch the network.
+        val offline = Downloads.get(anilistId, episode)?.takeIf { Downloads.isComplete(it) }
+        if (offline != null) {
+            context.startActivity(
+                Intent(context, PlayerActivity::class.java)
+                    .putExtra(
+                        PlayerActivity.EXTRA_URL,
+                        android.net.Uri.fromFile(Downloads.fileFor(offline)).toString()
+                    )
+                    .putExtra(PlayerActivity.EXTRA_TITLE, "${anime?.title} — EP $episode")
+                    .putExtra(PlayerActivity.EXTRA_ANILIST_ID, anilistId)
+                    .putExtra(PlayerActivity.EXTRA_EPISODE, episode)
+            )
+            return
+        }
         scope.launch {
             searching = true
             status = null
@@ -97,6 +128,25 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                 }
             }
             searching = false
+        }
+    }
+
+    fun download(stream: StreamOption) {
+        val a = anime ?: return
+        scope.launch {
+            status = "Preparing download…"
+            runCatching { Debrid.resolve(stream) }
+                .onSuccess { url ->
+                    // Cache the poster too, or the library would be blank offline.
+                    val cover = withContext(Dispatchers.IO) {
+                        Downloads.cacheCover(a.id, a.cover)
+                    }
+                    withContext(Dispatchers.IO) {
+                        Downloads.enqueue(url, a, selectedEpisode, stream.name, cover)
+                    }
+                    status = "Downloading episode $selectedEpisode — see Downloads"
+                }
+                .onFailure { status = it.message ?: "Could not start that download." }
         }
     }
 
@@ -188,7 +238,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                             ) {
                                 Text(
-                                    anime?.listStatus?.replace('_', ' ') ?: "NOT ON LIST",
+                                    statusLabel(anime?.listStatus),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = if (anime?.listStatus != null) Ink.Iris else Ink.Mist
                                 )
@@ -427,6 +477,14 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                             style = MaterialTheme.typography.labelSmall,
                             color = if (s.isDirect) Ink.Iris else Ink.Mist
                         )
+                        IconButton(onClick = { download(s) }) {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = "Download for offline",
+                                tint = Ink.Mist,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
                     }
                     HorizontalDivider(color = Color(0xFF221A36))
                 }
@@ -435,14 +493,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     }
 
     if (showListEditor) {
-        val statuses = listOf(
-            "CURRENT" to "Watching",
-            "PLANNING" to "Planning",
-            "COMPLETED" to "Completed",
-            "PAUSED" to "Paused",
-            "DROPPED" to "Dropped",
-            "REPEATING" to "Rewatching"
-        )
+        val statuses = STATUS_LABELS
         var pendingProgress by remember(anime?.progress) { mutableStateOf(anime?.progress ?: 0) }
         var pendingScore by remember(anime?.score) { mutableStateOf(anime?.score ?: 0.0) }
 
