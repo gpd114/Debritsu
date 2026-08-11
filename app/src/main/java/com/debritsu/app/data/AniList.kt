@@ -133,10 +133,9 @@ object AniList {
     private var cachedViewerToken: String? = null
 
     private suspend fun listFor(statuses: List<String>): List<Anime> {
+        if (Settings.aniListToken.isEmpty()) return emptyList()
+        // Signing out or switching accounts must invalidate the cached id.
         val token = Settings.aniListToken
-        if (token.isEmpty()) return emptyList()
-        // Invalidate on sign-out/sign-in so a stale id from a previous
-        // account is never reused against a new account's token.
         if (token != cachedViewerToken) {
             cachedViewerId = null
             cachedViewerToken = token

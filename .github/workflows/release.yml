@@ -5,9 +5,6 @@ name: Release
 on:
   # Drafting a release in the web UI fires `release`, not `push`, so listen for
   # both — otherwise a UI-created release quietly gets no APK attached.
-  # `published` alone covers publishing a release, publishing a prerelease,
-  # and converting a prerelease to a release — adding `released`/`prereleased`
-  # here would double-fire the workflow for the same publish action.
   release:
     types: [ published ]
   push:

@@ -48,7 +48,7 @@ fun HomeScreen(
     var trending by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var browse by remember { mutableStateOf<List<Anime>>(emptyList()) }
     val searching = query.length >= 3
-    var loading by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(true) }
     var page by remember { mutableStateOf(1) }
     var hasMore by remember { mutableStateOf(true) }
     var loadingMore by remember { mutableStateOf(false) }
@@ -57,17 +57,16 @@ fun HomeScreen(
     suspend fun fetch(p: Int) = AniList.search(query, p)
 
     LaunchedEffect(authFlash) {
+        loading = true
         watching = runCatching { AniList.watching() }.getOrDefault(emptyList())
         planning = runCatching { AniList.planning() }.getOrDefault(emptyList())
         trending = runCatching { AniList.trending().items }.getOrDefault(emptyList())
+        loading = false
     }
 
     // Reset to page one whenever the query changes.
     LaunchedEffect(query, authFlash) {
-        if (!searching) {
-            loading = false
-            return@LaunchedEffect
-        }
+        if (!searching) return@LaunchedEffect
         loading = true
         page = 1
         val res = runCatching { fetch(1) }.getOrNull()
