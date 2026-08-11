@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src=".github/assets/logo.png" width="360" alt="Debritsu">
+<img src="assets/logo.png" width="360" alt="Debritsu">
 
 **An AniList anime client that streams from your debrid account — no scraping, no dead sources.**
 
