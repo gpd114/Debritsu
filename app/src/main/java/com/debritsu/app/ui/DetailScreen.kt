@@ -89,14 +89,11 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     LaunchedEffect(anilistId) {
         relations = runCatching { AniList.relations(anilistId) }.getOrDefault(emptyList())
     }
-    LaunchedEffect(anime) {
-        // Wait for the title so this shares the same Mappings cache entry as
-        // findStreams() below — calling forAniList() without a title first
-        // would cache a kitsu-less result and permanently skip the Kitsu
-        // title-search fallback for titles missing from the mapping tables.
+    // Wait for the title: calling the mapper without it would cache a
+    // kitsu-less result that findStreams() would then reuse.
+    LaunchedEffect(anime?.id) {
         val a = anime ?: return@LaunchedEffect
-        // Filler/recap flags come from MyAnimeList; absence is not an error.
-        val mal = runCatching { Mappings.forAniList(anilistId, a.title).mal?.toIntOrNull() }.getOrNull()
+        val mal = runCatching { Mappings.forAniList(a.id, a.title).mal?.toIntOrNull() }.getOrNull()
         epMeta = runCatching { Jikan.episodes(mal) }.getOrDefault(emptyMap())
     }
 
