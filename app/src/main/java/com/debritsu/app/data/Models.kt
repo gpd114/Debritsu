@@ -14,7 +14,17 @@ data class Anime(
     val listStatus: String? = null,
     /** Id of the user's list entry, needed to delete it. */
     val entryId: Int? = null,
-    val score: Double = 0.0
+    val score: Double = 0.0,
+    // Everything below is display-only detail, absent on list/search results.
+    val averageScore: Int? = null,
+    val popularity: Int? = null,
+    val favourites: Int? = null,
+    val genres: List<String> = emptyList(),
+    val studio: String? = null,
+    val format: String? = null,
+    val seasonLabel: String? = null,
+    val airingStatus: String? = null,
+    val durationMins: Int? = null
 )
 
 /** A prequel, sequel or side story hanging off a title. */

@@ -71,6 +71,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     // Bumped on return from the player so resume bars redraw.
     var progressTick by remember { mutableStateOf(0) }
     var relations by remember { mutableStateOf<List<Relation>>(emptyList()) }
+    var epMeta by remember { mutableStateOf<Map<Int, Jikan.EpisodeMeta>>(emptyMap()) }
     var showListEditor by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -87,6 +88,16 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     }
     LaunchedEffect(anilistId) {
         relations = runCatching { AniList.relations(anilistId) }.getOrDefault(emptyList())
+    }
+    LaunchedEffect(anime) {
+        // Wait for the title so this shares the same Mappings cache entry as
+        // findStreams() below — calling forAniList() without a title first
+        // would cache a kitsu-less result and permanently skip the Kitsu
+        // title-search fallback for titles missing from the mapping tables.
+        val a = anime ?: return@LaunchedEffect
+        // Filler/recap flags come from MyAnimeList; absence is not an error.
+        val mal = runCatching { Mappings.forAniList(anilistId, a.title).mal?.toIntOrNull() }.getOrNull()
+        epMeta = runCatching { Jikan.episodes(mal) }.getOrDefault(emptyMap())
     }
 
     fun findStreams(episode: Int) {
@@ -220,12 +231,71 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                 Column(Modifier.padding(horizontal = 16.dp)) {
                     Text(
                         listOfNotNull(
+                            anime?.format,
                             anime?.episodes?.let { "${it.toString().padStart(2, '0')} EP" },
-                            anime?.progress?.takeIf { it > 0 }?.let { "WATCHED $it" }
-                        ).joinToString("  ·  "),
+                            anime?.durationMins?.let { "${it}m" },
+                            anime?.seasonLabel,
+                            anime?.airingStatus
+                        ).joinToString("  ·  ").uppercase(),
                         style = MaterialTheme.typography.labelSmall,
                         color = Ink.Mist
                     )
+
+                    // Score first — it is the thing that decides whether to bother.
+                    anime?.averageScore?.let { avg ->
+                        Spacer(Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "$avg%",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = when {
+                                    avg >= 80 -> Ink.Iris
+                                    avg >= 65 -> Ink.Bone
+                                    else -> Ink.Mist
+                                }
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    "AVERAGE SCORE",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Ink.Mist
+                                )
+                                Text(
+                                    listOfNotNull(
+                                        anime?.popularity?.let { "#$it BY POPULARITY" },
+                                        anime?.favourites?.takeIf { it > 0 }?.let { "$it ♥" }
+                                    ).joinToString("  ·  "),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Ink.Mist
+                                )
+                            }
+                        }
+                    }
+
+                    if (!anime?.genres.isNullOrEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            anime?.genres?.take(5)?.forEach { g ->
+                                Surface(color = Ink.Veil, shape = RoundedCornerShape(8.dp)) {
+                                    Text(
+                                        g,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Ink.Mist,
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    anime?.studio?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "STUDIO · ${it.uppercase()}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Ink.Mist
+                        )
+                    }
                     if (Settings.aniListToken.isNotEmpty()) {
                         Spacer(Modifier.height(10.dp))
                         Surface(
@@ -302,23 +372,36 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                         val selected = ep == selectedEpisode
                         val watched = ep <= (anime?.progress ?: 0)
                         val resume = remember(ep, progressTick) { Progress.fraction(anilistId, ep) }
+                        val meta = epMeta[ep]
+                        val skippable = meta?.filler == true || meta?.recap == true
                         Box(
                             Modifier
-                                .size(54.dp)
+                                .width(58.dp)
+                                .height(58.dp)
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(if (selected) Ink.Iris else Ink.Veil)
                                 .clickable { selectedEpisode = ep; findStreams(ep) },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                ep.toString().padStart(2, '0'),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = when {
-                                    selected -> MaterialTheme.colorScheme.onPrimary
-                                    watched -> Ink.Mist
-                                    else -> Ink.Bone
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    ep.toString().padStart(2, '0'),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = when {
+                                        selected -> MaterialTheme.colorScheme.onPrimary
+                                        watched -> Ink.Mist
+                                        else -> Ink.Bone
+                                    }
+                                )
+                                if (skippable) {
+                                    Text(
+                                        if (meta?.filler == true) "FILLER" else "RECAP",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (selected) MaterialTheme.colorScheme.onPrimary
+                                        else Ink.Orchid
+                                    )
                                 }
-                            )
+                            }
                             when {
                                 // Part-watched wins over the watched dot: it is
                                 // the more actionable state.
@@ -349,6 +432,16 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                             }
                         }
                     }
+                }
+            }
+            epMeta[selectedEpisode]?.title?.let { epTitle ->
+                item {
+                    Text(
+                        epTitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Ink.Mist,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp)
+                    )
                 }
             }
             if (relations.isNotEmpty()) {

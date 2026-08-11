@@ -14,7 +14,7 @@
         android:gravity="center"
         android:orientation="horizontal">
 
-        <ImageButton
+        <Button
             android:id="@+id/exo_rew_with_amount"
             style="@style/ExoStyledControls.Button.Center.RewWithAmount" />
 
@@ -22,7 +22,7 @@
             android:id="@+id/exo_play_pause"
             style="@style/ExoStyledControls.Button.Center.PlayPause" />
 
-        <ImageButton
+        <Button
             android:id="@+id/exo_ffwd_with_amount"
             style="@style/ExoStyledControls.Button.Center.FfwdWithAmount" />
     </LinearLayout>

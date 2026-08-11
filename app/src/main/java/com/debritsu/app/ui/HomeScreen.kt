@@ -3,6 +3,9 @@ package com.debritsu.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -41,23 +44,30 @@ fun HomeScreen(
 
     var query by remember { mutableStateOf("") }
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    var planning by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    var trending by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var browse by remember { mutableStateOf<List<Anime>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
+    val searching = query.length >= 3
+    var loading by remember { mutableStateOf(false) }
     var page by remember { mutableStateOf(1) }
     var hasMore by remember { mutableStateOf(true) }
     var loadingMore by remember { mutableStateOf(false) }
     val gridState = rememberLazyGridState()
 
-    suspend fun fetch(p: Int) =
-        if (query.length >= 3) AniList.search(query, p) else AniList.trending(p)
+    suspend fun fetch(p: Int) = AniList.search(query, p)
 
     LaunchedEffect(authFlash) {
         watching = runCatching { AniList.watching() }.getOrDefault(emptyList())
+        planning = runCatching { AniList.planning() }.getOrDefault(emptyList())
+        trending = runCatching { AniList.trending().items }.getOrDefault(emptyList())
     }
 
     // Reset to page one whenever the query changes.
     LaunchedEffect(query, authFlash) {
-        if (query.isNotEmpty() && query.length < 3) return@LaunchedEffect
+        if (!searching) {
+            loading = false
+            return@LaunchedEffect
+        }
         loading = true
         page = 1
         val res = runCatching { fetch(1) }.getOrNull()
@@ -70,6 +80,7 @@ fun HomeScreen(
 
     // Pull the next page as the grid nears its end.
     LaunchedEffect(gridState, browse.size, hasMore, query) {
+        if (!searching) return@LaunchedEffect
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
             .collect { last ->
                 if (hasMore && !loadingMore && !loading && browse.isNotEmpty() &&
@@ -163,26 +174,48 @@ fun HomeScreen(
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             }
 
-            LazyVerticalGrid(
-                state = gridState,
-                columns = GridCells.Adaptive(112.dp),
-                contentPadding = PaddingValues(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                if (watching.isNotEmpty() && query.isEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("Continue watching", watching.size) }
-                    items(watching) { PosterCard(it, onOpen) }
-                    item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("Trending", browse.size) }
-                }
-                items(browse) { PosterCard(it, onOpen) }
-                if (loadingMore) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Ink.Iris, strokeWidth = 2.dp)
+            if (searching) {
+                LazyVerticalGrid(
+                    state = gridState,
+                    columns = GridCells.Adaptive(112.dp),
+                    contentPadding = PaddingValues(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(browse) { PosterCard(it, onOpen) }
+                    if (loadingMore) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Box(
+                                Modifier.fillMaxWidth().padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = Ink.Iris, strokeWidth = 2.dp)
+                            }
                         }
                     }
                 }
+            } else {
+                LazyColumn(contentPadding = PaddingValues(bottom = 28.dp)) {
+                    if (watching.isNotEmpty()) item { Shelf("Continue watching", watching, onOpen) }
+                    if (planning.isNotEmpty()) item { Shelf("Plan to watch", planning, onOpen) }
+                    item { Shelf("Trending", trending, onOpen) }
+                }
+            }
+        }
+    }
+}
+
+/** One side-scrolling row of posters. */
+@Composable
+private fun Shelf(title: String, items: List<Anime>, onOpen: (Int) -> Unit) {
+    Column(Modifier.padding(top = 14.dp)) {
+        SectionHeader(title, items.size)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(items) { anime ->
+                Box(Modifier.width(112.dp)) { PosterCard(anime, onOpen) }
             }
         }
     }

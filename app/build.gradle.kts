@@ -22,8 +22,8 @@ android {
         applicationId = "com.debritsu.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 22
-        versionName = "0.9.2"
+        versionCode = 24
+        versionName = "0.10.0"
 
         buildConfigField(
             "String",

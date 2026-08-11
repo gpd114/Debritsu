@@ -85,18 +85,32 @@ object AniList {
 
     suspend fun media(id: Int): Anime? {
         val d = query(
-            "query (\$id: Int) { Media(id: \$id, type: ANIME) { $MEDIA_FIELDS format nextAiringEpisode { episode } " +
+            "query (\$id: Int) { Media(id: \$id, type: ANIME) { $MEDIA_FIELDS format duration status " +
+                "averageScore popularity favourites genres season seasonYear " +
+                "studios(isMain: true) { nodes { name } } nextAiringEpisode { episode } " +
                 "mediaListEntry { id status progress score(format: POINT_10) } } }",
             buildJsonObject { put("id", id) }
         )
         val m = d.obj("Media") ?: return null
         val aired = m.obj("nextAiringEpisode").int("episode")?.minus(1)
         val entry = m.obj("mediaListEntry")
+        val season = m.str("season")?.lowercase()?.replaceFirstChar { it.uppercase() }
+        val year = m.int("seasonYear")
         return mediaOf(m, entry.int("progress") ?: 0).copy(
             episodes = m.int("episodes") ?: aired ?: 1,
             listStatus = entry.str("status"),
             entryId = entry.int("id"),
-            score = entry.str("score")?.toDoubleOrNull() ?: 0.0
+            score = entry.str("score")?.toDoubleOrNull() ?: 0.0,
+            averageScore = m.int("averageScore"),
+            popularity = m.int("popularity"),
+            favourites = m.int("favourites"),
+            genres = (m.arr("genres"))?.mapNotNull { it.toString().trim('"') } ?: emptyList(),
+            studio = m.obj("studios").arr("nodes")?.firstOrNull().str("name"),
+            format = m.str("format")?.replace('_', ' '),
+            seasonLabel = listOfNotNull(season, year?.toString()).joinToString(" ").ifBlank { null },
+            airingStatus = m.str("status")?.lowercase()?.replace('_', ' ')
+                ?.replaceFirstChar { it.uppercase() },
+            durationMins = m.int("duration")
         )
     }
 
@@ -110,16 +124,35 @@ object AniList {
     }
 
     /** The signed-in user's "Watching" list, with per-show progress. */
-    suspend fun watching(): List<Anime> {
-        if (Settings.aniListToken.isEmpty()) return emptyList()
-        val viewer = query("query { Viewer { id } }").obj("Viewer").int("id") ?: return emptyList()
+    suspend fun watching(): List<Anime> = listFor(listOf("CURRENT", "REPEATING"))
+
+    /** Anything on the user's "Plan to watch" list. */
+    suspend fun planning(): List<Anime> = listFor(listOf("PLANNING"))
+
+    private var cachedViewerId: Int? = null
+    private var cachedViewerToken: String? = null
+
+    private suspend fun listFor(statuses: List<String>): List<Anime> {
+        val token = Settings.aniListToken
+        if (token.isEmpty()) return emptyList()
+        // Invalidate on sign-out/sign-in so a stale id from a previous
+        // account is never reused against a new account's token.
+        if (token != cachedViewerToken) {
+            cachedViewerId = null
+            cachedViewerToken = token
+        }
+        val viewer = cachedViewerId
+            ?: query("query { Viewer { id } }").obj("Viewer").int("id")?.also { cachedViewerId = it }
+            ?: return emptyList()
+        val statusList = statuses.joinToString(", ")
         val d = query(
-            "query (\$u: Int) { MediaListCollection(userId: \$u, type: ANIME, status_in: [CURRENT, REPEATING]) " +
-                "{ lists { entries { progress media { $MEDIA_FIELDS } } } } }",
+            "query (\$u: Int) { MediaListCollection(userId: \$u, type: ANIME, status_in: [$statusList]) " +
+                "{ lists { entries { progress updatedAt media { $MEDIA_FIELDS } } } } }",
             buildJsonObject { put("u", viewer) }
         )
         return d.obj("MediaListCollection").arr("lists")
             ?.flatMap { l -> l.arr("entries") ?: JsonArray(emptyList()) }
+            ?.sortedByDescending { it.int("updatedAt") ?: 0 }
             ?.map { e -> mediaOf((e as? JsonObject)?.get("media"), e.int("progress") ?: 0) }
             ?: emptyList()
     }
