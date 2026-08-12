@@ -26,6 +26,9 @@ import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import com.debritsu.app.data.AniList
 import com.debritsu.app.R
+import com.debritsu.app.cast.CastTarget
+import com.debritsu.app.cast.CastTargets
+import com.debritsu.app.cast.GoogleCast
 import com.debritsu.app.data.Debrid
 import com.debritsu.app.data.Progress
 import com.debritsu.app.data.StreamOption
@@ -44,11 +47,15 @@ class PlayerActivity : ComponentActivity() {
     private var episode = 0
     private var sources: List<StreamOption> = emptyList()
     private var subtitleConfigs: List<MediaItem.SubtitleConfiguration> = emptyList()
+    private var currentUrl: String? = null
+    private var currentTitle: String = "Debritsu"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val url = intent.getStringExtra(EXTRA_URL) ?: run { finish(); return }
+        currentUrl = url
+        currentTitle = intent.getStringExtra(EXTRA_TITLE) ?: "Debritsu"
         anilistId = intent.getIntExtra(EXTRA_ANILIST_ID, 0)
         episode = intent.getIntExtra(EXTRA_EPISODE, 0)
         sources = runCatching {
@@ -69,6 +76,8 @@ class PlayerActivity : ComponentActivity() {
         val sourcesButton = findViewById<ImageButton>(R.id.sources_button)
         sourcesButton.visibility = if (sources.size > 1) View.VISIBLE else View.GONE
         sourcesButton.setOnClickListener { showSourcePicker() }
+
+        findViewById<ImageButton>(R.id.cast_button).setOnClickListener { showCastPicker() }
 
         applySubtitleStyle(view.subtitleView)
 
@@ -128,10 +137,75 @@ class PlayerActivity : ComponentActivity() {
             .setSubtitleConfigurations(subtitleConfigs)
             .build()
 
-    /** Swap source without losing your place in the episode. */
-    private fun showSourcePicker() {
-        if (sources.isEmpty()) return
+    /**
+     * Local files can't be cast — a debrid URL is reachable from the TV, a
+     * path inside app storage is not.
+     */
+    private fun showCastPicker() {
+        val url = currentUrl ?: return
+        val isLocal = !url.startsWith("http")
 
+        // Local files skip the network scan entirely: only an app on this
+        // device can open them, so there is nothing to discover.
+        val loading = if (isLocal) null
+        else panelDialog("Finding devices", "SEARCHING YOUR NETWORK", emptyList()) {}
+        loading?.show()
+
+        lifecycleScope.launch {
+            // If the activity goes away mid-scan the coroutine is cancelled, so
+            // the dismiss has to happen in a finally or the dialog leaks its window.
+            val targets = try {
+                runCatching { CastTargets.discover(this@PlayerActivity, isLocal) }
+                    .getOrDefault(listOf(CastTarget.External))
+            } finally {
+                // Dismissing against a window that's already gone throws.
+                runCatching { loading?.dismiss() }
+            }
+
+            val heading = if (isLocal) "Open with" else "Cast to"
+            // "Other app" is always in the list, so counting it reports a
+            // device found when the scan actually came back empty.
+            val devices = targets.count { it !is CastTarget.External }
+            val sub = when {
+                isLocal -> "DOWNLOADED EPISODE"
+                devices == 0 -> "NO TVS FOUND ON THIS NETWORK"
+                devices == 1 -> "1 DEVICE FOUND"
+                else -> "$devices DEVICES FOUND"
+            }
+            val rows = targets.map { Row(it.label, it.detail, null) }
+            panelDialog(heading, sub, rows) { index ->
+                val target = targets[index]
+                val position = player?.currentPosition ?: 0
+                lifecycleScope.launch {
+                    // Cast waits on a session handshake that can take a while
+                    // on a sleeping receiver, so say something first.
+                    if (target is CastTarget.Cast) toast("Connecting to ${target.label}…")
+
+                    val error = CastTargets.send(
+                        this@PlayerActivity, target, url, currentTitle, position
+                    )
+                    if (error != null) toast(error) else {
+                        player?.pause()
+                        if (target !is CastTarget.External) toast("Playing on ${target.label}")
+                    }
+                }
+            }.show()
+        }
+    }
+
+    private fun toast(message: String) {
+        android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
+    }
+
+    private data class Row(val title: String, val subtitle: String, val tag: String?)
+
+    /** The app's panel styling, shared by the source and cast pickers. */
+    private fun panelDialog(
+        heading: String,
+        subheading: String,
+        rows: List<Row>,
+        onPick: (Int) -> Unit
+    ): Dialog {
         val dp = resources.displayMetrics.density
         fun px(v: Int) = (v * dp).toInt()
 
@@ -140,21 +214,17 @@ class PlayerActivity : ComponentActivity() {
             setPadding(px(20), px(18), px(20), px(24))
             background = GradientDrawable().apply {
                 setColor(0xFF171226.toInt())
-                cornerRadii = floatArrayOf(
-                    px(20).toFloat(), px(20).toFloat(), px(20).toFloat(), px(20).toFloat(),
-                    0f, 0f, 0f, 0f
-                )
+                cornerRadius = px(20).toFloat()
             }
         }
-
         content.addView(TextView(this).apply {
-            text = "Sources"
+            text = heading
             setTextColor(0xFFF1EEF8.toInt())
             textSize = 16f
             setTypeface(Typeface.DEFAULT_BOLD)
         })
         content.addView(TextView(this).apply {
-            text = "${sources.size} AVAILABLE"
+            text = subheading
             setTextColor(0xFFB9B3CC.toInt())
             textSize = 10.5f
             typeface = Typeface.MONOSPACE
@@ -163,34 +233,38 @@ class PlayerActivity : ComponentActivity() {
 
         val dialog = Dialog(this, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen)
 
-        sources.forEach { s ->
-            val row = LinearLayout(this).apply {
+        rows.forEachIndexed { index, row ->
+            val item = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(0, px(12), 0, px(12))
                 isClickable = true
-                setOnClickListener { dialog.dismiss(); switchTo(s) }
+                setOnClickListener { dialog.dismiss(); onPick(index) }
             }
-            row.addView(TextView(this).apply {
-                text = s.name
+            item.addView(TextView(this).apply {
+                text = row.title
                 setTextColor(0xFFF1EEF8.toInt())
                 textSize = 12f
                 typeface = Typeface.MONOSPACE
                 maxLines = 1
             })
-            row.addView(TextView(this).apply {
-                text = s.description.replace("\n", " ").take(110)
+            item.addView(TextView(this).apply {
+                text = row.subtitle
                 setTextColor(0xFFB9B3CC.toInt())
                 textSize = 11.5f
                 maxLines = 2
             })
-            row.addView(TextView(this).apply {
-                text = if (s.isDirect) "DIRECT" else "DEBRID"
-                setTextColor(if (s.isDirect) 0xFF8B5CF6.toInt() else 0xFFB9B3CC.toInt())
-                textSize = 9.5f
-                typeface = Typeface.MONOSPACE
-                setPadding(0, px(3), 0, 0)
-            })
-            content.addView(row)
+            row.tag?.let { tag ->
+                item.addView(TextView(this@PlayerActivity).apply {
+                    text = tag
+                    setTextColor(
+                        if (tag == "DIRECT") 0xFF8B5CF6.toInt() else 0xFFB9B3CC.toInt()
+                    )
+                    textSize = 9.5f
+                    typeface = Typeface.MONOSPACE
+                    setPadding(0, px(3), 0, 0)
+                })
+            }
+            content.addView(item)
             content.addView(View(this).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, px(1)
@@ -199,8 +273,7 @@ class PlayerActivity : ComponentActivity() {
             })
         }
 
-        val scroller = ScrollView(this).apply { addView(content) }
-        dialog.setContentView(scroller)
+        dialog.setContentView(ScrollView(this).apply { addView(content) })
         dialog.window?.apply {
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0x99000000.toInt()))
             setLayout(
@@ -209,7 +282,22 @@ class PlayerActivity : ComponentActivity() {
             )
             setGravity(Gravity.BOTTOM or Gravity.END)
         }
-        dialog.show()
+        return dialog
+    }
+
+    /** Swap source without losing your place in the episode. */
+    private fun showSourcePicker() {
+        if (sources.isEmpty()) return
+        val rows = sources.map { s ->
+            Row(
+                s.name,
+                s.description.replace("\n", " ").take(110),
+                if (s.isDirect) "DIRECT" else "DEBRID"
+            )
+        }
+        panelDialog("Sources", "${sources.size} AVAILABLE", rows) { index ->
+            switchTo(sources[index])
+        }.show()
     }
 
     private fun switchTo(stream: StreamOption) {
@@ -219,6 +307,9 @@ class PlayerActivity : ComponentActivity() {
         lifecycleScope.launch {
             runCatching { Debrid.resolve(stream) }
                 .onSuccess { url ->
+                    // Keep this in step, or casting after a switch sends the
+                    // stream the user just moved away from.
+                    currentUrl = url
                     exo.setMediaItem(mediaItem(url))
                     exo.prepare()
                     exo.seekTo(resumeAt)
@@ -279,6 +370,13 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        // Routes only exist while something is asking for them, and the cast
+        // picker needs them to still be there when a row is tapped.
+        GoogleCast.retainRoutes(this)
+    }
+
     override fun onPause() {
         super.onPause()
         savePosition()
@@ -288,6 +386,7 @@ class PlayerActivity : ComponentActivity() {
         super.onStop()
         player?.pause()
         savePosition()
+        GoogleCast.releaseRoutes(this)
     }
 
     override fun onDestroy() {

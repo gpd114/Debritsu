@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.debritsu.app.data.Downloaded
+import com.debritsu.app.cast.ExternalPlayer
 import com.debritsu.app.data.Downloads
 import com.debritsu.app.data.SyncQueue
 import com.debritsu.app.player.PlayerActivity
@@ -161,6 +163,33 @@ fun DownloadsScreen(onBack: () -> Unit) {
                                     color = Ink.Iris,
                                     trackColor = Ink.Edge,
                                     modifier = Modifier.fillMaxWidth().height(3.dp)
+                                )
+                            }
+                        }
+                        if (complete) {
+                            IconButton(onClick = {
+                                // Sharing the file can fail — nothing installed
+                                // that plays video, or a path FileProvider
+                                // doesn't cover — and this is a plain click
+                                // handler, so an escaping throw takes the app down.
+                                runCatching {
+                                    ExternalPlayer.launch(
+                                        context,
+                                        android.net.Uri.fromFile(Downloads.fileFor(d)).toString(),
+                                        "${d.title} — EP ${d.episode}"
+                                    )
+                                }.onFailure {
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "No app on this device can open that episode",
+                                        android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.OpenInNew,
+                                    contentDescription = "Open in another app",
+                                    tint = Ink.Mist
                                 )
                             }
                         }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Downloaded episodes, shared read-only with whichever player the user picks. -->
+    <external-files-path name="downloads" path="Movies/" />
+    <!-- Downloads.dir() falls back here when external storage is unavailable. -->
+    <files-path name="internal" path="." />
+</paths>

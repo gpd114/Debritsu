@@ -35,6 +35,8 @@ If you already have a debrid subscription and a configured addon, this is the cl
 
 **Filler and recap flags** — Episodes are marked FILLER or RECAP from MyAnimeList data, so you know what's safe to skip before you start.
 
+**Cast to almost any TV** — Google Cast for Chromecast, Android TV and Cast-enabled sets; DLNA for Samsung, LG, Sony and most other smart TVs; or hand the stream to VLC, MX Player or anything else installed. One button, all three.
+
 **Switch source mid-episode** — Discovered it's a dub three minutes in? Tap Sources in the player, pick another, and it resumes at the same second.
 
 **Proper subtitle control** — Embedded tracks, addon-supplied tracks and Stremio subtitle addons all appear under one CC button. Size, colour, background and outline are yours to set, and embedded styling is overridden so your choices stick.
@@ -92,6 +94,8 @@ Releases are cut by publishing a tagged release on GitHub, which builds and atta
 - Very new shows sometimes aren't in the community mapping tables yet, so sources may not be found for a week or two after airing.
 - Episode numbering follows AniList, which can disagree with Kitsu on long-running shows — the usual absolute-versus-seasonal mismatch.
 - Downloads resolve links when you start them, and debrid URLs expire, so a download paused for hours may need restarting.
+- Downloaded episodes can't be sent to a TV directly, since the file lives in app storage where the TV can't reach it — but they can be handed to another app on your phone (VLC, Web Video Caster) which can then cast them.
+- DLNA support varies by television. Some sets only accept MP4, and not all of them honour seeking.
 - AniList tokens last a year and can't be refreshed, so you'll sign in again annually.
 
 ---
