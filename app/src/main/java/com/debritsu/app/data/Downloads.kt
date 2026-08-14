@@ -100,6 +100,18 @@ object Downloads {
         val safeTitle = anime.title.replace(Regex("[^A-Za-z0-9 ._-]"), "").take(60).trim()
         val fileName = "$safeTitle - E${episode.toString().padStart(2, '0')}.mp4"
 
+        // Starting this episode again while it is already downloading would put
+        // two DownloadManager jobs on one destination file, and saving below
+        // replaces the list entry — discarding the first job's id along with it.
+        // That job would carry on writing to the same file, untracked, and
+        // remove() could never reach it. Cancel it, and clear whatever it left.
+        val key = "${anime.id}:$episode"
+        all().firstOrNull { it.key == key }?.let { previous ->
+            runCatching { dm.remove(previous.downloadId) }
+            runCatching { File(dir(), previous.fileName).delete() }
+        }
+        runCatching { File(dir(), fileName).delete() }
+
         val req = DownloadManager.Request(Uri.parse(url))
             .setTitle("$safeTitle · Episode $episode")
             .setDescription("Debritsu")
