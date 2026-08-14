@@ -95,7 +95,7 @@ Releases are cut by publishing a tagged release on GitHub, which builds and atta
 - Episode numbering follows AniList, which can disagree with Kitsu on long-running shows — the usual absolute-versus-seasonal mismatch.
 - Downloads resolve links when you start them, and debrid URLs expire, so a download paused for hours may need restarting.
 - Downloaded episodes can't be sent to a TV directly, since the file lives in app storage where the TV can't reach it — but they can be handed to another app on your phone (VLC, Web Video Caster) which can then cast them.
-- DLNA support varies by television. Some sets only accept MP4, and not all of them honour seeking.
+- Casting over DLNA needs a television that can fetch HTTPS, and most can't — DLNA is an `http-get` protocol and plenty of sets ship no TLS at all. Debrid links are always HTTPS, so for those televisions use a Chromecast, Android TV or other Cast device, or hand the stream to another app. Where DLNA does work, seeking isn't always honoured.
 - AniList tokens last a year and can't be refreshed, so you'll sign in again annually.
 
 ---
