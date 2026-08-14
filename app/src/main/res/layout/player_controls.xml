@@ -14,6 +14,14 @@
         android:gravity="center"
         android:orientation="horizontal">
 
+        <!-- Custom ids, not exo_prev/exo_next: those are wired to playlist
+             navigation, and there is no playlist — each episode is resolved
+             on demand. -->
+        <ImageButton
+            android:id="@+id/prev_episode"
+            style="@style/ExoStyledControls.Button.Center.Previous"
+            android:contentDescription="Previous episode" />
+
         <Button
             android:id="@+id/exo_rew_with_amount"
             style="@style/ExoStyledControls.Button.Center.RewWithAmount" />
@@ -25,6 +33,11 @@
         <Button
             android:id="@+id/exo_ffwd_with_amount"
             style="@style/ExoStyledControls.Button.Center.FfwdWithAmount" />
+
+        <ImageButton
+            android:id="@+id/next_episode"
+            style="@style/ExoStyledControls.Button.Center.Next"
+            android:contentDescription="Next episode" />
     </LinearLayout>
 
     <LinearLayout

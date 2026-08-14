@@ -1,5 +1,6 @@
 package com.debritsu.app.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,7 +15,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -53,6 +56,9 @@ fun HomeScreen(
     var hasMore by remember { mutableStateOf(true) }
     var loadingMore by remember { mutableStateOf(false) }
     val gridState = rememberLazyGridState()
+    // Title of the shelf currently taking over the screen, or null for the
+    // normal stack of side-scrolling rows.
+    var expanded by remember { mutableStateOf<String?>(null) }
 
     suspend fun fetch(p: Int) = AniList.search(query, p)
 
@@ -173,8 +179,18 @@ fun HomeScreen(
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             }
 
-            if (searching) {
-                LazyVerticalGrid(
+            val shelves = buildList {
+                if (watching.isNotEmpty()) add("Continue watching" to watching)
+                if (planning.isNotEmpty()) add("Plan to watch" to planning)
+                add("Trending" to trending)
+            }
+            val openShelf = shelves.firstOrNull { it.first == expanded }
+
+            // Back should close an expanded shelf rather than leaving Home.
+            BackHandler(enabled = openShelf != null) { expanded = null }
+
+            when {
+                searching -> LazyVerticalGrid(
                     state = gridState,
                     columns = GridCells.Adaptive(112.dp),
                     contentPadding = PaddingValues(16.dp),
@@ -193,11 +209,18 @@ fun HomeScreen(
                         }
                     }
                 }
-            } else {
-                LazyColumn(contentPadding = PaddingValues(bottom = 28.dp)) {
-                    if (watching.isNotEmpty()) item { Shelf("Continue watching", watching, onOpen) }
-                    if (planning.isNotEmpty()) item { Shelf("Plan to watch", planning, onOpen) }
-                    item { Shelf("Trending", trending, onOpen) }
+
+                openShelf != null -> ExpandedShelf(
+                    title = openShelf.first,
+                    list = openShelf.second,
+                    onOpen = onOpen,
+                    onCollapse = { expanded = null }
+                )
+
+                else -> LazyColumn(contentPadding = PaddingValues(bottom = 28.dp)) {
+                    shelves.forEach { (title, list) ->
+                        item { Shelf(title, list, onOpen) { expanded = title } }
+                    }
                 }
             }
         }
@@ -206,25 +229,60 @@ fun HomeScreen(
 
 /** One side-scrolling row of posters. */
 @Composable
-private fun Shelf(title: String, items: List<Anime>, onOpen: (Int) -> Unit) {
+private fun Shelf(
+    title: String,
+    list: List<Anime>,
+    onOpen: (Int) -> Unit,
+    onExpand: () -> Unit
+) {
     Column(Modifier.padding(top = 14.dp)) {
-        SectionHeader(title, items.size)
+        SectionHeader(title, list.size, Icons.Default.OpenInFull, "Expand $title", onExpand)
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(items) { anime ->
+            items(list) { anime ->
                 Box(Modifier.width(112.dp)) { PosterCard(anime, onOpen) }
             }
         }
     }
 }
 
+/** The same shelf given the whole screen, as a scrolling grid. */
 @Composable
-private fun SectionHeader(text: String, count: Int) {
+private fun ExpandedShelf(
+    title: String,
+    list: List<Anime>,
+    onOpen: (Int) -> Unit,
+    onCollapse: () -> Unit
+) {
+    Column {
+        SectionHeader(title, list.size, Icons.Default.CloseFullscreen, "Collapse $title", onCollapse)
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(112.dp),
+            contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            items(list) { PosterCard(it, onOpen) }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(
+    text: String,
+    count: Int,
+    actionIcon: androidx.compose.ui.graphics.vector.ImageVector,
+    actionLabel: String,
+    onAction: () -> Unit
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
+        // Starts level with the posters, which are inset by the same amount.
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 2.dp)
     ) {
         Text(text, style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.width(8.dp))
@@ -233,6 +291,10 @@ private fun SectionHeader(text: String, count: Int) {
             style = MaterialTheme.typography.labelSmall,
             color = Ink.Mist
         )
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = onAction) {
+            Icon(actionIcon, contentDescription = actionLabel, tint = Ink.Mist)
+        }
     }
 }
 

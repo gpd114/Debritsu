@@ -1,18 +1,24 @@
 package com.debritsu.app.player
 
+import android.content.Context
 import android.graphics.Color
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
 import android.util.TypedValue
 import android.app.Dialog
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.view.GestureDetector
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.activity.ComponentActivity
 import androidx.annotation.OptIn
 import androidx.lifecycle.lifecycleScope
@@ -30,8 +36,12 @@ import com.debritsu.app.cast.CastTarget
 import com.debritsu.app.cast.CastTargets
 import com.debritsu.app.cast.GoogleCast
 import com.debritsu.app.data.Debrid
+import com.debritsu.app.data.Downloads
+import com.debritsu.app.data.Mappings
 import com.debritsu.app.data.Progress
 import com.debritsu.app.data.StreamOption
+import com.debritsu.app.data.Stremio
+import com.debritsu.app.data.Subtitle
 import com.debritsu.app.data.SyncQueue
 import com.debritsu.app.data.json
 import com.debritsu.app.data.Settings
@@ -49,6 +59,9 @@ class PlayerActivity : ComponentActivity() {
     private var subtitleConfigs: List<MediaItem.SubtitleConfiguration> = emptyList()
     private var currentUrl: String? = null
     private var currentTitle: String = "Debritsu"
+    private var episodeCount = 0
+    private var seriesTitle: String = ""
+    private var switchingEpisode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,6 +71,8 @@ class PlayerActivity : ComponentActivity() {
         currentTitle = intent.getStringExtra(EXTRA_TITLE) ?: "Debritsu"
         anilistId = intent.getIntExtra(EXTRA_ANILIST_ID, 0)
         episode = intent.getIntExtra(EXTRA_EPISODE, 0)
+        episodeCount = intent.getIntExtra(EXTRA_EPISODE_COUNT, 0)
+        seriesTitle = intent.getStringExtra(EXTRA_SERIES_TITLE).orEmpty()
         sources = runCatching {
             json.decodeFromString(
                 ListSerializer(StreamOption.serializer()),
@@ -79,6 +94,13 @@ class PlayerActivity : ComponentActivity() {
 
         findViewById<ImageButton>(R.id.cast_button).setOnClickListener { showCastPicker() }
 
+        findViewById<ImageButton>(R.id.prev_episode)
+            .setOnClickListener { goToEpisode(episode - 1) }
+        findViewById<ImageButton>(R.id.next_episode)
+            .setOnClickListener { goToEpisode(episode + 1) }
+        updateEpisodeButtons()
+
+        installGestures(view)
         applySubtitleStyle(view.subtitleView)
 
         subtitleConfigs = subUrls.mapIndexed { i, subUrl ->
@@ -136,6 +158,253 @@ class PlayerActivity : ComponentActivity() {
             .setUri(url)
             .setSubtitleConfigurations(subtitleConfigs)
             .build()
+
+    /**
+     * Episode stepping needs an AniList id and a title to resolve against, so
+     * it's hidden for downloads and one-off links, which have nothing to step
+     * through. A null episode count means an ongoing show — allow forward and
+     * let the lookup fail honestly rather than guessing where the series ends.
+     */
+    private fun updateEpisodeButtons() {
+        val navigable = anilistId > 0 && episode > 0 && seriesTitle.isNotEmpty()
+        findViewById<ImageButton>(R.id.prev_episode).visibility =
+            if (navigable && episode > 1) View.VISIBLE else View.GONE
+        findViewById<ImageButton>(R.id.next_episode).visibility =
+            if (navigable && (episodeCount <= 0 || episode < episodeCount)) View.VISIBLE
+            else View.GONE
+    }
+
+    /**
+     * Resolves an adjacent episode and swaps it in without leaving the player.
+     *
+     * There is no playlist to seek through — every episode is a fresh addon
+     * lookup and debrid resolve — so this repeats what the detail screen does,
+     * ending in the same source picker. Choosing matters here: sources vary by
+     * several gigabytes, language and release group, and picking automatically
+     * would spend someone's mobile data for them.
+     */
+    private fun goToEpisode(target: Int) {
+        if (switchingEpisode) return
+        if (target < 1 || (episodeCount > 0 && target > episodeCount)) return
+        val exo = player ?: return
+
+        switchingEpisode = true
+        savePosition()
+        exo.pause()
+        val loading = panelDialog("Episode $target", "FINDING SOURCES", emptyList()) {}
+        loading.show()
+
+        lifecycleScope.launch {
+            // True once something else is responsible for what plays next,
+            // either because the episode already changed or because the picker
+            // is up and waiting on a choice.
+            var handedOff = false
+            try {
+                // A downloaded copy plays straight from disk, same as the
+                // detail screen does, and never touches the network.
+                val offline = Downloads.get(anilistId, target)
+                    ?.takeIf { Downloads.isComplete(it) }
+                if (offline != null) {
+                    startEpisode(
+                        target,
+                        Uri.fromFile(Downloads.fileFor(offline)).toString(),
+                        emptyList(),
+                        emptyList()
+                    )
+                    handedOff = true
+                    return@launch
+                }
+
+                val ids = runCatching { Mappings.forAniList(anilistId, seriesTitle) }.getOrNull()
+                val content = ids?.let { Stremio.contentId(it, target, episodeCount == 1) }
+                if (content == null) {
+                    toast("Couldn't look up episode $target for this title.")
+                    return@launch
+                }
+
+                val found = runCatching { Stremio.streams(content.first, content.second) }
+                    .getOrDefault(emptyList())
+                    .flatMap { it.streams }
+                if (found.isEmpty()) {
+                    toast("No sources found for episode $target.")
+                    return@launch
+                }
+
+                val extra = runCatching { Stremio.subtitles(content.first, content.second) }
+                    .getOrDefault(emptyList())
+
+                val rows = found.map { s ->
+                    Row(
+                        s.name,
+                        s.description.replace("\n", " ").take(110),
+                        if (s.isDirect) "DIRECT" else "DEBRID"
+                    )
+                }
+                val picker = panelDialog("Episode $target", "${found.size} AVAILABLE", rows) { index ->
+                    val chosen = found[index]
+                    lifecycleScope.launch {
+                        toast("Resolving link…")
+                        val url = runCatching { Debrid.resolve(chosen) }.getOrNull()
+                        if (url == null) {
+                            toast("Couldn't resolve that source.")
+                            player?.play()
+                        } else {
+                            startEpisode(
+                                target, url, found,
+                                (chosen.subtitles + extra).distinctBy { it.url }
+                            )
+                        }
+                    }
+                }
+                // Backing out of the picker leaves the current episode playing.
+                picker.setOnCancelListener { player?.play() }
+                picker.show()
+                handedOff = true
+            } finally {
+                runCatching { loading.dismiss() }
+                switchingEpisode = false
+                if (!handedOff) player?.play()
+            }
+        }
+    }
+
+    private fun startEpisode(
+        target: Int,
+        url: String,
+        newSources: List<StreamOption>,
+        subs: List<Subtitle>
+    ) {
+        val exo = player ?: return
+        episode = target
+        currentUrl = url
+        currentTitle = if (seriesTitle.isNotEmpty()) "$seriesTitle — EP $target" else "EP $target"
+        sources = newSources
+        // A new episode has its own completion threshold to cross.
+        progressPushed = false
+
+        subtitleConfigs = subs.map { s ->
+            MediaItem.SubtitleConfiguration.Builder(Uri.parse(s.url))
+                .setMimeType(mimeFor(s.url))
+                .setLanguage(s.lang)
+                .setSelectionFlags(0)
+                .build()
+        }
+
+        findViewById<ImageButton>(R.id.sources_button).visibility =
+            if (sources.size > 1) View.VISIBLE else View.GONE
+        updateEpisodeButtons()
+
+        exo.setMediaItem(mediaItem(url))
+        exo.prepare()
+        val resumeAt = Progress.position(anilistId, target)
+        if (resumeAt > 0) exo.seekTo(resumeAt)
+        exo.playWhenReady = true
+    }
+
+    /**
+     * Double tap the left or right third to skip, drag up or down the left half
+     * for brightness and the right half for volume.
+     *
+     * The listener only swallows an event once a gesture has actually fired,
+     * otherwise a plain tap would stop toggling the transport controls.
+     */
+    private fun installGestures(view: PlayerView) {
+        val hud = findViewById<TextView>(R.id.gesture_hud)
+        hud.background = GradientDrawable().apply {
+            setColor(0xCC171226.toInt())
+            cornerRadius = 14 * resources.displayMetrics.density
+        }
+
+        val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val maxVolume = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val hide = Runnable { hud.visibility = View.GONE }
+
+        fun readout(text: String) {
+            hud.text = text
+            hud.visibility = View.VISIBLE
+            hud.removeCallbacks(hide)
+            hud.postDelayed(hide, 700)
+        }
+
+        var consumed = false
+        var dragging = false
+        var startVolume = 0
+        var startBrightness = 0f
+
+        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+
+            override fun onDown(e: MotionEvent): Boolean {
+                consumed = false
+                dragging = false
+                startVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+                // -1 means "follow the system", which is the state on first touch.
+                startBrightness = window.attributes.screenBrightness
+                    .takeIf { it >= 0f } ?: systemBrightness()
+                return true
+            }
+
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                val exo = player ?: return false
+                when {
+                    e.x < view.width / 3f -> {
+                        exo.seekBack()
+                        readout("−${exo.seekBackIncrement / 1000}s")
+                    }
+                    e.x > view.width * 2f / 3f -> {
+                        exo.seekForward()
+                        readout("+${exo.seekForwardIncrement / 1000}s")
+                    }
+                    // The middle is left alone so double-tapping the centre
+                    // still just shows the controls.
+                    else -> return false
+                }
+                consumed = true
+                return true
+            }
+
+            override fun onScroll(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                distanceX: Float,
+                distanceY: Float
+            ): Boolean {
+                val start = e1 ?: return false
+                if (!dragging) {
+                    val dy = abs(e2.y - start.y)
+                    // Wait until the drag is clearly vertical, so horizontal
+                    // movement never nudges the volume.
+                    if (dy < abs(e2.x - start.x) || dy < 24f) return false
+                    dragging = true
+                }
+
+                val fraction = (start.y - e2.y) / (view.height * 0.7f)
+                if (start.x < view.width / 2f) {
+                    val level = (startBrightness + fraction).coerceIn(0.01f, 1f)
+                    window.attributes = window.attributes.apply { screenBrightness = level }
+                    readout("Brightness  ${(level * 100).roundToInt()}%")
+                } else {
+                    val level = (startVolume + fraction * maxVolume)
+                        .roundToInt().coerceIn(0, maxVolume)
+                    audio.setStreamVolume(AudioManager.STREAM_MUSIC, level, 0)
+                    readout("Volume  ${(level * 100f / maxVolume).roundToInt()}%")
+                }
+                consumed = true
+                return true
+            }
+        })
+
+        view.setOnTouchListener { _, event ->
+            detector.onTouchEvent(event)
+            consumed
+        }
+    }
+
+    /** The system brightness, as a starting point for the first drag. */
+    private fun systemBrightness(): Float = runCatching {
+        android.provider.Settings.System.getInt(
+            contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS
+        ) / 255f
+    }.getOrDefault(0.5f)
 
     /**
      * Local files can't be cast — a debrid URL is reachable from the TV, a
@@ -399,6 +668,10 @@ class PlayerActivity : ComponentActivity() {
     companion object {
         const val EXTRA_URL = "url"
         const val EXTRA_TITLE = "title"
+        /** Series title on its own, for resolving other episodes. */
+        const val EXTRA_SERIES_TITLE = "series_title"
+        /** Total episodes, or 0 when unknown — an ongoing show, say. */
+        const val EXTRA_EPISODE_COUNT = "episode_count"
         const val EXTRA_ANILIST_ID = "anilist_id"
         const val EXTRA_EPISODE = "episode"
         const val EXTRA_SOURCES = "sources"

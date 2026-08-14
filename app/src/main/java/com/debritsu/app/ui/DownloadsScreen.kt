@@ -214,6 +214,7 @@ private fun play(context: android.content.Context, d: Downloaded) {
         Intent(context, PlayerActivity::class.java)
             .putExtra(PlayerActivity.EXTRA_URL, android.net.Uri.fromFile(Downloads.fileFor(d)).toString())
             .putExtra(PlayerActivity.EXTRA_TITLE, "${d.title} — EP ${d.episode}")
+            .putExtra(PlayerActivity.EXTRA_SERIES_TITLE, d.title)
             .putExtra(PlayerActivity.EXTRA_ANILIST_ID, d.anilistId)
             .putExtra(PlayerActivity.EXTRA_EPISODE, d.episode)
     )
