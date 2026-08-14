@@ -80,8 +80,17 @@ object CastTargets {
         is CastTarget.DlnaDevice -> {
             val ok = Dlna.play(target.renderer, url, title)
             if (!ok) {
-                "${target.renderer.name} refused the stream. Some TVs only accept " +
-                    "MP4 — try a different source."
+                // Most renderers have no TLS at all — DLNA's protocolInfo is
+                // literally "http-get" — and debrid links are always HTTPS, so
+                // this is the overwhelmingly likely cause rather than the codec.
+                if (url.startsWith("https", ignoreCase = true)) {
+                    "${target.renderer.name} can't play HTTPS links, which is what " +
+                        "debrid gives us. Cast to a Chromecast or Android TV instead, " +
+                        "or hand the stream to another app."
+                } else {
+                    "${target.renderer.name} refused the stream. Some TVs only accept " +
+                        "MP4 — try a different source."
+                }
             } else {
                 if (positionMs > 15_000) {
                     // Most renderers reject a seek until they've buffered, so

@@ -83,12 +83,17 @@ object Dlna {
             try {
                 DatagramSocket().use { socket ->
                     socket.soTimeout = 900
-                    socket.send(
-                        DatagramPacket(
-                            SEARCH, SEARCH.size,
-                            InetSocketAddress(InetAddress.getByName(SSDP_ADDRESS), SSDP_PORT)
-                        )
+                    // SSDP is UDP with no retransmission, so a single search can
+                    // simply go missing. Asking three times costs nothing and
+                    // makes discovery far more consistent.
+                    val target = InetSocketAddress(
+                        InetAddress.getByName(SSDP_ADDRESS), SSDP_PORT
                     )
+                    repeat(3) {
+                        runCatching {
+                            socket.send(DatagramPacket(SEARCH, SEARCH.size, target))
+                        }
+                    }
 
                     val deadline = System.currentTimeMillis() + timeoutMs
                     val buffer = ByteArray(2048)
@@ -97,9 +102,13 @@ object Dlna {
                         val ok = runCatching { socket.receive(packet); true }.getOrDefault(false)
                         if (!ok) continue
                         val text = String(packet.data, 0, packet.length)
+                        // Header names are case-insensitive and devices really
+                        // do disagree: LG sends "Location:", others "LOCATION:".
+                        // Match and strip the same way, or the header name ends
+                        // up inside the URL and the device is dropped silently.
                         val location = text.lineSequence()
-                            .firstOrNull { it.trim().startsWith("LOCATION:", true) }
-                            ?.trim()?.removePrefix("LOCATION:")?.removePrefix("location:")?.trim()
+                            .firstOrNull { it.trim().startsWith("LOCATION:", ignoreCase = true) }
+                            ?.trim()?.substringAfter(':')?.trim()
                         if (!location.isNullOrEmpty()) locations += location
                     }
                 }
@@ -182,6 +191,12 @@ object Dlna {
                 """<res protocolInfo="http-get:*:video/mp4:*">${xmlEscape(url)}</res>""" +
                 """</item></DIDL-Lite>"""
         )
+
+        // A renderer left mid-playback rejects SetAVTransportURI outright — LG
+        // answers 500 to every attempt until it is stopped — so anything after
+        // a failed cast fails too, including the retry. Clearing the transport
+        // first makes each attempt independent of the last.
+        soap(renderer.controlUrl, "Stop", "<InstanceID>0</InstanceID>")
 
         val set = soap(
             renderer.controlUrl, "SetAVTransportURI",
