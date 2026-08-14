@@ -14,6 +14,23 @@
         app:show_next_button="false"
         app:show_previous_button="false" />
 
+    <!-- Sits above the video rather than in the controller, so it stays put
+         while the transport controls fade in and out. -->
+    <TextView
+        android:id="@+id/skip_segment"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="104dp"
+        android:paddingStart="22dp"
+        android:paddingEnd="22dp"
+        android:paddingTop="13dp"
+        android:paddingBottom="13dp"
+        android:textColor="#FFF1EEF8"
+        android:textSize="14sp"
+        android:visibility="gone" />
+
     <!-- Readout for the swipe and double-tap gestures. Sits above the video but
          outside the controller, so it stays visible while the controls are hidden. -->
     <TextView

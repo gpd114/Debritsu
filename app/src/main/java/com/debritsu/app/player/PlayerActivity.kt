@@ -35,6 +35,7 @@ import com.debritsu.app.R
 import com.debritsu.app.cast.CastTarget
 import com.debritsu.app.cast.CastTargets
 import com.debritsu.app.cast.GoogleCast
+import com.debritsu.app.data.AniSkip
 import com.debritsu.app.data.Debrid
 import com.debritsu.app.data.Downloads
 import com.debritsu.app.data.Mappings
@@ -45,6 +46,7 @@ import com.debritsu.app.data.Subtitle
 import com.debritsu.app.data.SyncQueue
 import com.debritsu.app.data.json
 import com.debritsu.app.data.Settings
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 
@@ -62,6 +64,7 @@ class PlayerActivity : ComponentActivity() {
     private var episodeCount = 0
     private var seriesTitle: String = ""
     private var switchingEpisode = false
+    private var segments: List<AniSkip.Segment> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -101,6 +104,7 @@ class PlayerActivity : ComponentActivity() {
         updateEpisodeButtons()
 
         installGestures(view)
+        installSkipButton()
         applySubtitleStyle(view.subtitleView)
 
         subtitleConfigs = subUrls.mapIndexed { i, subUrl ->
@@ -151,6 +155,8 @@ class PlayerActivity : ComponentActivity() {
                 }
             })
         }
+
+        loadSkipSegments()
     }
 
     private fun mediaItem(url: String): MediaItem =
@@ -299,6 +305,7 @@ class PlayerActivity : ComponentActivity() {
         val resumeAt = Progress.position(anilistId, target)
         if (resumeAt > 0) exo.seekTo(resumeAt)
         exo.playWhenReady = true
+        loadSkipSegments()
     }
 
     /**
@@ -396,6 +403,70 @@ class PlayerActivity : ComponentActivity() {
         view.setOnTouchListener { _, event ->
             detector.onTouchEvent(event)
             consumed
+        }
+    }
+
+    /**
+     * Shows a skip button whenever playback is inside a known opening or
+     * ending, and seeks past it when tapped.
+     *
+     * Polling beats listening here: ExoPlayer reports position changes on
+     * seeks and state changes, not as playback advances, so there is no event
+     * that fires when an opening simply arrives.
+     */
+    private fun installSkipButton() {
+        val button = findViewById<TextView>(R.id.skip_segment)
+        button.background = GradientDrawable().apply {
+            setColor(0xE68B5CF6.toInt())
+            cornerRadius = 26 * resources.displayMetrics.density
+        }
+
+        lifecycleScope.launch {
+            while (true) {
+                val exo = player
+                val active = if (exo == null) null
+                else segments.firstOrNull { exo.currentPosition in it.startMs..it.endMs }
+
+                if (active == null) {
+                    button.visibility = View.GONE
+                } else {
+                    button.text = active.label
+                    button.visibility = View.VISIBLE
+                    button.setOnClickListener {
+                        exo?.seekTo(active.endMs)
+                        button.visibility = View.GONE
+                    }
+                }
+                delay(400)
+            }
+        }
+    }
+
+    /** Looks up opening and ending times for whatever is playing now. */
+    private fun loadSkipSegments() {
+        segments = emptyList()
+        if (anilistId <= 0 || episode <= 0) return
+
+        val forEpisode = episode
+        lifecycleScope.launch {
+            // Give the player a moment to work out the duration: the service
+            // uses it to fit its timings to this particular encode.
+            var waited = 0
+            while (waited < 5000 && (player?.duration ?: 0L) <= 0L) {
+                delay(250)
+                waited += 250
+            }
+
+            val mal = runCatching {
+                Mappings.forAniList(anilistId, seriesTitle.ifEmpty { null }).mal?.toIntOrNull()
+            }.getOrNull()
+            val found = AniSkip.segments(
+                mal, forEpisode, (player?.duration ?: 0L).coerceAtLeast(0L)
+            )
+
+            // A quick jump to the next episode can land mid-lookup; timings
+            // from the episode we just left would be worse than none.
+            if (episode == forEpisode) segments = found
         }
     }
 

@@ -30,8 +30,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.debritsu.app.data.*
 import com.debritsu.app.player.PlayerActivity
@@ -67,6 +69,9 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     var searching by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var showSheet by remember { mutableStateOf(false) }
+    // Resolving a debrid link can take a few seconds with nothing on screen to
+    // show for it, which reads as a dead tap.
+    var resolving by remember { mutableStateOf(false) }
     var subtitles by remember { mutableStateOf<List<Subtitle>>(emptyList()) }
     // Bumped on return from the player so resume bars redraw.
     var progressTick by remember { mutableStateOf(0) }
@@ -162,8 +167,10 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
 
     fun play(stream: StreamOption) {
         scope.launch {
-            status = "Resolving link…"
+            status = null
+            resolving = true
             runCatching { Debrid.resolve(stream) }
+                .also { resolving = false }
                 .onSuccess { url ->
                     showSheet = false
                     status = null
@@ -492,6 +499,56 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                 }
             }
             item { Spacer(Modifier.height(32.dp)) }
+        }
+    }
+
+    if (resolving) {
+        // Not dismissable: the resolve is already in flight with the debrid
+        // provider, and backing out here would leave it half-done.
+        Dialog(onDismissRequest = { }) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Ink.Veil)
+                    .padding(horizontal = 28.dp, vertical = 24.dp)
+            ) {
+                AsyncImage(
+                    model = anime?.cover,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .width(104.dp)
+                        .aspectRatio(2f / 3f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Ink.Edge)
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    anime?.title.orEmpty(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    "EPISODE ${selectedEpisode.toString().padStart(2, '0')}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Ink.Mist
+                )
+                Spacer(Modifier.height(16.dp))
+                LinearProgressIndicator(
+                    color = Ink.Iris,
+                    trackColor = Ink.Edge,
+                    modifier = Modifier.width(120.dp)
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Resolving link…",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Ink.Mist
+                )
+            }
         }
     }
 
