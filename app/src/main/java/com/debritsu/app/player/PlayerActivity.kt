@@ -40,6 +40,7 @@ import com.debritsu.app.data.Debrid
 import com.debritsu.app.data.Downloads
 import com.debritsu.app.data.Mappings
 import com.debritsu.app.data.Progress
+import com.debritsu.app.data.SourceHandoff
 import com.debritsu.app.data.StreamOption
 import com.debritsu.app.data.Stremio
 import com.debritsu.app.data.Subtitle
@@ -79,12 +80,11 @@ class PlayerActivity : ComponentActivity() {
         episodeCount = intent.getIntExtra(EXTRA_EPISODE_COUNT, 0)
         seriesTitle = intent.getStringExtra(EXTRA_SERIES_TITLE).orEmpty()
         currentSourceIndex = intent.getIntExtra(EXTRA_SOURCE_INDEX, -1)
-        sources = runCatching {
-            json.decodeFromString(
-                ListSerializer(StreamOption.serializer()),
-                intent.getStringExtra(EXTRA_SOURCES) ?: "[]"
-            )
-        }.getOrDefault(emptyList())
+        // Not an Intent extra: a busy episode returns hundreds of sources, each
+        // carrying a debrid URL of some 1,500 characters, and serialising that
+        // into the launch overruns the Binder transaction limit — which kills
+        // the app during startActivity without raising anything catchable.
+        sources = SourceHandoff.take()
         val subUrls = intent.getStringArrayExtra(EXTRA_SUB_URLS).orEmpty()
         val subLangs = intent.getStringArrayExtra(EXTRA_SUB_LANGS).orEmpty()
 
@@ -764,11 +764,10 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_SERIES_TITLE = "series_title"
         /** Total episodes, or 0 when unknown — an ongoing show, say. */
         const val EXTRA_EPISODE_COUNT = "episode_count"
-        /** Which entry in EXTRA_SOURCES is playing, so the picker can mark it. */
+        /** Which entry in the handed-over source list is playing. */
         const val EXTRA_SOURCE_INDEX = "source_index"
         const val EXTRA_ANILIST_ID = "anilist_id"
         const val EXTRA_EPISODE = "episode"
-        const val EXTRA_SOURCES = "sources"
         const val EXTRA_SUB_URLS = "sub_urls"
         const val EXTRA_SUB_LANGS = "sub_langs"
     }

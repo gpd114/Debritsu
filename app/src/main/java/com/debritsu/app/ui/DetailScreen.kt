@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
+import com.debritsu.app.BuildConfig
 import com.debritsu.app.data.*
 import com.debritsu.app.player.PlayerActivity
 import kotlinx.serialization.builtins.ListSerializer
@@ -119,15 +120,23 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
         episode: Int,
         sourceIndex: Int
     ) {
+        // Handed over in memory rather than through the Intent. Serialised, a
+        // few hundred sources runs to hundreds of kilobytes and overruns the
+        // Binder transaction limit, killing the app mid-launch with nothing
+        // logged. Measured here so the size is visible if it ever matters again.
+        if (BuildConfig.DEBUG) {
+            val bytes = runCatching {
+                json.encodeToString(ListSerializer(StreamOption.serializer()), sources).length
+            }.getOrDefault(-1)
+            android.util.Log.d(
+                "DebritsuFilter",
+                "handing over ${sources.size} sources (${bytes} chars if serialised)"
+            )
+        }
+        SourceHandoff.offer(sources)
+
         context.startActivity(
             Intent(context, PlayerActivity::class.java)
-                // Pass the whole list so sources can be swapped mid-episode.
-                .putExtra(
-                    PlayerActivity.EXTRA_SOURCES,
-                    runCatching {
-                        json.encodeToString(ListSerializer(StreamOption.serializer()), sources)
-                    }.getOrDefault("[]")
-                )
                 .putExtra(PlayerActivity.EXTRA_SUB_URLS, subs.map { it.url }.toTypedArray())
                 .putExtra(PlayerActivity.EXTRA_SUB_LANGS, subs.map { it.lang }.toTypedArray())
                 .putExtra(PlayerActivity.EXTRA_URL, url)
