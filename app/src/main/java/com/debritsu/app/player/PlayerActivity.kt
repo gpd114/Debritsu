@@ -65,6 +65,8 @@ class PlayerActivity : ComponentActivity() {
     private var seriesTitle: String = ""
     private var switchingEpisode = false
     private var segments: List<AniSkip.Segment> = emptyList()
+    /** Index into [sources] of what is playing, or -1 when it isn't one of them. */
+    private var currentSourceIndex = -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -76,6 +78,7 @@ class PlayerActivity : ComponentActivity() {
         episode = intent.getIntExtra(EXTRA_EPISODE, 0)
         episodeCount = intent.getIntExtra(EXTRA_EPISODE_COUNT, 0)
         seriesTitle = intent.getStringExtra(EXTRA_SERIES_TITLE).orEmpty()
+        currentSourceIndex = intent.getIntExtra(EXTRA_SOURCE_INDEX, -1)
         sources = runCatching {
             json.decodeFromString(
                 ListSerializer(StreamOption.serializer()),
@@ -215,7 +218,8 @@ class PlayerActivity : ComponentActivity() {
                         target,
                         Uri.fromFile(Downloads.fileFor(offline)).toString(),
                         emptyList(),
-                        emptyList()
+                        emptyList(),
+                        -1
                     )
                     handedOff = true
                     return@launch
@@ -257,7 +261,8 @@ class PlayerActivity : ComponentActivity() {
                         } else {
                             startEpisode(
                                 target, url, found,
-                                (chosen.subtitles + extra).distinctBy { it.url }
+                                (chosen.subtitles + extra).distinctBy { it.url },
+                                index
                             )
                         }
                     }
@@ -278,11 +283,13 @@ class PlayerActivity : ComponentActivity() {
         target: Int,
         url: String,
         newSources: List<StreamOption>,
-        subs: List<Subtitle>
+        subs: List<Subtitle>,
+        sourceIndex: Int
     ) {
         val exo = player ?: return
         episode = target
         currentUrl = url
+        currentSourceIndex = sourceIndex
         currentTitle = if (seriesTitle.isNotEmpty()) "$seriesTitle — EP $target" else "EP $target"
         sources = newSources
         // A new episode has its own completion threshold to cross.
@@ -597,7 +604,8 @@ class PlayerActivity : ComponentActivity() {
                 item.addView(TextView(this@PlayerActivity).apply {
                     text = tag
                     setTextColor(
-                        if (tag == "DIRECT") 0xFF8B5CF6.toInt() else 0xFFB9B3CC.toInt()
+                        if (tag == "DIRECT" || tag == "PLAYING") 0xFF8B5CF6.toInt()
+                        else 0xFFB9B3CC.toInt()
                     )
                     textSize = 9.5f
                     typeface = Typeface.MONOSPACE
@@ -628,28 +636,41 @@ class PlayerActivity : ComponentActivity() {
     /** Swap source without losing your place in the episode. */
     private fun showSourcePicker() {
         if (sources.isEmpty()) return
-        val rows = sources.map { s ->
+
+        // Whatever is playing goes to the top and says so. Auto-play picks
+        // silently, and without this there is no way to tell which of forty
+        // near-identical releases you ended up watching.
+        val ordered = sources.indices.sortedByDescending { it == currentSourceIndex }
+        val rows = ordered.map { i ->
+            val s = sources[i]
             Row(
                 s.name,
                 s.description.replace("\n", " ").take(110),
-                if (s.isDirect) "DIRECT" else "DEBRID"
+                when {
+                    i == currentSourceIndex -> "PLAYING"
+                    s.isDirect -> "DIRECT"
+                    else -> "DEBRID"
+                }
             )
         }
-        panelDialog("Sources", "${sources.size} AVAILABLE", rows) { index ->
-            switchTo(sources[index])
+        panelDialog("Sources", "${sources.size} AVAILABLE", rows) { position ->
+            val index = ordered[position]
+            if (index != currentSourceIndex) switchTo(sources[index], index)
         }.show()
     }
 
-    private fun switchTo(stream: StreamOption) {
+    private fun switchTo(stream: StreamOption, index: Int) {
         val exo = player ?: return
         val resumeAt = exo.currentPosition
         exo.pause()
         lifecycleScope.launch {
             runCatching { Debrid.resolve(stream) }
                 .onSuccess { url ->
-                    // Keep this in step, or casting after a switch sends the
-                    // stream the user just moved away from.
+                    // Keep these in step, or casting after a switch sends the
+                    // stream the user just moved away from, and the picker
+                    // marks the wrong row as playing.
                     currentUrl = url
+                    currentSourceIndex = index
                     exo.setMediaItem(mediaItem(url))
                     exo.prepare()
                     exo.seekTo(resumeAt)
@@ -743,6 +764,8 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_SERIES_TITLE = "series_title"
         /** Total episodes, or 0 when unknown — an ongoing show, say. */
         const val EXTRA_EPISODE_COUNT = "episode_count"
+        /** Which entry in EXTRA_SOURCES is playing, so the picker can mark it. */
+        const val EXTRA_SOURCE_INDEX = "source_index"
         const val EXTRA_ANILIST_ID = "anilist_id"
         const val EXTRA_EPISODE = "episode"
         const val EXTRA_SOURCES = "sources"

@@ -116,7 +116,8 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
         url: String,
         sources: List<StreamOption>,
         subs: List<Subtitle>,
-        episode: Int
+        episode: Int,
+        sourceIndex: Int
     ) {
         context.startActivity(
             Intent(context, PlayerActivity::class.java)
@@ -135,6 +136,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                 .putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, anime?.episodes ?: 0)
                 .putExtra(PlayerActivity.EXTRA_ANILIST_ID, anilistId)
                 .putExtra(PlayerActivity.EXTRA_EPISODE, episode)
+                .putExtra(PlayerActivity.EXTRA_SOURCE_INDEX, sourceIndex)
         )
     }
 
@@ -186,7 +188,11 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
 
             val url = outcome.url
             if (url != null) {
-                startPlayer(url, outcome.results.flatMap { it.streams }, outcome.subtitles, episode)
+                val all = outcome.results.flatMap { it.streams }
+                startPlayer(
+                    url, all, outcome.subtitles, episode,
+                    all.indexOf(outcome.chosen)
+                )
             } else {
                 // Hand over rather than quietly playing something the filters
                 // were set up to keep out.
@@ -252,7 +258,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                     // Subtitles carried on the stream itself take priority over
                     // whatever the subtitle addons returned.
                     val subs = (stream.subtitles + subtitles).distinctBy { it.url }
-                    startPlayer(url, streams, subs, selectedEpisode)
+                    startPlayer(url, streams, subs, selectedEpisode, streams.indexOf(stream))
                 }
                 .onFailure { status = it.message ?: "Could not resolve that stream." }
         }
