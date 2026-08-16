@@ -44,12 +44,18 @@ object AutoPlay {
     /** How many candidates to try before giving up and handing over the list. */
     private const val MAX_ATTEMPTS = 4
 
+    /**
+     * [autoSelect] false does the finding but none of the choosing — the caller
+     * gets the sources and picks. Used when automatic selection is switched
+     * off, so both ways of starting an episode go through one path.
+     */
     suspend fun run(
         anilistId: Int,
         title: String?,
         episode: Int,
         isMovie: Boolean,
         filter: SourceFilter,
+        autoSelect: Boolean = true,
         onStep: (Step) -> Unit
     ): Outcome {
         onStep(Step.Locating)
@@ -72,6 +78,8 @@ object AutoPlay {
             val why = results.joinToString("\n") { "${it.addon}: ${it.error ?: "no streams"}" }
             return Outcome(null, null, results, subtitles, why.ifEmpty { "No addons configured." })
         }
+
+        if (!autoSelect) return Outcome(null, null, results, subtitles, null)
 
         val parsed = streams.map { it to StreamMeta.of(it) }
 

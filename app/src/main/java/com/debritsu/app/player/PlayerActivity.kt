@@ -36,13 +36,13 @@ import com.debritsu.app.cast.CastTarget
 import com.debritsu.app.cast.CastTargets
 import com.debritsu.app.cast.GoogleCast
 import com.debritsu.app.data.AniSkip
+import com.debritsu.app.data.AutoPlay
 import com.debritsu.app.data.Debrid
 import com.debritsu.app.data.Downloads
 import com.debritsu.app.data.Mappings
 import com.debritsu.app.data.Progress
 import com.debritsu.app.data.SourceHandoff
 import com.debritsu.app.data.StreamOption
-import com.debritsu.app.data.Stremio
 import com.debritsu.app.data.Subtitle
 import com.debritsu.app.data.SyncQueue
 import com.debritsu.app.data.json
@@ -50,6 +50,9 @@ import com.debritsu.app.data.Settings
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
+
+/** Marks the panel subheading so it can be rewritten while the panel is open. */
+private const val SUBHEADING_TAG = "panel_subheading"
 
 @OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity() {
@@ -235,24 +238,37 @@ class PlayerActivity : ComponentActivity() {
                     return@launch
                 }
 
-                val ids = runCatching { Mappings.forAniList(anilistId, seriesTitle) }.getOrNull()
-                val content = ids?.let { Stremio.contentId(it, target, episodeCount == 1) }
-                if (content == null) {
-                    toast("Couldn't look up episode $target for this title.")
+                // The same rules as pressing play on the detail screen. Asking
+                // every time made sense before those rules existed; now that a
+                // quality ceiling and a size limit are enforced, stopping to
+                // ask is just an inconsistency between two ways of starting the
+                // same episode.
+                val outcome = AutoPlay.run(
+                    anilistId = anilistId,
+                    title = seriesTitle,
+                    episode = target,
+                    isMovie = episodeCount == 1,
+                    filter = Settings.sourceFilter,
+                    autoSelect = Settings.autoPlay
+                ) { step -> setPanelSubheading(loading, stepLabel(step)) }
+
+                val found = outcome.results.flatMap { it.streams }
+                val url = outcome.url
+                if (url != null) {
+                    startEpisode(
+                        target, url, found, outcome.subtitles, found.indexOf(outcome.chosen)
+                    )
+                    handedOff = true
                     return@launch
                 }
 
-                val found = runCatching { Stremio.streams(content.first, content.second) }
-                    .getOrDefault(emptyList())
-                    .flatMap { it.streams }
                 if (found.isEmpty()) {
-                    toast("No sources found for episode $target.")
+                    toast(outcome.message ?: "No sources found for episode $target.")
                     return@launch
                 }
 
-                val extra = runCatching { Stremio.subtitles(content.first, content.second) }
-                    .getOrDefault(emptyList())
-
+                // Nothing matched, nothing resolved, or automatic selection is
+                // switched off — either way the choice comes back to the user.
                 val rows = found.map { s ->
                     Row(
                         s.name,
@@ -264,19 +280,20 @@ class PlayerActivity : ComponentActivity() {
                     val chosen = found[index]
                     lifecycleScope.launch {
                         toast("Resolving link…")
-                        val url = runCatching { Debrid.resolve(chosen) }.getOrNull()
-                        if (url == null) {
+                        val url2 = runCatching { Debrid.resolve(chosen) }.getOrNull()
+                        if (url2 == null) {
                             toast("Couldn't resolve that source.")
                             player?.play()
                         } else {
                             startEpisode(
-                                target, url, found,
-                                (chosen.subtitles + extra).distinctBy { it.url },
+                                target, url2, found,
+                                (chosen.subtitles + outcome.subtitles).distinctBy { it.url },
                                 index
                             )
                         }
                     }
                 }
+                outcome.message?.let { toast(it) }
                 // Backing out of the picker leaves the current episode playing.
                 picker.setOnCancelListener { player?.play() }
                 picker.show()
@@ -550,6 +567,23 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /** Updates a shown panel's subheading in place. */
+    private fun setPanelSubheading(dialog: Dialog, text: String) {
+        runCatching {
+            dialog.window?.decorView
+                ?.findViewWithTag<TextView>(SUBHEADING_TAG)?.text = text
+        }
+    }
+
+    /** What auto-play is doing, for the panel subheading. */
+    private fun stepLabel(step: AutoPlay.Step): String = when (step) {
+        AutoPlay.Step.Locating -> "FINDING THIS EPISODE"
+        AutoPlay.Step.Searching -> "SEARCHING YOUR ADDONS"
+        is AutoPlay.Step.Filtering -> "${step.kept} OF ${step.found} MATCH"
+        is AutoPlay.Step.Resolving -> "CHECKING SOURCE ${step.attempt} OF ${step.of}"
+        AutoPlay.Step.Ready -> "STARTING PLAYBACK"
+    }
+
     private fun toast(message: String) {
         android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
     }
@@ -586,6 +620,9 @@ class PlayerActivity : ComponentActivity() {
             textSize = 10.5f
             typeface = Typeface.MONOSPACE
             setPadding(0, px(2), 0, px(12))
+            // Tagged so a long-running panel can narrate what it is doing
+            // rather than sitting on one line of text.
+            tag = SUBHEADING_TAG
         })
 
         val dialog = Dialog(this, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen)
