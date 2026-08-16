@@ -1,5 +1,8 @@
 package com.debritsu.app.data
 
+import android.util.Log
+import com.debritsu.app.BuildConfig
+
 /**
  * Everything between pressing play and a URL that will actually play, narrated
  * as it goes.
@@ -70,9 +73,28 @@ object AutoPlay {
             return Outcome(null, null, results, subtitles, why.ifEmpty { "No addons configured." })
         }
 
-        val ranked = streams
-            .map { it to StreamMeta.of(it) }
-            .filter { (_, meta) -> filter.accepts(meta) }
+        val parsed = streams.map { it to StreamMeta.of(it) }
+
+        // Parsing addon free text is guesswork, so make it inspectable: every
+        // source, what was read out of it, and whether it survived. Kept out of
+        // release builds — it is a debugging aid, not telemetry — but kept,
+        // because when an addon changes its wording this is the only thing that
+        // says so.
+        if (BuildConfig.DEBUG) parsed.forEach { (stream, meta) ->
+            Log.d(
+                "DebritsuFilter",
+                "accept=${filter.accepts(stream, meta)} score=${filter.score(stream, meta)} " +
+                    "res=${meta.resolution} size=${meta.sizeMb}MB pack=${meta.packSizeMb}MB " +
+                    "isPack=${meta.isPack} fileIdx=${stream.fileIdx} direct=${stream.isDirect} " +
+                    "unplayable=${meta.unplayable} cached=${meta.cached} " +
+                    "eng=${meta.declaresEnglish} otherOnly=${meta.declaresOtherLanguageOnly} " +
+                    "| NAME[${stream.name.replace("\n", " ")}] " +
+                    "| DESC[${stream.description.replace("\n", " ").take(140)}]"
+            )
+        }
+
+        val ranked = parsed
+            .filter { (stream, meta) -> filter.accepts(stream, meta) }
             .sortedByDescending { (stream, meta) -> filter.score(stream, meta) }
         onStep(Step.Filtering(streams.size, ranked.size))
 
@@ -84,7 +106,21 @@ object AutoPlay {
             )
         }
 
-        val attempts = ranked.take(MAX_ATTEMPTS)
+        // Never resolve something the addon has told us isn't cached. Doing so
+        // starts a download on the user's debrid account that they never asked
+        // for, then fails anyway, and burns one of the few attempts doing it.
+        // Whether to start that download is their decision, not this one's.
+        val playable = ranked.filter { (_, meta) -> meta.cached != false }
+        if (playable.isEmpty()) {
+            return Outcome(
+                null, null, results, subtitles,
+                "The ${ranked.size} sources matching your filters aren't cached with " +
+                    "${Settings.debridProvider.label} yet. Playing one starts a download " +
+                    "on your account, so that's your call — pick one below."
+            )
+        }
+
+        val attempts = playable.take(MAX_ATTEMPTS)
         attempts.forEachIndexed { index, (stream, _) ->
             onStep(Step.Resolving(stream.name, index + 1, attempts.size))
             val url = runCatching { Debrid.resolve(stream) }.getOrNull()

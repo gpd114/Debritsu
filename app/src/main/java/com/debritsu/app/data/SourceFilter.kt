@@ -20,12 +20,31 @@ data class StreamMeta(
     /** The release names a language we understand as English audio or subs. */
     val declaresEnglish: Boolean,
     /** It names some other language and never mentions English. */
-    val declaresOtherLanguageOnly: Boolean
+    val declaresOtherLanguageOnly: Boolean,
+    /**
+     * Whether the debrid provider already holds this, when the addon says so.
+     * Null means it didn't. The provider's own API offers no usable answer —
+     * Real-Debrid retired its instant-availability endpoint — but debrid-aware
+     * addons put it right in the name, as ⚡ against ⏳ or a trailing +.
+     * An uncached torrent is exactly the one that fails to resolve.
+     */
+    val cached: Boolean?,
+    /** The whole torrent, when it is larger than the file we want from it. */
+    val packSizeMb: Int?,
+    /**
+     * One episode inside a much bigger torrent. Harmless in itself — debrid
+     * hands back the single file — but only when the stream carries a fileIdx
+     * saying which one. Without it the resolver falls back to the largest video
+     * in the torrent, which on a season pack is some other episode entirely.
+     */
+    val isPack: Boolean,
+    /** An archive or disc image. No player here can open one. */
+    val unplayable: Boolean
 ) {
     companion object {
         private val RESOLUTION = Regex("""(2160|1440|1080|720|480|360)\s*p""", RegexOption.IGNORE_CASE)
         private val FOUR_K = Regex("""\b(4k|uhd)\b""", RegexOption.IGNORE_CASE)
-        private val SIZE = Regex("""(\d+(?:[.,]\d+)?)\s*(gib|gb|mib|mb)\b""", RegexOption.IGNORE_CASE)
+        private val SIZE = Regex("""(\d+(?:[.,]\d+)?)\s*(tib|tb|gib|gb|mib|mb)\b""", RegexOption.IGNORE_CASE)
         private val SEEDERS = Regex("""(?:👤\s*|\b)(\d+)\s*(?:seeders?|seeds)?""")
         private val SEEDERS_EMOJI = Regex("""👤\s*(\d+)""")
 
@@ -34,6 +53,17 @@ data class StreamMeta(
             "multi-sub", "multi sub", "multisub", "dual audio", "dualaudio",
             "🇬🇧", "🇺🇸"
         )
+
+        // Archives and disc images. ExoPlayer cannot open any of them, so a
+        // source built from one is a guaranteed failure however good it looks.
+        private val UNPLAYABLE = listOf(
+            ".rar", ".zip", ".7z", ".tar", ".iso", "bdmv", "video_ts", ".part1."
+        )
+
+        // Debrid-aware addons mark what the provider already holds. Torrentio
+        // and friends use ⚡ against ⏳; others append a plus to the tag.
+        private val CACHED = listOf("⚡", "[rd+]", "[ad+]", "[tb+]", "[pm+]", "[dl+]")
+        private val UNCACHED = listOf("⏳", "download]", "uncached")
 
         // Tags that name a language other than English. Anime releases often
         // carry exactly one of these and nothing else.
@@ -52,25 +82,50 @@ data class StreamMeta(
             val resolution = RESOLUTION.find(text)?.groupValues?.get(1)?.toIntOrNull()
                 ?: if (FOUR_K.containsMatchIn(text)) 2160 else null
 
-            // Take the largest figure quoted: descriptions sometimes mention
-            // both the episode and the whole season pack.
-            val sizeMb = SIZE.findAll(text).mapNotNull { m ->
+            // Take the first figure quoted, not the largest. Descriptions of a
+            // pack read "📦 493 MB / 53 GB" — the episode you receive, then the
+            // whole torrent. The largest is the pack, which is the wrong number
+            // to hold a per-episode limit against, and picking it rejected
+            // cached 500MB files as though they were 53GB.
+            val sizes = SIZE.findAll(text).mapNotNull { m ->
                 val value = m.groupValues[1].replace(',', '.').toDoubleOrNull()
                 val unit = m.groupValues[2].lowercase()
-                value?.let { if (unit.startsWith("g")) it * 1024 else it }
-            }.maxOrNull()?.toInt()
+                value?.let {
+                    when {
+                        unit.startsWith("t") -> it * 1024 * 1024
+                        unit.startsWith("g") -> it * 1024
+                        else -> it
+                    }
+                }
+            }.toList()
+
+            val sizeMb = sizes.firstOrNull()?.toInt()
+            val packSizeMb = sizes.drop(1).maxOrNull()?.toInt()
+            // A second, much larger figure is the addon saying "this file, out
+            // of this torrent" — which is what a pack looks like.
+            val isPack = sizeMb != null && packSizeMb != null && packSizeMb > sizeMb * 1.5
 
             val seeders = SEEDERS_EMOJI.find(text)?.groupValues?.get(1)?.toIntOrNull()
 
             val english = ENGLISH.any { it in lower }
             val other = OTHER_LANGUAGES.any { it in lower }
 
+            val cached = when {
+                CACHED.any { it in lower } -> true
+                UNCACHED.any { it in lower } -> false
+                else -> null
+            }
+
             return StreamMeta(
                 resolution = resolution,
                 sizeMb = sizeMb,
                 seeders = seeders,
                 declaresEnglish = english,
-                declaresOtherLanguageOnly = other && !english
+                declaresOtherLanguageOnly = other && !english,
+                cached = cached,
+                packSizeMb = packSizeMb,
+                isPack = isPack,
+                unplayable = UNPLAYABLE.any { it in lower }
             )
         }
     }
@@ -90,7 +145,14 @@ data class SourceFilter(
     val maxSizeMb: Int,
     val preferEnglish: Boolean
 ) {
-    fun accepts(meta: StreamMeta): Boolean {
+    fun accepts(stream: StreamOption, meta: StreamMeta): Boolean {
+        if (meta.unplayable) return false
+
+        // A pack is fine when the stream says which file it wants. Without that
+        // the resolver picks the largest video in the torrent, which on a season
+        // pack is the wrong episode — and it would play without complaint.
+        if (meta.isPack && stream.fileIdx == null && !stream.isDirect) return false
+
         if (maxResolution > 0) {
             val r = meta.resolution ?: return false
             if (r > maxResolution) return false
@@ -111,9 +173,27 @@ data class SourceFilter(
     fun score(stream: StreamOption, meta: StreamMeta): Int {
         var score = 0
         if (stream.isDirect) score += 10_000
-        if (preferEnglish && meta.declaresEnglish) score += 2_000
+
+        // Cached beats everything short of an already-resolved link: it is the
+        // difference between playing now and waiting on a torrent that may
+        // never resolve at all.
+        when (meta.cached) {
+            true -> score += 5_000
+            false -> score -= 3_000
+            null -> Unit
+        }
+
         meta.resolution?.let { score += it }
-        meta.seeders?.let { score += it.coerceAtMost(500) }
+
+        // Deliberately small. At 2000 this outweighed the 360-point gap between
+        // 1080p and 720p, so an English dub beat every subbed 1080p release —
+        // and the marker cannot tell a dub from subtitles. It breaks ties now
+        // rather than deciding.
+        if (preferEnglish && meta.declaresEnglish) score += 200
+
+        // Capped low for the same reason: seeders matter to whoever is fetching
+        // the torrent, not to picking between two releases of the same episode.
+        meta.seeders?.let { score += it.coerceAtMost(150) }
         return score
     }
 
