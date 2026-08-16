@@ -39,6 +39,17 @@ object Settings {
             .split("\n").map { it.trim() }.filter { it.isNotEmpty() }
         set(v) = sp.edit().putString("addons", v.joinToString("\n")).apply()
 
+    // ----- audio -----
+
+    /**
+     * ISO-639 code for the audio track to prefer when a release carries more
+     * than one. Empty follows the device language, which is what ExoPlayer does
+     * unasked — and on an English phone that quietly picks the dub.
+     */
+    var preferredAudioLanguage: String
+        get() = sp.getString("audio_lang", "ja") ?: "ja"
+        set(v) = sp.edit().putString("audio_lang", v).apply()
+
     // ----- subtitle appearance -----
 
     var subtitleSizeSp: Float

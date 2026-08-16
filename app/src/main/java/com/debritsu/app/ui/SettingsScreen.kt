@@ -33,6 +33,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     var maxRes by remember { mutableStateOf(Settings.maxResolution) }
     var maxSize by remember { mutableStateOf(Settings.maxSizeMb) }
     var preferEnglish by remember { mutableStateOf(Settings.preferEnglish) }
+    var audioLang by remember { mutableStateOf(Settings.preferredAudioLanguage) }
     var subSize by remember { mutableStateOf(Settings.subtitleSizeSp) }
     var subBg by remember { mutableStateOf(Settings.subtitleBackground) }
     var subColour by remember { mutableStateOf(Settings.subtitleColour) }
@@ -233,6 +234,35 @@ fun SettingsScreen(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+            HorizontalDivider()
+
+            Text("Audio", fontWeight = FontWeight.SemiBold)
+            Text(
+                "Which track to pick when a release carries more than one. Most " +
+                    "anime ships Japanese audio; a dub adds an English track " +
+                    "alongside it. Device follows your phone's language, which on " +
+                    "an English phone means the dub.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                listOf("ja" to "Japanese", "en" to "English", "" to "Device")
+                    .forEachIndexed { i, (code, label) ->
+                        SegmentedButton(
+                            selected = audioLang == code,
+                            onClick = { audioLang = code; Settings.preferredAudioLanguage = code },
+                            shape = SegmentedButtonDefaults.itemShape(i, 3)
+                        ) { Text(label, fontSize = 12.sp) }
+                    }
+            }
+            Text(
+                "Applies to the next episode you start, and only when the release " +
+                    "actually has that track. Switch per-episode from the settings " +
+                    "button in the player.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             HorizontalDivider()
 

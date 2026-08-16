@@ -123,9 +123,19 @@ class PlayerActivity : ComponentActivity() {
         player = ExoPlayer.Builder(this).build().also { exo ->
             view.player = exo
             // Prefer English subs by default; the user can override from the CC button.
+            //
+            // Audio has to be asked for explicitly. Left alone, ExoPlayer takes
+            // the device language, so an English phone plays the dub on any
+            // dual-audio release — an odd thing for the app to decide silently
+            // while also insisting on English subtitles. Empty means defer to
+            // the device after all, so it is simply not set.
             exo.trackSelectionParameters = exo.trackSelectionParameters
                 .buildUpon()
                 .setPreferredTextLanguage("en")
+                .apply {
+                    val audio = Settings.preferredAudioLanguage
+                    if (audio.isNotEmpty()) setPreferredAudioLanguage(audio)
+                }
                 .build()
             exo.setMediaItem(item)
             exo.prepare()
