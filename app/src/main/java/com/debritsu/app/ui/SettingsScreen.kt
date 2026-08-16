@@ -29,6 +29,10 @@ fun SettingsScreen(onBack: () -> Unit) {
     var provider by remember { mutableStateOf(Settings.debridProvider) }
     var debridToken by remember { mutableStateOf(Settings.debridToken) }
     var providerMenu by remember { mutableStateOf(false) }
+    var autoPlay by remember { mutableStateOf(Settings.autoPlay) }
+    var maxRes by remember { mutableStateOf(Settings.maxResolution) }
+    var maxSize by remember { mutableStateOf(Settings.maxSizeMb) }
+    var preferEnglish by remember { mutableStateOf(Settings.preferEnglish) }
     var subSize by remember { mutableStateOf(Settings.subtitleSizeSp) }
     var subBg by remember { mutableStateOf(Settings.subtitleBackground) }
     var subColour by remember { mutableStateOf(Settings.subtitleColour) }
@@ -150,6 +154,85 @@ fun SettingsScreen(onBack: () -> Unit) {
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            HorizontalDivider()
+
+            Text("Playback", fontWeight = FontWeight.SemiBold)
+            Text(
+                "With this on, pressing play searches your addons, picks the best " +
+                    "source matching the rules below and starts it. When nothing " +
+                    "matches, the source list opens instead so you choose — it will " +
+                    "not quietly play something over your limits.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Play automatically", Modifier.weight(1f), fontSize = 14.sp)
+                Switch(
+                    checked = autoPlay,
+                    onCheckedChange = { autoPlay = it; Settings.autoPlay = it }
+                )
+            }
+
+            if (autoPlay) {
+                Text("Highest quality", fontSize = 13.sp)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    listOf(720 to "720p", 1080 to "1080p", 2160 to "4K", 0 to "Any")
+                        .forEachIndexed { i, (value, label) ->
+                            SegmentedButton(
+                                selected = maxRes == value,
+                                onClick = { maxRes = value; Settings.maxResolution = value },
+                                shape = SegmentedButtonDefaults.itemShape(i, 4)
+                            ) { Text(label, fontSize = 12.sp) }
+                        }
+                }
+                Text(
+                    "A ceiling, not a target — the best source at or below this wins.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Text(
+                    if (maxSize == 0) "Size limit — none"
+                    else "Size limit — ${maxSize}MB per episode",
+                    fontSize = 13.sp
+                )
+                Slider(
+                    value = maxSize.toFloat(),
+                    onValueChange = { maxSize = it.toInt(); Settings.maxSizeMb = it.toInt() },
+                    valueRange = 0f..4000f,
+                    steps = 39
+                )
+                Text(
+                    "A hard limit. Sources that don't say how big they are can't be " +
+                        "checked against it, so they're skipped too.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Row(
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Prefer English", Modifier.weight(1f), fontSize = 14.sp)
+                    Switch(
+                        checked = preferEnglish,
+                        onCheckedChange = { preferEnglish = it; Settings.preferEnglish = it }
+                    )
+                }
+                Text(
+                    "Skips releases that name another language and never mention " +
+                        "English. Most releases say nothing either way, so this ranks " +
+                        "more than it excludes — turn it off if you watch in another " +
+                        "language.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             HorizontalDivider()
 

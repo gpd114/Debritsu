@@ -59,6 +59,31 @@ object Settings {
         get() = sp.getBoolean("sub_outline", true)
         set(v) = sp.edit().putBoolean("sub_outline", v).apply()
 
+    // ----- automatic source selection -----
+
+    /** Play the best match straight away instead of opening the source list. */
+    var autoPlay: Boolean
+        get() = sp.getBoolean("auto_play", true)
+        set(v) = sp.edit().putBoolean("auto_play", v).apply()
+
+    /** Ceiling rather than a target, so a 4K remux never lands on a phone. 0 = any. */
+    var maxResolution: Int
+        get() = sp.getInt("filter_max_res", SourceFilter.Default.maxResolution)
+        set(v) = sp.edit().putInt("filter_max_res", v).apply()
+
+    /** Hard cap in megabytes. 0 = no cap. */
+    var maxSizeMb: Int
+        get() = sp.getInt("filter_max_size", SourceFilter.Default.maxSizeMb)
+        set(v) = sp.edit().putInt("filter_max_size", v).apply()
+
+    /** Skip releases that name another language and never mention English. */
+    var preferEnglish: Boolean
+        get() = sp.getBoolean("filter_english", SourceFilter.Default.preferEnglish)
+        set(v) = sp.edit().putBoolean("filter_english", v).apply()
+
+    val sourceFilter: SourceFilter
+        get() = SourceFilter(maxResolution, maxSizeMb, preferEnglish)
+
     fun addAddon(url: String) {
         val n = normaliseAddon(url)
         if (n.isNotEmpty() && n !in addons) addons = addons + n

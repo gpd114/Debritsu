@@ -72,6 +72,11 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     // Resolving a debrid link can take a few seconds with nothing on screen to
     // show for it, which reads as a dead tap.
     var resolving by remember { mutableStateOf(false) }
+    // Non-null while auto-play is working, and names what it is doing.
+    var autoStep by remember { mutableStateOf<AutoPlay.Step?>(null) }
+    // Held so the whole run can be abandoned: a search plus several debrid
+    // resolves is long enough that being unable to back out would be rude.
+    var autoJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var subtitles by remember { mutableStateOf<List<Subtitle>>(emptyList()) }
     // Bumped on return from the player so resume bars redraw.
     var progressTick by remember { mutableStateOf(0) }
@@ -102,24 +107,39 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
         epMeta = runCatching { Jikan.episodes(mal) }.getOrDefault(emptyMap())
     }
 
-    fun findStreams(episode: Int) {
-        // Already on disk? Play it locally and never touch the network.
-        val offline = Downloads.get(anilistId, episode)?.takeIf { Downloads.isComplete(it) }
-        if (offline != null) {
-            context.startActivity(
-                Intent(context, PlayerActivity::class.java)
-                    .putExtra(
-                        PlayerActivity.EXTRA_URL,
-                        android.net.Uri.fromFile(Downloads.fileFor(offline)).toString()
-                    )
-                    .putExtra(PlayerActivity.EXTRA_TITLE, "${anime?.title} — EP $episode")
-                    .putExtra(PlayerActivity.EXTRA_SERIES_TITLE, anime?.title.orEmpty())
-                    .putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, anime?.episodes ?: 0)
-                    .putExtra(PlayerActivity.EXTRA_ANILIST_ID, anilistId)
-                    .putExtra(PlayerActivity.EXTRA_EPISODE, episode)
-            )
-            return
-        }
+    /**
+     * Sources are passed explicitly rather than read from state: auto-play sets
+     * results and launches in the same breath, so the value captured at
+     * composition would be a step behind.
+     */
+    fun startPlayer(
+        url: String,
+        sources: List<StreamOption>,
+        subs: List<Subtitle>,
+        episode: Int
+    ) {
+        context.startActivity(
+            Intent(context, PlayerActivity::class.java)
+                // Pass the whole list so sources can be swapped mid-episode.
+                .putExtra(
+                    PlayerActivity.EXTRA_SOURCES,
+                    runCatching {
+                        json.encodeToString(ListSerializer(StreamOption.serializer()), sources)
+                    }.getOrDefault("[]")
+                )
+                .putExtra(PlayerActivity.EXTRA_SUB_URLS, subs.map { it.url }.toTypedArray())
+                .putExtra(PlayerActivity.EXTRA_SUB_LANGS, subs.map { it.lang }.toTypedArray())
+                .putExtra(PlayerActivity.EXTRA_URL, url)
+                .putExtra(PlayerActivity.EXTRA_TITLE, "${anime?.title} — EP $episode")
+                .putExtra(PlayerActivity.EXTRA_SERIES_TITLE, anime?.title.orEmpty())
+                .putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, anime?.episodes ?: 0)
+                .putExtra(PlayerActivity.EXTRA_ANILIST_ID, anilistId)
+                .putExtra(PlayerActivity.EXTRA_EPISODE, episode)
+        )
+    }
+
+    /** Ask the addons and show the list, leaving the choice to the user. */
+    fun manualSearch(episode: Int) {
         scope.launch {
             searching = true
             status = null
@@ -143,6 +163,61 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                 }
             }
             searching = false
+        }
+    }
+
+    /** Find, filter and start the best match, narrating each step. */
+    fun autoPlayEpisode(episode: Int) {
+        autoJob = scope.launch {
+            status = null
+            results = emptyList()
+            autoStep = AutoPlay.Step.Locating
+            val outcome = AutoPlay.run(
+                anilistId = anilistId,
+                title = anime?.title,
+                episode = episode,
+                isMovie = (anime?.episodes ?: 1) <= 1,
+                filter = Settings.sourceFilter
+            ) { autoStep = it }
+            autoStep = null
+
+            results = outcome.results
+            subtitles = outcome.subtitles
+
+            val url = outcome.url
+            if (url != null) {
+                startPlayer(url, outcome.results.flatMap { it.streams }, outcome.subtitles, episode)
+            } else {
+                // Hand over rather than quietly playing something the filters
+                // were set up to keep out.
+                status = outcome.message
+                showSheet = true
+            }
+        }
+    }
+
+    fun findStreams(episode: Int) {
+        // Already on disk? Play it locally and never touch the network.
+        val offline = Downloads.get(anilistId, episode)?.takeIf { Downloads.isComplete(it) }
+        if (offline != null) {
+            context.startActivity(
+                Intent(context, PlayerActivity::class.java)
+                    .putExtra(
+                        PlayerActivity.EXTRA_URL,
+                        android.net.Uri.fromFile(Downloads.fileFor(offline)).toString()
+                    )
+                    .putExtra(PlayerActivity.EXTRA_TITLE, "${anime?.title} — EP $episode")
+                    .putExtra(PlayerActivity.EXTRA_SERIES_TITLE, anime?.title.orEmpty())
+                    .putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, anime?.episodes ?: 0)
+                    .putExtra(PlayerActivity.EXTRA_ANILIST_ID, anilistId)
+                    .putExtra(PlayerActivity.EXTRA_EPISODE, episode)
+            )
+            return
+        }
+        if (Settings.autoPlay) {
+            autoPlayEpisode(episode)
+        } else {
+            manualSearch(episode)
         }
     }
 
@@ -177,24 +252,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                     // Subtitles carried on the stream itself take priority over
                     // whatever the subtitle addons returned.
                     val subs = (stream.subtitles + subtitles).distinctBy { it.url }
-                    context.startActivity(
-                        Intent(context, PlayerActivity::class.java)
-                            // Pass the whole list so sources can be swapped mid-episode.
-                            .putExtra(
-                                PlayerActivity.EXTRA_SOURCES,
-                                runCatching {
-                                    json.encodeToString(ListSerializer(StreamOption.serializer()), streams)
-                                }.getOrDefault("[]")
-                            )
-                            .putExtra(PlayerActivity.EXTRA_SUB_URLS, subs.map { it.url }.toTypedArray())
-                            .putExtra(PlayerActivity.EXTRA_SUB_LANGS, subs.map { it.lang }.toTypedArray())
-                            .putExtra(PlayerActivity.EXTRA_URL, url)
-                            .putExtra(PlayerActivity.EXTRA_TITLE, "${anime?.title} — EP $selectedEpisode")
-                            .putExtra(PlayerActivity.EXTRA_SERIES_TITLE, anime?.title.orEmpty())
-                            .putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, anime?.episodes ?: 0)
-                            .putExtra(PlayerActivity.EXTRA_ANILIST_ID, anilistId)
-                            .putExtra(PlayerActivity.EXTRA_EPISODE, selectedEpisode)
-                    )
+                    startPlayer(url, streams, subs, selectedEpisode)
                 }
                 .onFailure { status = it.message ?: "Could not resolve that stream." }
         }
@@ -502,6 +560,69 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
         }
     }
 
+    autoStep?.let { step ->
+        Dialog(onDismissRequest = { autoJob?.cancel(); autoStep = null }) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Ink.Veil)
+                    .padding(horizontal = 28.dp, vertical = 24.dp)
+            ) {
+                AsyncImage(
+                    model = anime?.cover,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .width(104.dp)
+                        .aspectRatio(2f / 3f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Ink.Edge)
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    anime?.title.orEmpty(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    "EPISODE ${selectedEpisode.toString().padStart(2, '0')}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Ink.Mist
+                )
+                Spacer(Modifier.height(16.dp))
+                LinearProgressIndicator(
+                    color = Ink.Iris,
+                    trackColor = Ink.Edge,
+                    modifier = Modifier.width(140.dp)
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    stepLabel(step),
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.Center
+                )
+                stepDetail(step)?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Ink.Mist,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                TextButton(onClick = { autoJob?.cancel(); autoStep = null }) {
+                    Text("Cancel", style = MaterialTheme.typography.labelSmall, color = Ink.Mist)
+                }
+            }
+        }
+    }
+
     if (resolving) {
         // Not dismissable: the resolve is already in flight with the debrid
         // provider, and backing out here would leave it half-done.
@@ -761,4 +882,21 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
             }
         }
     }
+}
+
+/** What auto-play is doing right now, in words. */
+private fun stepLabel(step: AutoPlay.Step): String = when (step) {
+    AutoPlay.Step.Locating -> "Finding this episode"
+    AutoPlay.Step.Searching -> "Searching your addons"
+    is AutoPlay.Step.Filtering ->
+        if (step.kept == 0) "Nothing matched your filters"
+        else "${step.kept} of ${step.found} sources match"
+    is AutoPlay.Step.Resolving -> "Checking source ${step.attempt} of ${step.of}"
+    AutoPlay.Step.Ready -> "Starting playback"
+}
+
+/** The source being tried, so a slow resolve names what it is waiting on. */
+private fun stepDetail(step: AutoPlay.Step): String? = when (step) {
+    is AutoPlay.Step.Resolving -> step.name.replace("\n", " ").take(70)
+    else -> null
 }
