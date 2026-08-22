@@ -69,22 +69,50 @@ object Stremio {
      * under /subtitles/. Results are side-loaded into the player as selectable
      * tracks alongside anything embedded in the video itself.
      */
-    suspend fun subtitles(type: String, id: String): List<Subtitle> = coroutineScope {
-        Settings.addons.map { base ->
-            async(Dispatchers.IO) {
-                runCatching {
-                    val encoded = URLEncoder.encode(id, "UTF-8").replace("+", "%20")
-                    val req = Request.Builder().url("$base/subtitles/$type/$encoded.json").build()
-                    Http.client.newCall(req).execute().use { res ->
-                        val root = json.parseToJsonElement(res.body?.string().orEmpty())
-                        root.arr("subtitles")?.mapNotNull { sub ->
-                            sub.str("url")?.let { Subtitle(it, sub.str("lang") ?: "und") }
-                        } ?: emptyList()
-                    }
-                }.getOrDefault(emptyList())
+    suspend fun subtitles(targets: List<Pair<String, String>>): List<Subtitle> = coroutineScope {
+        Settings.addons.flatMap { base ->
+            targets.map { (type, id) ->
+                async(Dispatchers.IO) { subtitlesFrom(base, type, id) }
             }
         }.flatMap { it.await() }.distinctBy { it.url }
     }
+
+    private fun subtitlesFrom(base: String, type: String, id: String): List<Subtitle> =
+        runCatching {
+            val encoded = URLEncoder.encode(id, "UTF-8").replace("+", "%20")
+            val req = Request.Builder().url("$base/subtitles/$type/$encoded.json").build()
+            Http.client.newCall(req).execute().use { res ->
+                val root = json.parseToJsonElement(res.body?.string().orEmpty())
+                root.arr("subtitles")?.mapNotNull { sub ->
+                    sub.str("url")?.let { Subtitle(it, sub.str("lang") ?: "und") }
+                } ?: emptyList()
+            }
+        }.getOrDefault(emptyList())
+
+    /**
+     * Every id form worth asking under.
+     *
+     * Anime stream addons index by Kitsu, so [contentId] prefers it. Subtitle
+     * addons do not: OpenSubtitles indexes by IMDb and answers a Kitsu id with
+     * an empty list and a 200, which is indistinguishable from a title having
+     * no subtitles at all. Asking under both costs one extra request per addon
+     * and covers either convention.
+     *
+     * The IMDb form assumes season one, which is right for a single-season
+     * show and wrong for a later season mapped as its own AniList entry —
+     * the season number simply isn't in the mapping tables we read.
+     */
+    fun contentIds(ids: Mappings.Ids, episode: Int?, isMovie: Boolean): List<Pair<String, String>> =
+        buildList {
+            ids.kitsu?.let {
+                if (!isMovie && episode != null) add("series" to "kitsu:$it:$episode")
+                else add("movie" to "kitsu:$it")
+            }
+            ids.imdb?.let {
+                if (!isMovie && episode != null) add("series" to "$it:1:$episode")
+                else add("movie" to it)
+            }
+        }.distinct()
 
     private fun streamsFrom(addonBase: String, type: String, id: String): AddonResult {
         val host = addonBase.substringAfter("://").substringBefore("/")

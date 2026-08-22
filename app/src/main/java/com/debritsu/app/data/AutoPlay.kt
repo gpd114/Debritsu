@@ -71,8 +71,9 @@ object AutoPlay {
         val results = runCatching { Stremio.streams(content.first, content.second) }
             .getOrDefault(emptyList())
         val streams = results.flatMap { it.streams }
-        val subtitles = runCatching { Stremio.subtitles(content.first, content.second) }
-            .getOrDefault(emptyList())
+        val subtitles = runCatching {
+            Stremio.subtitles(Stremio.contentIds(ids, episode, isMovie))
+        }.getOrDefault(emptyList())
 
         if (streams.isEmpty()) {
             val why = results.joinToString("\n") { "${it.addon}: ${it.error ?: "no streams"}" }

@@ -165,7 +165,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                     "often aren't in the mapping tables yet."
             } else {
                 results = Stremio.streams(target.first, target.second)
-                subtitles = Stremio.subtitles(target.first, target.second)
+                subtitles = Stremio.subtitles(Stremio.contentIds(ids, episode, movie))
                 if (results.none { it.streams.isNotEmpty() }) {
                     // Show what each addon actually said rather than a blanket failure.
                     status = results.joinToString("\n") { r ->
