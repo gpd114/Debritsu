@@ -22,8 +22,18 @@ android {
         applicationId = "com.debritsu.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 31
-        versionName = "1.1.0-beta"
+        // Bump for every release. Android compares versionCode when deciding
+        // whether one build may replace another, and it is the only way to tell
+        // two APKs apart once installed — five different builds once shipped as
+        // 31 because the tag was moved rather than the version raised, and
+        // working out which one was on a phone meant unzipping it.
+        versionCode = 32
+        // Taken from the tag being built where there is one, so a release can
+        // never report a name that disagrees with its own tag. Falls back to
+        // the literal for local builds, which have no tag.
+        versionName = (System.getenv("RELEASE_TAG")?.removePrefix("v"))
+            ?.takeIf { it.isNotBlank() }
+            ?: "1.1.1-beta"
 
         buildConfigField(
             "String",

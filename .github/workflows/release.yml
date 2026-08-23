@@ -50,7 +50,11 @@ jobs:
           echo "updated in place, so publishing one would strand every user." >&2
           exit 1
 
+      # The build reads this for versionName, so the APK always reports the tag
+      # it was built from rather than whatever was last written into gradle.
       - name: Build release APK
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
         run: gradle assembleRelease --no-daemon
 
       - name: Name the artifact after the tag
