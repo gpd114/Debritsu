@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.util.TypedValue
 import android.app.Dialog
 import android.graphics.Typeface
@@ -33,6 +34,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
+import com.debritsu.app.BuildConfig
 import com.debritsu.app.data.AniList
 import com.debritsu.app.R
 import com.debritsu.app.cast.CastTarget
@@ -83,6 +85,7 @@ class PlayerActivity : ComponentActivity() {
 
         val url = intent.getStringExtra(EXTRA_URL) ?: run { finish(); return }
         currentUrl = url
+        if (BuildConfig.DEBUG) Log.d("DebritsuSubs", "playing url=$url")
         currentTitle = intent.getStringExtra(EXTRA_TITLE) ?: "Debritsu"
         anilistId = intent.getIntExtra(EXTRA_ANILIST_ID, 0)
         episode = intent.getIntExtra(EXTRA_EPISODE, 0)
@@ -148,6 +151,17 @@ class PlayerActivity : ComponentActivity() {
             exo.trackSelectionParameters = exo.trackSelectionParameters
                 .buildUpon()
                 .setPreferredTextLanguage("en")
+                // Anime releases ship two English subtitle tracks: the full
+                // dialogue, and a "Signs & Songs" track carrying on-screen text
+                // and the odd forced line, meant for people watching the dub.
+                // The signs track is routinely flagged default and forced, so
+                // it wins by default — and then goes silent for ten seconds at
+                // a time whenever characters are simply talking, which looks
+                // like subtitles being broken rather than the wrong track.
+                // Ignoring both flags leaves the choice to language alone.
+                .setIgnoredTextSelectionFlags(
+                    C.SELECTION_FLAG_DEFAULT or C.SELECTION_FLAG_FORCED
+                )
                 .apply {
                     val audio = Settings.preferredAudioLanguage
                     if (audio.isNotEmpty()) setPreferredAudioLanguage(audio)
@@ -160,6 +174,44 @@ class PlayerActivity : ComponentActivity() {
             if (resumeAt > 0) exo.seekTo(resumeAt)
             exo.playWhenReady = true
             exo.addListener(object : Player.Listener {
+                // Debug-only instrumentation for a subtitle that renders in VLC
+                // and not here. Names every text track and reports the cues as
+                // they arrive, which separates "the track has nothing at this
+                // point" from "cues arrive and are not drawn" — the two cases
+                // needing completely different fixes.
+                override fun onTracksChanged(tracks: Tracks) {
+                    if (!BuildConfig.DEBUG) return
+                    tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+                        .forEachIndexed { g, group ->
+                            for (i in 0 until group.length) {
+                                val f = group.getTrackFormat(i)
+                                Log.d(
+                                    "DebritsuSubs",
+                                    "track g$g/$i selected=${group.isTrackSelected(i)} " +
+                                        "lang=${f.language} label=${f.label} " +
+                                        "mime=${f.sampleMimeType} roleFlags=${f.roleFlags} " +
+                                        "selectionFlags=${f.selectionFlags} id=${f.id}"
+                                )
+                            }
+                        }
+                }
+
+                override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+                    if (!BuildConfig.DEBUG) return
+                    val at = player?.currentPosition ?: 0
+                    if (cueGroup.cues.isEmpty()) {
+                        Log.d("DebritsuSubs", "cues at ${at}ms : none")
+                    } else {
+                        cueGroup.cues.forEach { cue ->
+                            Log.d(
+                                "DebritsuSubs",
+                                "cues at ${at}ms : line=${cue.line} pos=${cue.position} " +
+                                    "anchor=${cue.lineAnchor} text=${cue.text?.toString()?.take(80)}"
+                            )
+                        }
+                    }
+                }
+
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     // Only hold the screen awake while video is actually running,
                     // so a paused player doesn't drain the battery.
@@ -719,11 +771,20 @@ class PlayerActivity : ComponentActivity() {
                     // side-loaded track, so its presence marks the source.
                     val label = format.label
                     val fromAddon = label?.startsWith(ADDON_MARKER) == true
+                    // Show the track's own name for embedded subtitles. A release
+                    // commonly ships "Dialogue" beside "Signs & Songs", and
+                    // without the name they are two identical rows reading
+                    // "English" — which is no help when one of them is the
+                    // wrong one, or empty.
                     entries += Entry(
                         group = group,
                         index = i,
                         name = displayLanguage(format.language),
-                        detail = if (fromAddon) label.orEmpty() else "Embedded in this file",
+                        detail = when {
+                            fromAddon -> label.orEmpty()
+                            !label.isNullOrBlank() -> "Embedded · $label"
+                            else -> "Embedded in this file"
+                        },
                         fromAddon = fromAddon,
                         selected = group.isTrackSelected(i)
                     )
