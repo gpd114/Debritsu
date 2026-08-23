@@ -79,12 +79,18 @@ object Stremio {
 
     private fun subtitlesFrom(base: String, type: String, id: String): List<Subtitle> =
         runCatching {
+            // The first label of the host reads well enough as a name:
+            // opensubtitles-v3.strem.io becomes "opensubtitles-v3". Enough to
+            // tell two subtitle addons apart, which is all it is for.
+            val name = base.substringAfter("://").substringBefore("/").substringBefore('.')
             val encoded = URLEncoder.encode(id, "UTF-8").replace("+", "%20")
             val req = Request.Builder().url("$base/subtitles/$type/$encoded.json").build()
             Http.client.newCall(req).execute().use { res ->
                 val root = json.parseToJsonElement(res.body?.string().orEmpty())
                 root.arr("subtitles")?.mapNotNull { sub ->
-                    sub.str("url")?.let { Subtitle(it, sub.str("lang") ?: "und") }
+                    sub.str("url")?.let {
+                        Subtitle(it, sub.str("lang") ?: "und", name.ifBlank { null })
+                    }
                 } ?: emptyList()
             }
         }.getOrDefault(emptyList())

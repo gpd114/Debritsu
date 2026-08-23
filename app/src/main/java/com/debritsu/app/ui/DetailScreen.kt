@@ -139,6 +139,10 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
             Intent(context, PlayerActivity::class.java)
                 .putExtra(PlayerActivity.EXTRA_SUB_URLS, subs.map { it.url }.toTypedArray())
                 .putExtra(PlayerActivity.EXTRA_SUB_LANGS, subs.map { it.lang }.toTypedArray())
+                .putExtra(
+                    PlayerActivity.EXTRA_SUB_ADDONS,
+                    subs.map { it.addon.orEmpty() }.toTypedArray()
+                )
                 .putExtra(PlayerActivity.EXTRA_URL, url)
                 .putExtra(PlayerActivity.EXTRA_TITLE, "${anime?.title} — EP $episode")
                 .putExtra(PlayerActivity.EXTRA_SERIES_TITLE, anime?.title.orEmpty())

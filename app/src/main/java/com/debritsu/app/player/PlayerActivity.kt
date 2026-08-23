@@ -22,7 +22,10 @@ import kotlin.math.roundToInt
 import androidx.activity.ComponentActivity
 import androidx.annotation.OptIn
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -53,6 +56,9 @@ import kotlinx.serialization.builtins.ListSerializer
 
 /** Marks the panel subheading so it can be rewritten while the panel is open. */
 private const val SUBHEADING_TAG = "panel_subheading"
+
+/** Written onto every side-loaded subtitle so the menu can spot one. */
+private const val ADDON_MARKER = "From"
 
 @OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity() {
@@ -90,6 +96,7 @@ class PlayerActivity : ComponentActivity() {
         sources = SourceHandoff.take()
         val subUrls = intent.getStringArrayExtra(EXTRA_SUB_URLS).orEmpty()
         val subLangs = intent.getStringArrayExtra(EXTRA_SUB_LANGS).orEmpty()
+        val subAddons = intent.getStringArrayExtra(EXTRA_SUB_ADDONS).orEmpty()
 
         setContentView(R.layout.activity_player)
         val view = findViewById<PlayerView>(R.id.player_view)
@@ -103,6 +110,10 @@ class PlayerActivity : ComponentActivity() {
 
         findViewById<ImageButton>(R.id.cast_button).setOnClickListener { showCastPicker() }
 
+        // Take the CC button over from the player's own dialog. PlayerView wires
+        // it during inflation, so this has to replace the listener afterwards.
+        findViewById<ImageButton>(R.id.exo_subtitle).setOnClickListener { showSubtitlePicker() }
+
         findViewById<ImageButton>(R.id.prev_episode)
             .setOnClickListener { goToEpisode(episode - 1) }
         findViewById<ImageButton>(R.id.next_episode)
@@ -114,7 +125,13 @@ class PlayerActivity : ComponentActivity() {
         applySubtitleStyle(view.subtitleView)
 
         subtitleConfigs = subtitleTracks(
-            subUrls.mapIndexed { i, subUrl -> subUrl to (subLangs.getOrNull(i) ?: "und") }
+            subUrls.mapIndexed { i, subUrl ->
+                Subtitle(
+                    url = subUrl,
+                    lang = subLangs.getOrNull(i) ?: "und",
+                    addon = subAddons.getOrNull(i)?.takeIf { it.isNotBlank() }
+                )
+            }
         )
 
         val item = mediaItem(url)
@@ -318,7 +335,7 @@ class PlayerActivity : ComponentActivity() {
         // A new episode has its own completion threshold to cross.
         progressPushed = false
 
-        subtitleConfigs = subtitleTracks(subs.map { it.url to it.lang })
+        subtitleConfigs = subtitleTracks(subs)
 
         findViewById<ImageButton>(R.id.sources_button).visibility =
             if (sources.size > 1) View.VISIBLE else View.GONE
@@ -670,6 +687,92 @@ class PlayerActivity : ComponentActivity() {
         return dialog
     }
 
+    /**
+     * Our own subtitle menu, in place of the player's built-in one.
+     *
+     * media3 names a text track from its language and role and ignores the
+     * label unless both are empty, so thirty addon tracks and the file's own
+     * embedded one all render as "English" with no way to tell them apart or
+     * work through them. Since an addon commonly returns several subtitles per
+     * episode and only some are in sync with the release being played, being
+     * able to pick a specific one is the whole point.
+     */
+    private fun showSubtitlePicker() {
+        val exo = player ?: return
+
+        data class Entry(
+            val group: Tracks.Group,
+            val index: Int,
+            val name: String,
+            val detail: String,
+            val fromAddon: Boolean,
+            val selected: Boolean
+        )
+
+        val entries = mutableListOf<Entry>()
+        exo.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_TEXT }
+            .forEach { group ->
+                for (i in 0 until group.length) {
+                    val format = group.getTrackFormat(i)
+                    // The label is ours: subtitleTracks() writes it on every
+                    // side-loaded track, so its presence marks the source.
+                    val label = format.label
+                    val fromAddon = label?.startsWith(ADDON_MARKER) == true
+                    entries += Entry(
+                        group = group,
+                        index = i,
+                        name = displayLanguage(format.language),
+                        detail = if (fromAddon) label.orEmpty() else "Embedded in this file",
+                        fromAddon = fromAddon,
+                        selected = group.isTrackSelected(i)
+                    )
+                }
+            }
+
+        // Embedded first: it is the one people look for, and the addon list can
+        // run to dozens.
+        val ordered = entries.sortedBy { it.fromAddon }
+        val anySelected = ordered.any { it.selected }
+
+        val rows = mutableListOf(Row("Off", "No subtitles", if (!anySelected) "SELECTED" else null))
+        ordered.forEach { e ->
+            rows += Row(e.name, e.detail, if (e.selected) "SELECTED" else null)
+        }
+
+        val embedded = ordered.count { !it.fromAddon }
+        panelDialog(
+            "Subtitles",
+            "$embedded EMBEDDED · ${ordered.size - embedded} FROM ADDONS",
+            rows
+        ) { position ->
+            val params = exo.trackSelectionParameters.buildUpon()
+            if (position == 0) {
+                exo.trackSelectionParameters = params
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .build()
+            } else {
+                val chosen = ordered[position - 1]
+                exo.trackSelectionParameters = params
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setOverrideForType(
+                        TrackSelectionOverride(chosen.group.mediaTrackGroup, chosen.index)
+                    )
+                    .build()
+            }
+        }.show()
+    }
+
+    /** "eng" and "en" both become English where the platform knows the code. */
+    private fun displayLanguage(code: String?): String {
+        val raw = code?.takeIf { it.isNotBlank() && it != "und" } ?: return "Unknown"
+        return runCatching { java.util.Locale(raw).displayLanguage }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() && !it.equals(raw, ignoreCase = true) }
+            ?: raw.uppercase()
+    }
+
     /** Swap source without losing your place in the episode. */
     private fun showSourcePicker() {
         if (sources.isEmpty()) return
@@ -762,21 +865,25 @@ class PlayerActivity : ComponentActivity() {
      * the same language makes them individually selectable, since an addon
      * often returns several for one episode and only some will be in sync.
      */
-    private fun subtitleTracks(subs: List<Pair<String, String>>): List<MediaItem.SubtitleConfiguration> {
+    private fun subtitleTracks(subs: List<Subtitle>): List<MediaItem.SubtitleConfiguration> {
         val seen = mutableMapOf<String, Int>()
-        return subs.map { (url, lang) ->
-            val code = lang.ifBlank { "und" }
-            val n = (seen[code] ?: 0) + 1
-            seen[code] = n
-            val display = runCatching { java.util.Locale(code).displayLanguage }
-                .getOrNull()
-                ?.takeIf { it.isNotBlank() && !it.equals(code, ignoreCase = true) }
-                ?: code.uppercase()
+        return subs.map { sub ->
+            val code = sub.lang.ifBlank { "und" }
+            val source = sub.addon?.takeIf { it.isNotBlank() } ?: "stream"
+            // Numbered within a source and language, so "opensubtitles 3" means
+            // the third English one that addon returned rather than the third
+            // overall — which is what you are choosing between when the first
+            // two are out of sync.
+            val key = "$source|$code"
+            val n = (seen[key] ?: 0) + 1
+            seen[key] = n
 
-            MediaItem.SubtitleConfiguration.Builder(Uri.parse(url))
-                .setMimeType(mimeFor(url))
+            MediaItem.SubtitleConfiguration.Builder(Uri.parse(sub.url))
+                .setMimeType(mimeFor(sub.url))
                 .setLanguage(code)
-                .setLabel(if (n == 1) "$display · addon" else "$display · addon $n")
+                // Also the marker the subtitle menu reads to tell a side-loaded
+                // track from one embedded in the file.
+                .setLabel("$ADDON_MARKER $source · $n")
                 .setSelectionFlags(0)
                 .build()
         }
@@ -836,5 +943,7 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_EPISODE = "episode"
         const val EXTRA_SUB_URLS = "sub_urls"
         const val EXTRA_SUB_LANGS = "sub_langs"
+        /** Which addon each subtitle came from, parallel to the arrays above. */
+        const val EXTRA_SUB_ADDONS = "sub_addons"
     }
 }

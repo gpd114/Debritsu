@@ -31,7 +31,16 @@ data class Anime(
 data class Relation(val anime: Anime, val type: String)
 
 @Serializable
-data class Subtitle(val url: String, val lang: String)
+data class Subtitle(
+    val url: String,
+    val lang: String,
+    /**
+     * Which addon supplied it, for the subtitle menu. Null for subtitles
+     * carried on a stream rather than fetched from a subtitle addon, and
+     * absent from anything an addon serialised for us.
+     */
+    val addon: String? = null
+)
 
 @Serializable
 data class StreamOption(
