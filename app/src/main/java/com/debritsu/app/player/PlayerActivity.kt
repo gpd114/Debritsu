@@ -113,13 +113,9 @@ class PlayerActivity : ComponentActivity() {
         installSkipButton()
         applySubtitleStyle(view.subtitleView)
 
-        subtitleConfigs = subUrls.mapIndexed { i, subUrl ->
-            MediaItem.SubtitleConfiguration.Builder(Uri.parse(subUrl))
-                .setMimeType(mimeFor(subUrl))
-                .setLanguage(subLangs.getOrNull(i) ?: "und")
-                .setSelectionFlags(0)
-                .build()
-        }
+        subtitleConfigs = subtitleTracks(
+            subUrls.mapIndexed { i, subUrl -> subUrl to (subLangs.getOrNull(i) ?: "und") }
+        )
 
         val item = mediaItem(url)
 
@@ -322,13 +318,7 @@ class PlayerActivity : ComponentActivity() {
         // A new episode has its own completion threshold to cross.
         progressPushed = false
 
-        subtitleConfigs = subs.map { s ->
-            MediaItem.SubtitleConfiguration.Builder(Uri.parse(s.url))
-                .setMimeType(mimeFor(s.url))
-                .setLanguage(s.lang)
-                .setSelectionFlags(0)
-                .build()
-        }
+        subtitleConfigs = subtitleTracks(subs.map { it.url to it.lang })
 
         findViewById<ImageButton>(R.id.sources_button).visibility =
             if (sources.size > 1) View.VISIBLE else View.GONE
@@ -761,6 +751,35 @@ class PlayerActivity : ComponentActivity() {
         )
         view.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, Settings.subtitleSizeSp)
         view.setBottomPaddingFraction(0.08f)
+    }
+
+    /**
+     * Builds the side-loaded subtitle tracks, each labelled.
+     *
+     * Without a label the track picker shows nothing but the language, so an
+     * embedded "English" and thirty addon "English" entries look identical and
+     * the embedded one is impossible to find among them. Numbering repeats of
+     * the same language makes them individually selectable, since an addon
+     * often returns several for one episode and only some will be in sync.
+     */
+    private fun subtitleTracks(subs: List<Pair<String, String>>): List<MediaItem.SubtitleConfiguration> {
+        val seen = mutableMapOf<String, Int>()
+        return subs.map { (url, lang) ->
+            val code = lang.ifBlank { "und" }
+            val n = (seen[code] ?: 0) + 1
+            seen[code] = n
+            val display = runCatching { java.util.Locale(code).displayLanguage }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() && !it.equals(code, ignoreCase = true) }
+                ?: code.uppercase()
+
+            MediaItem.SubtitleConfiguration.Builder(Uri.parse(url))
+                .setMimeType(mimeFor(url))
+                .setLanguage(code)
+                .setLabel(if (n == 1) "$display · addon" else "$display · addon $n")
+                .setSelectionFlags(0)
+                .build()
+        }
     }
 
     private fun mimeFor(url: String) =
