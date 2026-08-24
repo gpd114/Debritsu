@@ -24,6 +24,7 @@ import androidx.activity.ComponentActivity
 import androidx.annotation.OptIn
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
@@ -151,14 +152,13 @@ class PlayerActivity : ComponentActivity() {
             exo.trackSelectionParameters = exo.trackSelectionParameters
                 .buildUpon()
                 .setPreferredTextLanguage("en")
-                // Anime releases ship two English subtitle tracks: the full
-                // dialogue, and a "Signs & Songs" track carrying on-screen text
-                // and the odd forced line, meant for people watching the dub.
-                // The signs track is routinely flagged default and forced, so
-                // it wins by default — and then goes silent for ten seconds at
-                // a time whenever characters are simply talking, which looks
-                // like subtitles being broken rather than the wrong track.
-                // Ignoring both flags leaves the choice to language alone.
+                // Don't let DEFAULT or FORCED decide which subtitle track wins.
+                // A forced track is meant for the occasional foreign line during
+                // a dub, not for someone watching subtitled — but flags alone
+                // cannot pick the right track either, since two tracks then
+                // match equally and the tie breaks on file order. Track titles
+                // are no help: releases exist whose "Dialogue" track holds six
+                // cues and whose "Signs & Songs" track holds all 851.
                 .setIgnoredTextSelectionFlags(
                     C.SELECTION_FLAG_DEFAULT or C.SELECTION_FLAG_FORCED
                 )
