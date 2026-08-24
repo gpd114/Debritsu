@@ -26,7 +26,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -106,54 +111,49 @@ fun HomeScreen(
             }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("debritsu", style = MaterialTheme.typography.displaySmall)
-                        Box(
-                            Modifier
-                                .padding(start = 6.dp, top = 10.dp)
-                                .size(7.dp)
-                                .clip(CircleShape)
-                                .background(Ink.Orchid)
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onDownloads) {
-                        Icon(Icons.Default.Download, contentDescription = "Downloads")
-                    }
-                    IconButton(onClick = onSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
-        }
-    ) { pad ->
+    Scaffold { pad ->
         Column(Modifier.padding(pad)) {
 
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                singleLine = true,
-                placeholder = { Text("Search anime") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedBorderColor = Ink.Edge,
-                    focusedBorderColor = Ink.Iris,
-                    unfocusedContainerColor = Ink.Veil,
-                    focusedContainerColor = Ink.Veil
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            )
+            // Search sits where the wordmark used to, alongside the actions.
+            // Two rows of chrome before any content was a row too many, and the
+            // app's name is not something anyone needs reminding of while
+            // they're using it.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp)
+            ) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    placeholder = { Text("Search anime") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedBorderColor = Ink.Edge,
+                        focusedBorderColor = Ink.Iris,
+                        unfocusedContainerColor = Ink.Veil,
+                        focusedContainerColor = Ink.Veil
+                    ),
+                    modifier = Modifier.weight(1f).padding(vertical = 6.dp)
+                )
+                IconButton(onClick = onDownloads) {
+                    Icon(Icons.Default.Download, contentDescription = "Downloads")
+                }
+                IconButton(onClick = onSettings) {
+                    Icon(Icons.Default.Settings, contentDescription = "Settings")
+                }
+            }
+
+            // Only for shows still airing, and only while searching isn't in
+            // the way. Someone who watches finished series will never see it,
+            // which is the point — an empty strip is worse than no strip.
+            if (!searching) {
+                val airing = watching
+                    .filter { it.nextEpisode != null && (it.airingInSeconds ?: 0) > 0 }
+                    .sortedBy { it.airingInSeconds ?: Int.MAX_VALUE }
+                if (airing.isNotEmpty()) AiringStrip(airing, onOpen)
+            }
 
             if (Settings.addons.isEmpty()) {
                 Surface(
@@ -337,6 +337,25 @@ private fun PosterCard(anime: Anime, onOpen: (Int) -> Unit) {
                     )
                 }
             }
+            // Opposite corner to the episode badge, and only when AniList has a
+            // score — a new or obscure title often has none, and an empty pill
+            // reads worse than no pill.
+            anime.averageScore?.let { score ->
+                Box(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xCC08070D))
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        "$score%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (score >= 75) Ink.Iris else Ink.Bone
+                    )
+                }
+            }
         }
         Text(
             anime.title,
@@ -345,5 +364,87 @@ private fun PosterCard(anime: Anime, onOpen: (Int) -> Unit) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 7.dp)
         )
+    }
+}
+
+/**
+ * Everything being watched that has an episode still to come, soonest first.
+ *
+ * A row that scrolls rather than a single line: following three simulcasts at
+ * once is normal, and showing only the nearest would quietly hide the rest.
+ */
+@Composable
+private fun AiringStrip(airing: List<Anime>, onOpen: (Int) -> Unit) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .padding(vertical = 2.dp)
+            // Fades the last chip into the edge rather than cutting it off, so
+            // a row with more in it than fits says so without a scrollbar or a
+            // count to read. Drawn with the layer so it fades the content
+            // itself rather than painting a band over the top of it.
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                // DstIn keeps the content where this brush is opaque and erases
+                // it where the brush is clear, so the alpha runs 1 to 0.
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        0.90f to Color.Black,
+                        1f to Color.Transparent,
+                        startX = 0f,
+                        endX = size.width
+                    ),
+                    blendMode = BlendMode.DstIn
+                )
+            }
+    ) {
+        items(airing) { anime ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Ink.Veil)
+                    .clickable { onOpen(anime.id) }
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    anime.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 160.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "EP ${anime.nextEpisode}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Ink.Orchid
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    countdown(anime.airingInSeconds ?: 0),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Ink.Mist,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+/** Rounded to whatever unit reads naturally — nobody needs the seconds. */
+private fun countdown(seconds: Int): String {
+    val days = seconds / 86_400
+    val hours = (seconds % 86_400) / 3_600
+    val minutes = (seconds % 3_600) / 60
+    return when {
+        days > 1 -> "in $days days"
+        days == 1 -> "in a day"
+        hours > 1 -> "in $hours hours"
+        hours == 1 -> "in an hour"
+        minutes > 1 -> "in $minutes minutes"
+        else -> "any moment"
     }
 }

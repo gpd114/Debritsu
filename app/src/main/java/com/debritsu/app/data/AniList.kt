@@ -47,12 +47,18 @@ object AniList {
             banner = m.str("bannerImage"),
             episodes = m.int("episodes"),
             description = m.str("description")?.replace(Regex("<[^>]*>"), ""),
-            progress = progress
+            progress = progress,
+            // Requested for every list and search result, not just the detail
+            // screen, so posters can carry a rating.
+            averageScore = m.int("averageScore"),
+            nextEpisode = m.obj("nextAiringEpisode").int("episode"),
+            airingInSeconds = m.obj("nextAiringEpisode").int("timeUntilAiring")
         )
     }
 
     private const val MEDIA_FIELDS =
-        "id title { romaji english } coverImage { large } bannerImage episodes description"
+        "id title { romaji english } coverImage { large } bannerImage episodes description " +
+            "averageScore nextAiringEpisode { episode timeUntilAiring }"
 
     /** One page of results plus whether another page exists. */
     data class Page(val items: List<Anime>, val hasMore: Boolean)

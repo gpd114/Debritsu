@@ -15,6 +15,10 @@ data class Anime(
     /** Id of the user's list entry, needed to delete it. */
     val entryId: Int? = null,
     val score: Double = 0.0,
+    /** Episode number of the next broadcast, when the show is still airing. */
+    val nextEpisode: Int? = null,
+    /** Seconds until that episode airs. Null once a show has finished. */
+    val airingInSeconds: Int? = null,
     // Everything below is display-only detail, absent on list/search results.
     val averageScore: Int? = null,
     val popularity: Int? = null,
