@@ -32,6 +32,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
@@ -140,7 +141,13 @@ class PlayerActivity : ComponentActivity() {
 
         val item = mediaItem(url)
 
-        player = ExoPlayer.Builder(this).build().also { exo ->
+        // Bitmap subtitles go through our own PGS parser, which keeps the
+        // palette between display sets. media3's discards any subtitle that
+        // relies on a palette sent earlier — see LenientPgsParser.
+        val mediaSources = DefaultMediaSourceFactory(this)
+            .setSubtitleParserFactory(LenientPgsParser.Factory())
+
+        player = ExoPlayer.Builder(this).setMediaSourceFactory(mediaSources).build().also { exo ->
             view.player = exo
             // Prefer English subs by default; the user can override from the CC button.
             //
