@@ -4,7 +4,7 @@
 
 **An AniList anime client that streams from your debrid account — no scraping, no dead sources.**
 
-[![Release](https://img.shields.io/github/v/release/gpd114/Debritsu?include_prereleases&label=release&color=8B5CF6)](../../releases)
+[![Release](https://img.shields.io/github/v/release/gpd114/Debritsu?label=release&color=8B5CF6)](../../releases)
 [![Downloads](https://img.shields.io/github/downloads/gpd114/Debritsu/total?color=8B5CF6)](../../releases)
 [![License](https://img.shields.io/github/license/gpd114/Debritsu?color=8B5CF6)](LICENSE)
 ![Android](https://img.shields.io/badge/Android-8.0%2B-8B5CF6)
