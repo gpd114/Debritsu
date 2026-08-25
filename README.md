@@ -29,17 +29,27 @@ If you already have a debrid subscription and a configured addon, this is the cl
 
 **Four debrid services** — Real-Debrid, AllDebrid, Premiumize and TorBox. Most addons return a ready link so nothing extra is needed, but bare infoHashes get resolved through your provider automatically.
 
-**Full AniList integration** — Sign in with one tap. Browse Trending, search, and see Continue watching and Plan to watch as side-scrolling shelves. Change list status, progress and score from inside the app. Progress pushes itself at 85% of an episode.
+**Play in one tap** — Press Play and Debritsu works out which ids the addons index the show under, queries them all, ranks what comes back and resolves the best match, showing each step as it goes. Filtering starts at 1080p or below, 600 MB or less and English, and every part of that is yours to change in Settings — or turn off, and get the source list instead.
+
+**Full AniList integration** — Sign in with one tap. Browse Trending, search, and see Continue watching and Plan to watch as side-scrolling shelves that open into a full grid when you want the whole list. Scores sit on the poster, and an airing strip counts down the next episode of everything you're partway through. Change list status, progress and score from inside the app. Progress pushes itself at 85% of an episode.
 
 **Genuinely offline downloads** — Download an episode and it plays with **no connection at all**. Titles, posters and episode numbers are cached at download time, so the library isn't a blank screen when you're on a plane. Anything watched offline is queued and syncs the moment you're back online.
 
 **Filler and recap flags** — Episodes are marked FILLER or RECAP from MyAnimeList data, so you know what's safe to skip before you start.
 
-**Cast to almost any TV** — Google Cast for Chromecast, Android TV and Cast-enabled sets; DLNA for Samsung, LG, Sony and most other smart TVs; or hand the stream to VLC, MX Player or anything else installed. One button, all three.
+**Cast to a Google Cast device** — Chromecast, Android TV and Cast-enabled televisions. DLNA renderers are found and listed too, but most televisions can't fetch a debrid link over it, so treat that half as a bonus rather than a promise — see [Known limits](#known-limits). Failing either, hand the stream to VLC, MX Player or anything else installed; that option is offered straight away rather than after the network scan finishes.
 
 **Switch source mid-episode** — Discovered it's a dub three minutes in? Tap Sources in the player, pick another, and it resumes at the same second.
 
-**Proper subtitle control** — Embedded tracks, addon-supplied tracks and Stremio subtitle addons all appear under one CC button. Size, colour, background and outline are yours to set, and embedded styling is overridden so your choices stick.
+**Next and previous episode** — Buttons either side of play move through the season. Both open the source list rather than choosing for you, since sources differ by gigabytes, language and release group, and picking automatically spends your data on your behalf.
+
+**Skip openings and endings** — A skip button appears while playback sits inside a known opening or ending, timed from AniSkip and fitted to the encode you're actually watching.
+
+**Gestures where you'd expect them** — Double-tap the left or right third to seek back and forward; drag up and down the left half for brightness, the right half for volume. The middle third is left alone so a double-tap there still just shows the controls.
+
+**Subs, not dubs, by default** — The audio track is chosen by preferring Japanese instead of following your phone's language, which on an English handset quietly picks the dub. Set it to whatever you like in Settings.
+
+**Proper subtitle control** — Embedded tracks, addon-supplied tracks and Stremio subtitle addons all appear under one CC button, each labelled with the addon it came from so two English tracks can be told apart. Subtitle addons are asked under both the Kitsu and IMDb id, because some index only one. Size, colour, background and outline are yours to set, and embedded styling is overridden so your choices stick. Image-based tracks render in full, including releases that reuse a palette between cues.
 
 **Resume where you stopped** — Per-episode positions saved locally, with a progress bar on every episode chip. Nothing under 15 seconds is saved, and nothing past 92% offers to resume you into the credits.
 
@@ -67,13 +77,13 @@ Requires Android 8.0 or newer.
 
 **3. Add a debrid key.** Only needed if your addon returns bare infoHashes rather than links. If your addon already holds your debrid key, leave this blank.
 
-That's it. Open a show, tap Play, pick a source.
+That's it. Open a show and tap Play — it finds a source and starts on its own. If you'd rather choose every time, turn off **Play automatically** in Settings → Playback, where the resolution, size and language rules live too.
 
 ---
 
 ## Building it yourself
 
-Requires JDK 17 and the Android SDK.
+Requires Gradle 8.9, JDK 17 and an Android SDK with `platforms;android-34` and `build-tools;34.0.0`. There is deliberately no Gradle wrapper in the repository, so use your own Gradle install.
 
 ```
 gradle assembleDebug
@@ -95,7 +105,9 @@ Releases are cut by publishing a tagged release on GitHub, which builds and atta
 - Episode numbering follows AniList, which can disagree with Kitsu on long-running shows — the usual absolute-versus-seasonal mismatch.
 - Downloads resolve links when you start them, and debrid URLs expire, so a download paused for hours may need restarting.
 - Downloaded episodes can't be sent to a TV directly, since the file lives in app storage where the TV can't reach it — but they can be handed to another app on your phone (VLC, Web Video Caster) which can then cast them.
-- Casting over DLNA needs a television that can fetch HTTPS, and most can't — DLNA is an `http-get` protocol and plenty of sets ship no TLS at all. Debrid links are always HTTPS, so for those televisions use a Chromecast, Android TV or other Cast device, or hand the stream to another app. Where DLNA does work, seeking isn't always honoured.
+- **Casting straight to a smart TV usually won't work.** DLNA is an `http-get` protocol and plenty of televisions ship no TLS at all, while debrid links are always HTTPS — so the set is discovered, accepts the cast, and then can't fetch the file. Nothing this app can fix from its side without proxying the whole stream through the phone. Use a Chromecast, Android TV or other Google Cast device, or hand the stream to an app like VLC or Web Video Caster that does proxy it. Where DLNA does work, seeking isn't always honoured.
+- Source filtering reads resolution, size and language out of free text, because addons return no structured metadata — every addon author writes that line however they like. It is good, not infallible, and a source that never states its size fails a size cap rather than sneaking under it.
+- Skip timings come from AniSkip, which is community-submitted. Plenty of shows have none, and newly aired episodes often take a while to appear.
 - AniList tokens last a year and can't be refreshed, so you'll sign in again annually.
 
 ---
