@@ -587,8 +587,27 @@ class PlayerActivity : ComponentActivity() {
 
         // Local files skip the network scan entirely: only an app on this
         // device can open them, so there is nothing to discover.
-        val loading = if (isLocal) null
-        else panelDialog("Finding devices", "SEARCHING YOUR NETWORK", emptyList()) {}
+        //
+        // The scan takes several seconds, and handing the stream to another app
+        // needs none of it. Offering that straight away means someone who only
+        // ever uses VLC is not made to wait for televisions they will not pick.
+        // Set when the stream is handed off before the scan finishes, so the
+        // device list does not then appear over whatever just opened.
+        var handedOffEarly = false
+
+        val loading = if (isLocal) null else panelDialog(
+            "Finding devices",
+            "SEARCHING YOUR NETWORK",
+            listOf(Row(CastTarget.External.label, CastTarget.External.detail, null))
+        ) {
+            handedOffEarly = true
+            lifecycleScope.launch {
+                CastTargets.send(
+                    this@PlayerActivity, CastTarget.External, url, currentTitle,
+                    player?.currentPosition ?: 0
+                )?.let { toast(it) }
+            }
+        }
         loading?.show()
 
         lifecycleScope.launch {
@@ -601,6 +620,10 @@ class PlayerActivity : ComponentActivity() {
                 // Dismissing against a window that's already gone throws.
                 runCatching { loading?.dismiss() }
             }
+
+            // Already handed off while the scan was running — showing the list
+            // now would put it over the app the user has just switched to.
+            if (handedOffEarly) return@launch
 
             val heading = if (isLocal) "Open with" else "Cast to"
             // "Other app" is always in the list, so counting it reports a
