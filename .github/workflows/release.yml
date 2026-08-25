@@ -69,8 +69,10 @@ jobs:
         with:
           files: ${{ env.APK }}
           tag_name: ${{ env.TAG }}
-          # Don't flip a pre-release into a full release just by attaching a file.
-          prerelease: ${{ github.event.release.prerelease || false }}
+          # Full releases. This used to read github.event.release.prerelease,
+          # which is absent on a tag push and so always fell through to false —
+          # the right answer by accident, and confusing to read.
+          prerelease: false
           generate_release_notes: true
           body: |
             Install the APK below. Android will ask you to allow installs from
