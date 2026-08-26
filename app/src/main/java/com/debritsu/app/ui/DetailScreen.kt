@@ -87,7 +87,13 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val obs = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) progressTick++
+            if (event == Lifecycle.Event.ON_RESUME) {
+                progressTick++
+                // Auto-play leaves its card up while the player starts, so that
+                // the hand-off isn't a gap with nothing on screen. Coming back
+                // here is what retires it.
+                autoStep = null
+            }
         }
         lifecycleOwner.lifecycle.addObserver(obs)
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
@@ -194,7 +200,6 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                 isMovie = (anime?.episodes ?: 1) <= 1,
                 filter = Settings.sourceFilter
             ) { autoStep = it }
-            autoStep = null
 
             results = outcome.results
             subtitles = outcome.subtitles
@@ -202,11 +207,16 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
             val url = outcome.url
             if (url != null) {
                 val all = outcome.results.flatMap { it.streams }
+                // The card stays up across the hand-off and is cleared on
+                // resume instead. Dismissing it here dropped the user back on
+                // the detail screen for however long the activity took to
+                // start, with nothing to say anything was happening.
                 startPlayer(
                     url, all, outcome.subtitles, episode,
                     all.indexOf(outcome.chosen)
                 )
             } else {
+                autoStep = null
                 // Hand over rather than quietly playing something the filters
                 // were set up to keep out.
                 status = outcome.message

@@ -29,6 +29,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -181,6 +182,21 @@ class PlayerActivity : ComponentActivity() {
             if (resumeAt > 0) exo.seekTo(resumeAt)
             exo.playWhenReady = true
             exo.addListener(object : Player.Listener {
+                /**
+                 * Without this a dead link is a black screen that never
+                 * resolves, which is indistinguishable from one still loading —
+                 * more so now the buffering spinner is on, since it would sit
+                 * there turning forever. Debrid links expire and addons hand
+                 * back sources that no longer play, so this is routine rather
+                 * than exceptional; the source list is the useful thing to
+                 * offer, because another source usually just works.
+                 */
+                override fun onPlayerError(error: PlaybackException) {
+                    Log.w("DebritsuFilter", "playback failed: ${error.errorCodeName}", error)
+                    toast("Couldn't play this source")
+                    showSourcePicker()
+                }
+
                 // Debug-only instrumentation for a subtitle that renders in VLC
                 // and not here. Names every text track and reports the cues as
                 // they arrive, which separates "the track has nothing at this

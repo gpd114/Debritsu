@@ -12,7 +12,8 @@
         app:controller_layout_id="@layout/player_controls"
         app:show_subtitle_button="true"
         app:show_next_button="false"
-        app:show_previous_button="false" />
+        app:show_previous_button="false"
+        app:show_buffering="always" />
 
     <!-- Sits above the video rather than in the controller, so it stays put
          while the transport controls fade in and out. -->
