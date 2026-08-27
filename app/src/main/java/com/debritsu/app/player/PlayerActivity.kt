@@ -1,6 +1,7 @@
 package com.debritsu.app.player
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.media.AudioManager
 import android.net.Uri
@@ -16,6 +17,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import kotlin.math.abs
@@ -126,6 +128,7 @@ class PlayerActivity : ComponentActivity() {
             .setOnClickListener { goToEpisode(episode + 1) }
         updateEpisodeButtons()
 
+        styleBufferingSpinner()
         installGestures(view)
         installSkipButton()
         applySubtitleStyle(view.subtitleView)
@@ -519,6 +522,24 @@ class PlayerActivity : ComponentActivity() {
         view.setOnTouchListener { _, event ->
             detector.onTouchEvent(event)
             consumed
+        }
+    }
+
+    /**
+     * Recolours and enlarges the buffering spinner.
+     *
+     * It belongs to PlayerView's own layout rather than ours, so there is no
+     * XML of ours to set this in — it is a plain indeterminate ProgressBar that
+     * otherwise picks up the platform accent, which comes out green and is
+     * smaller than it wants to be over a full-screen video.
+     */
+    private fun styleBufferingSpinner() {
+        val spinner = findViewById<ProgressBar>(androidx.media3.ui.R.id.exo_buffering) ?: return
+        spinner.indeterminateTintList = ColorStateList.valueOf(0xFF8B5CF6.toInt())
+        val size = (64 * resources.displayMetrics.density).toInt()
+        spinner.layoutParams = spinner.layoutParams.apply {
+            width = size
+            height = size
         }
     }
 
