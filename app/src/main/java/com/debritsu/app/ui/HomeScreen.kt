@@ -312,13 +312,10 @@ private fun Shelf(
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            // Moving down between shelves otherwise lands on whichever poster
-            // happens to be nearest, which depends on how far that row was
-            // scrolled — so the selection appears to slide sideways as it goes
-            // down. Remembering each row's last selection makes the movement
-            // predictable, and is why a shelf you come back to is where you
-            // left it rather than reset to the start.
-            modifier = Modifier.focusGroup().focusRestorer()
+            // No focusGroup here. Grouping a row changes how focus enters it —
+            // to the group's own first child rather than to whatever sits
+            // directly below where you were — which is what threw the selection
+            // sideways on every vertical press.
         ) {
             items(list) { anime ->
                 Box(Modifier.width(112.dp)) { PosterCard(anime, onOpen) }
