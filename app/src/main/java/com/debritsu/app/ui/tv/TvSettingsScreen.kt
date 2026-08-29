@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -149,20 +150,20 @@ fun TvSettingsScreen(onBack: () -> Unit) {
         )
         Button(onClick = { addAddon() }) { Text("Add addon") }
 
+        // The URL above its own remove button rather than beside it. Set next to
+        // a fixed-width block of text the button did not render at all, and a
+        // row of two things is the arrangement this screen exists to avoid
+        // anyway — one control per line, nothing to reason about.
         addons.forEach { a ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    a.take(70),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Ink.Mist,
-                    modifier = Modifier.width(760.dp)
-                )
-                Button(onClick = { Settings.removeAddon(a); addons = Settings.addons }) {
-                    Text("Remove")
-                }
+            Text(
+                a.take(90),
+                style = MaterialTheme.typography.bodySmall,
+                color = Ink.Mist,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Button(onClick = { Settings.removeAddon(a); addons = Settings.addons }) {
+                Text("Remove this addon")
             }
         }
 
