@@ -74,17 +74,11 @@ class MainActivity : ComponentActivity() {
         handleAuth(intent)
     }
 
-    /** AniList uses the implicit grant: the token comes back in the URL fragment. */
+
+    /** The deep-link return, still how a phone comes back from a real browser. */
     private fun handleAuth(intent: Intent?) {
-        val data: Uri = intent?.data ?: return
-        if (data.scheme != "debritsu") return
-        val fragment = data.fragment ?: return
-        val token = fragment.split("&")
-            .firstOrNull { it.startsWith("access_token=") }
-            ?.removePrefix("access_token=")
-        if (!token.isNullOrEmpty()) {
-            Settings.aniListToken = token
-            authFlash++
-        }
+        val token = AuthActivity.tokenFrom(intent?.data) ?: return
+        Settings.aniListToken = token
+        authFlash++
     }
 }

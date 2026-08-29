@@ -2,6 +2,8 @@ package com.debritsu.app.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.debritsu.app.AuthActivity
 import com.debritsu.app.data.AniList
 import com.debritsu.app.data.DEFAULT_ANILIST_CLIENT_ID
 import com.debritsu.app.data.DebridProvider
@@ -41,7 +44,19 @@ fun SettingsScreen(onBack: () -> Unit) {
     var showAdvanced by remember { mutableStateOf(DEFAULT_ANILIST_CLIENT_ID.isEmpty()) }
     var newAddon by remember { mutableStateOf("") }
     var addons by remember { mutableStateOf(Settings.addons) }
-    val signedIn = Settings.aniListToken.isNotEmpty()
+    var tokenTick by remember { mutableStateOf(0) }
+    val signedIn = remember(tokenTick) { Settings.aniListToken.isNotEmpty() }
+
+    // The in-app sign-in hands the redirect back as a result rather than as a
+    // deep link, since nothing outside the app is involved in that path.
+    val signIn = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        AuthActivity.tokenFrom(result.data?.data)?.let {
+            Settings.aniListToken = it
+            tokenTick++
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -67,6 +82,64 @@ fun SettingsScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
 
+            Text("AniList", fontWeight = FontWeight.SemiBold)
+            if (DEFAULT_ANILIST_CLIENT_ID.isNotEmpty() && !showAdvanced) {
+                Text(
+                    "Tap Sign in and approve Debritsu — nothing else to set up.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TextButton(onClick = { showAdvanced = true }) {
+                    Text("Use my own API client", fontSize = 12.sp)
+                }
+            } else {
+                Text(
+                    "Create an API client at anilist.co/settings/developer with redirect URL " +
+                        "debritsu://auth, then paste the client ID here.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = clientId,
+                    onValueChange = { clientId = it; Settings.aniListClientId = it },
+                    label = { Text("Client ID") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().tvEscape()
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    enabled = clientId.isNotBlank(),
+                    onClick = {
+                        // A browser is the better experience where one exists —
+                        // an existing AniList session carries over, so there is
+                        // often nothing to type. Televisions generally have no
+                        // browser, and the platform answers for the missing one
+                        // with a stub that reports "no app can perform this
+                        // action", so the in-app flow is the fallback there.
+                        if (AuthActivity.hasRealBrowser(context)) {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(AniList.authUrl(clientId)))
+                            )
+                        } else {
+                            signIn.launch(AuthActivity.intent(context, clientId))
+                        }
+                    }
+                ) { Text(if (signedIn) "Re-authorise" else "Sign in") }
+
+                if (signedIn) {
+                    OutlinedButton(onClick = { Settings.aniListToken = "" }) { Text("Sign out") }
+                }
+            }
+            Text(
+                if (signedIn) "Signed in — progress syncs after each episode."
+                else "Not signed in. Browsing and playback still work without an account.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            HorizontalDivider()
+
             Text("Stremio addons", fontWeight = FontWeight.SemiBold)
             Text(
                 "Paste an addon URL (manifest.json or stremio:// link). Use a debrid-backed " +
@@ -81,7 +154,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     onValueChange = { newAddon = it },
                     label = { Text("Addon URL") },
                     singleLine = true,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).tvEscape()
                 )
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = {
@@ -149,7 +222,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 onValueChange = { debridToken = it; Settings.debridToken = it },
                 label = { Text("${provider.label} API key") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().tvEscape()
             )
             Text(
                 "Get it from ${provider.tokenHint}",
@@ -315,54 +388,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                     onCheckedChange = { subOutline = it; Settings.subtitleOutline = it }
                 )
             }
-
-            HorizontalDivider()
-
-            Text("AniList", fontWeight = FontWeight.SemiBold)
-            if (DEFAULT_ANILIST_CLIENT_ID.isNotEmpty() && !showAdvanced) {
-                Text(
-                    "Tap Sign in and approve Debritsu in your browser — nothing else to set up.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                TextButton(onClick = { showAdvanced = true }) {
-                    Text("Use my own API client", fontSize = 12.sp)
-                }
-            } else {
-                Text(
-                    "Create an API client at anilist.co/settings/developer with redirect URL " +
-                        "debritsu://auth, then paste the client ID here.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedTextField(
-                    value = clientId,
-                    onValueChange = { clientId = it; Settings.aniListClientId = it },
-                    label = { Text("Client ID") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    enabled = clientId.isNotBlank(),
-                    onClick = {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(AniList.authUrl(clientId)))
-                        )
-                    }
-                ) { Text(if (signedIn) "Re-authorise" else "Sign in") }
-
-                if (signedIn) {
-                    OutlinedButton(onClick = { Settings.aniListToken = "" }) { Text("Sign out") }
-                }
-            }
-            Text(
-                if (signedIn) "Signed in — progress syncs after each episode."
-                else "Not signed in. Browsing and playback still work without an account.",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }

@@ -61,6 +61,16 @@
             </intent-filter>
         </activity>
 
+        <!--
+          AniList sign-in for devices with no browser, which is most
+          televisions. Not exported: it is only ever started from inside the
+          app, and it handles an access token.
+        -->
+        <activity
+            android:name=".AuthActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Debritsu" />
+
         <!-- Grants other apps temporary read access to a single downloaded file. -->
         <provider
             android:name="androidx.core.content.FileProvider"
