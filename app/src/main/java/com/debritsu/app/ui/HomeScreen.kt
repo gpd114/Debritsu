@@ -3,6 +3,9 @@ package com.debritsu.app.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -27,6 +30,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -50,6 +63,7 @@ fun HomeScreen(
     authFlash: Int
 ) {
 
+    val context = LocalContext.current
     var query by remember { mutableStateOf("") }
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var planning by remember { mutableStateOf<List<Anime>>(emptyList()) }
@@ -111,6 +125,21 @@ fun HomeScreen(
             }
     }
 
+    val tv = remember(context) { isTelevision(context) }
+    val focusManager = LocalFocusManager.current
+    val searchFocus = remember { FocusRequester() }
+    val contentFocus = remember { FocusRequester() }
+
+    // Put the selection on the shows rather than the search box the moment
+    // there is anything to select. Left to itself a television focuses the
+    // first focusable thing on screen, which is the text field.
+    val haveContent = watching.isNotEmpty() || planning.isNotEmpty() || trending.isNotEmpty()
+    LaunchedEffect(tv, haveContent, searching) {
+        if (tv && haveContent && !searching) {
+            runCatching { contentFocus.requestFocus() }
+        }
+    }
+
     Scaffold { pad ->
         // Zero on a phone; on a television it keeps content out of the slice
         // the panel cuts off at the edges.
@@ -137,7 +166,15 @@ fun HomeScreen(
                         unfocusedContainerColor = Ink.Veil,
                         focusedContainerColor = Ink.Veil
                     ),
-                    modifier = Modifier.weight(1f).padding(vertical = 6.dp)
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(vertical = 6.dp)
+                        .focusRequester(searchFocus)
+                        // A television hands focus to the first focusable thing
+                        // on screen, which was this. Focus now starts on the
+                        // content instead, and this is the way back out for
+                        // anyone who navigates in.
+                        .tvEscape()
                 )
                 IconButton(onClick = onDownloads) {
                     Icon(Icons.Default.Download, contentDescription = "Downloads")
@@ -219,7 +256,13 @@ fun HomeScreen(
                     onCollapse = { expanded = null }
                 )
 
-                else -> LazyColumn(contentPadding = PaddingValues(bottom = 28.dp)) {
+                else -> LazyColumn(
+                    contentPadding = PaddingValues(bottom = 28.dp),
+                    // Requesting focus on a focus group hands it to the first
+                    // focusable child, which saves naming a particular poster
+                    // that may not be composed yet.
+                    modifier = Modifier.focusRequester(contentFocus).focusGroup()
+                ) {
                     shelves.forEach { (title, list) ->
                         item { Shelf(title, list, onOpen) { expanded = title } }
                     }
@@ -231,6 +274,7 @@ fun HomeScreen(
 
 /** One side-scrolling row of posters. */
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 private fun Shelf(
     title: String,
     list: List<Anime>,
@@ -241,7 +285,14 @@ private fun Shelf(
         SectionHeader(title, list.size, Icons.Default.OpenInFull, "Expand $title", onExpand)
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            // Moving down between shelves otherwise lands on whichever poster
+            // happens to be nearest, which depends on how far that row was
+            // scrolled — so the selection appears to slide sideways as it goes
+            // down. Remembering each row's last selection makes the movement
+            // predictable, and is why a shelf you come back to is where you
+            // left it rather than reset to the start.
+            modifier = Modifier.focusGroup().focusRestorer()
         ) {
             items(list) { anime ->
                 Box(Modifier.width(112.dp)) { PosterCard(anime, onOpen) }
