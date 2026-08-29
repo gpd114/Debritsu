@@ -27,13 +27,13 @@ android {
         // two APKs apart once installed — five different builds once shipped as
         // 31 because the tag was moved rather than the version raised, and
         // working out which one was on a phone meant unzipping it.
-        versionCode = 44
+        versionCode = 45
         // Taken from the tag being built where there is one, so a release can
         // never report a name that disagrees with its own tag. Falls back to
         // the literal for local builds, which have no tag.
         versionName = (System.getenv("RELEASE_TAG")?.removePrefix("v"))
             ?.takeIf { it.isNotBlank() }
-            ?: "1.2.1"
+            ?: "1.2.2"
 
         buildConfigField(
             "String",
