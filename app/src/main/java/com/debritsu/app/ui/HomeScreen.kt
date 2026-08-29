@@ -290,8 +290,25 @@ private fun Shelf(
     onOpen: (Int) -> Unit,
     onExpand: () -> Unit
 ) {
+    val context = LocalContext.current
+    val tv = remember(context) { isTelevision(context) }
+
     Column(Modifier.padding(top = 14.dp)) {
-        SectionHeader(title, list.size, Icons.Default.OpenInFull, "Expand $title", onExpand)
+        // On a television the expand button leaves the header and becomes the
+        // last tile in the row. In the header it is a lone control at the far
+        // right, sitting directly between every row of posters and whatever is
+        // above it — so going up from any poster jumped sideways to it, and
+        // where the next press landed depended on which shelf's button you had
+        // caught. At the end of the row it is reached by continuing right past
+        // the last poster, and nothing sits between the rows any more.
+        SectionHeader(
+            text = title,
+            count = list.size,
+            actionIcon = Icons.Default.OpenInFull,
+            actionLabel = "Expand $title",
+            onAction = onExpand,
+            showAction = !tv
+        )
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -305,6 +322,9 @@ private fun Shelf(
         ) {
             items(list) { anime ->
                 Box(Modifier.width(112.dp)) { PosterCard(anime, onOpen) }
+            }
+            if (tv) {
+                item { SeeAllTile("Expand $title", onExpand) }
             }
         }
     }
@@ -337,7 +357,9 @@ private fun SectionHeader(
     count: Int,
     actionIcon: androidx.compose.ui.graphics.vector.ImageVector,
     actionLabel: String,
-    onAction: () -> Unit
+    onAction: () -> Unit,
+    /** False on a television, where the action lives at the end of the row instead. */
+    showAction: Boolean = true
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -354,8 +376,49 @@ private fun SectionHeader(
             color = Ink.Mist
         )
         Spacer(Modifier.weight(1f))
-        IconButton(onClick = onAction) {
-            Icon(actionIcon, contentDescription = actionLabel, tint = Ink.Mist)
+        if (showAction) {
+            IconButton(onClick = onAction) {
+                Icon(actionIcon, contentDescription = actionLabel, tint = Ink.Mist)
+            }
+        }
+    }
+}
+
+/**
+ * The shelf's "show everything" control, as the tile after the last poster.
+ *
+ * Shaped like a poster so it sits in the row rather than interrupting it, and
+ * so the d-pad reaches it by simply carrying on rightward.
+ */
+@Composable
+private fun SeeAllTile(label: String, onExpand: () -> Unit) {
+    Column(
+        Modifier
+            .width(112.dp)
+            .tvClickable(shape = RoundedCornerShape(14.dp), lift = 0.06f) { onExpand() }
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Ink.Veil),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    Icons.Default.OpenInFull,
+                    contentDescription = label,
+                    tint = Ink.Mist,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "See all",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Ink.Mist
+                )
+            }
         }
     }
 }

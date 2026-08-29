@@ -1,6 +1,5 @@
 package com.debritsu.app.ui
 
-import android.app.UiModeManager
 import android.content.Context
 import android.content.res.Configuration
 import android.util.Log
@@ -40,8 +39,17 @@ import androidx.compose.ui.unit.dp
  * the same treatment.
  */
 fun isTelevision(context: Context): Boolean {
-    val mode = context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
-    return mode?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+    // The configuration's ui mode, not UiModeManager.getCurrentModeType(). The
+    // latter reports dock state — car, desk, and so on — and boxes are perfectly
+    // capable of answering NORMAL to it while the configuration says TELEVISION.
+    // Reading the wrong one made every television-only behaviour inert on the
+    // very device they were written for.
+    val mode = context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK
+    if (mode == Configuration.UI_MODE_TYPE_TELEVISION) return true
+
+    // The other tell, for anything that reports a normal ui mode regardless: a
+    // television launcher is the only thing that declares leanback.
+    return context.packageManager.hasSystemFeature("android.software.leanback")
 }
 
 /**
