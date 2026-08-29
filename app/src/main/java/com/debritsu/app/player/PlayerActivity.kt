@@ -13,6 +13,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.GestureDetector
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.widget.ImageButton
@@ -71,6 +72,19 @@ private const val ADDON_MARKER = "From"
 class PlayerActivity : ComponentActivity() {
 
     private var player: ExoPlayer? = null
+    private var playerView: PlayerView? = null
+
+    /** The centred readout, shared by the touch gestures and the remote. */
+    private var hud: TextView? = null
+    private val hideHud = Runnable { hud?.visibility = View.GONE }
+
+    private fun readout(text: String) {
+        val v = hud ?: return
+        v.text = text
+        v.visibility = View.VISIBLE
+        v.removeCallbacks(hideHud)
+        v.postDelayed(hideHud, 700)
+    }
     private var progressPushed = false
     private var anilistId = 0
     private var episode = 0
@@ -108,6 +122,7 @@ class PlayerActivity : ComponentActivity() {
 
         setContentView(R.layout.activity_player)
         val view = findViewById<PlayerView>(R.id.player_view)
+        playerView = view
         view.setKeepContentOnPlayerReset(true)
 
         // The Sources button lives in the control bar, so it fades with the
@@ -428,6 +443,64 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /**
+     * Remote and keyboard control.
+     *
+     * Everything the player could do without opening the transport controls was
+     * a touch gesture — double tap to seek, drag for brightness and volume —
+     * and a television remote can produce none of those. This gives the same
+     * actions to the keys a remote does have, which incidentally also covers a
+     * Bluetooth keyboard or a game controller on a phone.
+     *
+     * Keys are only taken while the controls are hidden. Once they are up, left
+     * and right belong to whichever button has focus, and stealing them would
+     * leave the controls impossible to move around.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val exo = player
+        val view = playerView
+        if (exo == null || view == null ||
+            event.action != KeyEvent.ACTION_DOWN ||
+            view.isControllerFullyVisible
+        ) {
+            return super.dispatchKeyEvent(event)
+        }
+
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                exo.seekBack()
+                readout("−${exo.seekBackIncrement / 1000}s")
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                exo.seekForward()
+                readout("+${exo.seekForwardIncrement / 1000}s")
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_SPACE -> {
+                exo.playWhenReady = !exo.playWhenReady
+                readout(if (exo.playWhenReady) "Play" else "Pause")
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                exo.playWhenReady = true
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                exo.playWhenReady = false
+                return true
+            }
+        }
+        // Anything else — centre, up, down, menu — falls through to PlayerView,
+        // which raises the controls. That is the right response to a stray press
+        // on a remote, and it is what puts focus somewhere to start navigating
+        // from.
+        return super.dispatchKeyEvent(event)
+    }
+
+    /**
      * Double tap the left or right third to skip, drag up or down the left half
      * for brightness and the right half for volume.
      *
@@ -435,22 +508,15 @@ class PlayerActivity : ComponentActivity() {
      * otherwise a plain tap would stop toggling the transport controls.
      */
     private fun installGestures(view: PlayerView) {
-        val hud = findViewById<TextView>(R.id.gesture_hud)
-        hud.background = GradientDrawable().apply {
-            setColor(0xCC171226.toInt())
-            cornerRadius = 14 * resources.displayMetrics.density
+        hud = findViewById<TextView>(R.id.gesture_hud).apply {
+            background = GradientDrawable().apply {
+                setColor(0xCC171226.toInt())
+                cornerRadius = 14 * resources.displayMetrics.density
+            }
         }
 
         val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val maxVolume = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        val hide = Runnable { hud.visibility = View.GONE }
-
-        fun readout(text: String) {
-            hud.text = text
-            hud.visibility = View.VISIBLE
-            hud.removeCallbacks(hide)
-            hud.postDelayed(hide, 700)
-        }
 
         var consumed = false
         var dragging = false
