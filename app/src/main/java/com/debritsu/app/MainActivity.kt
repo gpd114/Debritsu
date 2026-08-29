@@ -22,8 +22,8 @@ import kotlinx.coroutines.launch
 import com.debritsu.app.ui.DetailScreen
 import com.debritsu.app.ui.DownloadsScreen
 import com.debritsu.app.ui.DebritsuTheme
-import com.debritsu.app.ui.SettingsScreen
 import com.debritsu.app.ui.tv.TvHomeScreen
+import com.debritsu.app.ui.tv.TvSettingsScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
                             // that it does not carry the other one around.
                             TvHomeScreen(
                                 onOpen = { nav.navigate("detail/$it") },
+                                onSettings = { nav.navigate("settings") },
                                 authFlash = authFlash
                             )
                         }
@@ -63,7 +64,7 @@ class MainActivity : ComponentActivity() {
                             DownloadsScreen(onBack = { nav.popBackStack() })
                         }
                         composable("settings") {
-                            SettingsScreen(onBack = { nav.popBackStack() })
+                            TvSettingsScreen(onBack = { nav.popBackStack() })
                         }
                     }
                 }

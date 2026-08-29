@@ -63,6 +63,16 @@
             </intent-filter>
         </activity>
 
+        <!--
+          AniList sign-in. A television has no browser, so the flow is hosted in
+          a WebView here. Not exported: only ever started from inside the app,
+          and it handles an access token.
+        -->
+        <activity
+            android:name=".AuthActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Debritsu" />
+
         <!-- Grants other apps temporary read access to a single downloaded file. -->
         <provider
             android:name="androidx.core.content.FileProvider"

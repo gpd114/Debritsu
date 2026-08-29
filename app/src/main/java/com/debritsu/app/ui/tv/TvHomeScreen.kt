@@ -26,12 +26,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Button
 import androidx.tv.material3.Card
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.debritsu.app.data.AniList
 import com.debritsu.app.data.Anime
+import com.debritsu.app.data.Settings
 import com.debritsu.app.ui.Ink
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -40,7 +42,7 @@ import kotlinx.coroutines.launch
  * Televisions cut a slice off every edge, varying by set. Content is kept
  * inside this margin.
  */
-private val OVERSCAN = 27.dp
+internal val OVERSCAN = 27.dp
 
 private val POSTER_WIDTH = 140.dp
 
@@ -56,6 +58,7 @@ private val POSTER_WIDTH = 140.dp
 @Composable
 fun TvHomeScreen(
     onOpen: (Int) -> Unit,
+    onSettings: () -> Unit,
     authFlash: Int
 ) {
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
@@ -85,12 +88,31 @@ fun TvHomeScreen(
             .background(Ink.Base)
             .padding(OVERSCAN)
     ) {
-        Text(
-            "Debritsu",
-            style = androidx.tv.material3.MaterialTheme.typography.headlineMedium,
-            color = Ink.Bone,
-            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp)
+        ) {
+            Text(
+                "Debritsu",
+                style = androidx.tv.material3.MaterialTheme.typography.headlineMedium,
+                color = Ink.Bone
+            )
+            Spacer(Modifier.weight(1f))
+            Button(onClick = onSettings) { Text("Settings") }
+        }
+
+        // Nothing can be played until an addon is configured, and on a fresh
+        // install there is none — so say so rather than showing an empty screen
+        // that looks broken.
+        if (Settings.addons.isEmpty()) {
+            Text(
+                "No addons yet. Open Settings and paste an addon URL — a phone " +
+                    "keyboard app makes that far less painful than the remote.",
+                style = androidx.tv.material3.MaterialTheme.typography.bodyLarge,
+                color = Ink.Mist,
+                modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
+            )
+        }
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(20.dp)) {
             items(shelves) { (title, list) ->
