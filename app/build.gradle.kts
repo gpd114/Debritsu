@@ -19,7 +19,12 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.debritsu.app"
+        // The television build is its own application, so it installs beside
+        // the phone one rather than replacing it — the same box can hold both,
+        // and neither can be blocked by the other's signing key. They keep
+        // separate settings and downloads as a consequence, which is the price
+        // of that and worth naming.
+        applicationId = "com.debritsu.tv"
         minSdk = 26
         targetSdk = 34
         // Bump for every release. Android compares versionCode when deciding
@@ -27,13 +32,16 @@ android {
         // two APKs apart once installed — five different builds once shipped as
         // 31 because the tag was moved rather than the version raised, and
         // working out which one was on a phone meant unzipping it.
-        versionCode = 47
+        // Versioned independently of the phone app: this is a different
+        // application id, so its numbering answers to nobody but itself.
+        versionCode = 1
         // Taken from the tag being built where there is one, so a release can
         // never report a name that disagrees with its own tag. Falls back to
-        // the literal for local builds, which have no tag.
-        versionName = (System.getenv("RELEASE_TAG")?.removePrefix("v"))
+        // the literal for local builds, which have no tag. Television releases
+        // are tagged tv-v*, to keep them apart from the phone's v* tags.
+        versionName = (System.getenv("RELEASE_TAG")?.removePrefix("tv-v"))
             ?.takeIf { it.isNotBlank() }
-            ?: "1.3.0"
+            ?: "0.1.0"
 
         buildConfigField(
             "String",
@@ -83,6 +91,15 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // Compose for TV. Its Card and Surface carry focus handling of their own —
+    // scaling, borders, and correct d-pad behaviour — which is the part that was
+    // hand-written and got wrong on the phone branch.
+    // Pinned to 1.0.x deliberately: 1.1.0 demands compileSdk 35 and Android
+    // Gradle plugin 8.6, and drags in a Compose newer than the bill of
+    // materials this project pins. That upgrade is worth making on its own
+    // terms, not as a side effect of adding a dependency.
+    implementation("androidx.tv:tv-material:1.0.1")
 
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.2")
