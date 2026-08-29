@@ -617,9 +617,15 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                                     color = Ink.Orchid,
                                     modifier = Modifier.padding(top = 6.dp)
                                 )
+                                // Both lines reserved, so every card in this row
+                                // is the same height. A shorter one lets a
+                                // taller neighbour hang below it, and a
+                                // downward press then finds that neighbour
+                                // rather than whatever is under the row.
                                 Text(
                                     rel.anime.title,
                                     style = MaterialTheme.typography.bodySmall,
+                                    minLines = 2,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
