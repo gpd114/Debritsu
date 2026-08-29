@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -23,7 +25,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -116,16 +127,27 @@ fun TvSettingsScreen(onBack: () -> Unit) {
         Heading("Stremio addons")
         Caption(
             "Paste an addon URL — a debrid-backed one such as AIOStreams, Comet " +
-                "or MediaFusion. Use a phone keyboard app to type it."
+                "or MediaFusion. A phone keyboard app makes typing it bearable."
         )
-        Field(value = newAddon, label = "Addon URL", onChange = { newAddon = it })
-        Button(
-            onClick = {
-                Settings.addAddon(newAddon)
-                addons = Settings.addons
-                newAddon = ""
-            }
-        ) { Text("Add addon") }
+        // Said outright because it is not discoverable and looks like a fault.
+        // While the on-screen keyboard is up it owns the d-pad entirely: the app
+        // receives nothing, so up and down do not move the selection and there
+        // is no way for this screen to make them.
+        Caption("Press Back to close the keyboard before moving on.")
+        fun addAddon() {
+            if (newAddon.isBlank()) return
+            Settings.addAddon(newAddon)
+            addons = Settings.addons
+            newAddon = ""
+        }
+
+        Field(
+            value = newAddon,
+            label = "Addon URL",
+            onChange = { newAddon = it },
+            onDone = { addAddon() }
+        )
+        Button(onClick = { addAddon() }) { Text("Add addon") }
 
         addons.forEach { a ->
             Row(
@@ -219,9 +241,35 @@ private fun Caption(text: String) {
  * A text field sized for a ten-foot view, using the ordinary Compose one —
  * tv-material has no equivalent, and the on-screen keyboard is the system's
  * either way.
+ *
+ * Getting out of it is the part that needs writing. A text field consumes up
+ * and down for its own cursor handling, so with a remote the selection simply
+ * stops and the screen appears to freeze while quietly accepting typing. The
+ * handler is onPreviewKeyEvent rather than onKeyEvent because Compose runs a
+ * preview pass down the tree before the bubble pass back up, and the ordinary
+ * handler is the bubble one — it never runs at all here.
+ *
+ * The keyboard is dismissed before the selection moves. On a television it
+ * covers the whole screen, so leaving it up means focus travels away behind
+ * something the viewer cannot see past, which looks identical to being stuck.
  */
 @Composable
-private fun Field(value: String, label: String, onChange: (String) -> Unit) {
+private fun Field(
+    value: String,
+    label: String,
+    onChange: (String) -> Unit,
+    /** Runs on Enter or the keyboard's Done, for a field with an obvious action. */
+    onDone: (() -> Unit)? = null
+) {
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+
+    fun leave(direction: FocusDirection): Boolean {
+        keyboard?.hide()
+        focusManager.moveFocus(direction)
+        return true
+    }
+
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
@@ -233,6 +281,32 @@ private fun Field(value: String, label: String, onChange: (String) -> Unit) {
             unfocusedContainerColor = Ink.Veil,
             focusedContainerColor = Ink.Veil
         ),
-        modifier = Modifier.fillMaxWidth()
+        keyboardOptions = KeyboardOptions(
+            imeAction = if (onDone != null) ImeAction.Done else ImeAction.Next
+        ),
+        keyboardActions = KeyboardActions(
+            onDone = {
+                keyboard?.hide()
+                onDone?.invoke()
+            },
+            onNext = { leave(FocusDirection.Down) }
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .onPreviewKeyEvent { e ->
+                if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (e.key) {
+                    Key.DirectionDown -> leave(FocusDirection.Down)
+                    Key.DirectionUp -> leave(FocusDirection.Up)
+                    // A remote's centre and a keyboard's Enter both arrive here,
+                    // and on a field with an action they should perform it
+                    // rather than doing nothing.
+                    Key.Enter, Key.NumPadEnter -> {
+                        if (onDone == null) false
+                        else { keyboard?.hide(); onDone(); true }
+                    }
+                    else -> false
+                }
+            }
     )
 }
