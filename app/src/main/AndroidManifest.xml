@@ -12,11 +12,30 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
+    <!--
+      Android TV. A touchscreen is implicitly required unless it is declared
+      optional, and that alone is enough for a television to consider the app
+      incompatible — so this is what makes the build installable there at all,
+      not merely tidier. Leanback is declared optional in the same way so one
+      APK still serves phones.
+    -->
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false" />
+    <!-- Televisions have no GPS, and the Cast SDK pulls this in transitively. -->
+    <uses-feature
+        android:name="android.hardware.location.gps"
+        android:required="false" />
+
     <application
         android:name=".DebritsuApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:banner="@drawable/tv_banner"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.Debritsu">
@@ -29,6 +48,9 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <!-- Without this a television's launcher never lists the app,
+                     however well it would otherwise run. -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
             <!-- AniList OAuth redirect: debritsu://auth -->
             <intent-filter>
