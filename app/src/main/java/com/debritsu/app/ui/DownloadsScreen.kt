@@ -92,9 +92,10 @@ fun DownloadsScreen(onBack: () -> Unit) {
                 Column(Modifier.padding(24.dp)) {
                     Text("Nothing downloaded yet", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Open an episode, then tap the download icon beside a source. " +
-                            "Downloaded episodes play with no connection at all, and your " +
-                            "progress syncs the next time you're online.",
+                        "Open a show, pick an episode, then tap the download button " +
+                            "beside Play to bring up its sources — each one has a download " +
+                            "icon of its own. Downloaded episodes play with no connection " +
+                            "at all, and your progress syncs the next time you're online.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Ink.Mist,
                         modifier = Modifier.padding(top = 6.dp)
