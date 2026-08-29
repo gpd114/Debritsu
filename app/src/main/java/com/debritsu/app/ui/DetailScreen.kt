@@ -66,7 +66,25 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     var anime by remember { mutableStateOf<Anime?>(null) }
     var selectedEpisode by remember { mutableStateOf(1) }
     var results by remember { mutableStateOf<List<Stremio.AddonResult>>(emptyList()) }
-    val streams = results.flatMap { it.streams }
+    // Whichever source automatic selection would have started, scored by the
+    // very rules auto-play uses so the list and the automatic choice can never
+    // disagree. Null when nothing clears the filters, which is also when
+    // auto-play gives up and hands the list over.
+    val bestStream = remember(results) {
+        val filter = Settings.sourceFilter
+        results.flatMap { it.streams }
+            .map { it to StreamMeta.of(it) }
+            .filter { (s, m) -> filter.accepts(s, m) }
+            .maxByOrNull { (s, m) -> filter.score(s, m) }
+            ?.first
+    }
+    // That source floated to the top; everything else keeps the order its addon
+    // returned it in, so the list is not reshuffled beyond the one promotion.
+    val streams = remember(results, bestStream) {
+        val flat = results.flatMap { it.streams }
+        if (bestStream == null) flat
+        else listOf(bestStream) + flat.filterNot { it === bestStream }
+    }
     var searching by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var showSheet by remember { mutableStateOf(false) }
@@ -437,10 +455,11 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                             }
                             Text(
                                 if (resumeFrac > 0f)
-                                    "Resume ${selectedEpisode.toString().padStart(2, '0')} · ${(resumeFrac * 100).toInt()}%"
+                                    "Resume episode ${selectedEpisode.toString().padStart(2, '0')} · ${(resumeFrac * 100).toInt()}%"
                                 else
                                     "Play episode ${selectedEpisode.toString().padStart(2, '0')}",
-                                style = MaterialTheme.typography.labelLarge
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1
                             )
                         }
                         Spacer(Modifier.width(10.dp))
@@ -793,9 +812,13 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                         }
                         Spacer(Modifier.width(10.dp))
                         Text(
-                            if (s.isDirect) "DIRECT" else "DEBRID",
+                            when {
+                                s === bestStream -> "BEST"
+                                s.isDirect -> "DIRECT"
+                                else -> "DEBRID"
+                            },
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (s.isDirect) Ink.Iris else Ink.Mist
+                            color = if (s.isDirect || s === bestStream) Ink.Iris else Ink.Mist
                         )
                         IconButton(onClick = { download(s) }) {
                             Icon(
