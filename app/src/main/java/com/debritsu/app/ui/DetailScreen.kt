@@ -513,9 +513,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                                 .height(58.dp)
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(if (selected) Ink.Iris else Ink.Veil)
-                                .tvClickable(RoundedCornerShape(14.dp)) {
-                                    selectedEpisode = ep; findStreams(ep)
-                                },
+                                .clickable { selectedEpisode = ep; findStreams(ep) },
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -596,10 +594,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                             Column(
                                 Modifier
                                     .width(104.dp)
-                                    .tvClickable(
-                                        shape = RoundedCornerShape(12.dp),
-                                        lift = 0.06f
-                                    ) { onOpen(rel.anime.id) }
+                                    .clickable { onOpen(rel.anime.id) }
                             ) {
                                 AsyncImage(
                                     model = rel.anime.cover,
@@ -795,7 +790,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .tvClickable(RoundedCornerShape(10.dp)) { play(s) }
+                            .clickable { play(s) }
                             .padding(vertical = 12.dp)
                     ) {
                         Box(

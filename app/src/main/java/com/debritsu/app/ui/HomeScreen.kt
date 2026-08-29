@@ -3,9 +3,6 @@ package com.debritsu.app.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusGroup
-import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -30,16 +27,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -65,7 +52,6 @@ fun HomeScreen(
     authFlash: Int
 ) {
 
-    val context = LocalContext.current
     var query by remember { mutableStateOf("") }
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var planning by remember { mutableStateOf<List<Anime>>(emptyList()) }
@@ -134,25 +120,8 @@ fun HomeScreen(
             }
     }
 
-    val tv = remember(context) { isTelevision(context) }
-    val focusManager = LocalFocusManager.current
-    val searchFocus = remember { FocusRequester() }
-    val contentFocus = remember { FocusRequester() }
-
-    // Put the selection on the shows rather than the search box the moment
-    // there is anything to select. Left to itself a television focuses the
-    // first focusable thing on screen, which is the text field.
-    val haveContent = watching.isNotEmpty() || planning.isNotEmpty() || trending.isNotEmpty()
-    LaunchedEffect(tv, haveContent, searching) {
-        if (tv && haveContent && !searching) {
-            runCatching { contentFocus.requestFocus() }
-        }
-    }
-
     Scaffold { pad ->
-        // Zero on a phone; on a television it keeps content out of the slice
-        // the panel cuts off at the edges.
-        Column(Modifier.padding(pad).padding(overscan())) {
+        Column(Modifier.padding(pad)) {
 
             // Search sits where the wordmark used to, alongside the actions.
             // Two rows of chrome before any content was a row too many, and the
@@ -175,15 +144,7 @@ fun HomeScreen(
                         unfocusedContainerColor = Ink.Veil,
                         focusedContainerColor = Ink.Veil
                     ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(vertical = 6.dp)
-                        .focusRequester(searchFocus)
-                        // A television hands focus to the first focusable thing
-                        // on screen, which was this. Focus now starts on the
-                        // content instead, and this is the way back out for
-                        // anyone who navigates in.
-                        .tvEscape()
+                    modifier = Modifier.weight(1f).padding(vertical = 6.dp)
                 )
                 IconButton(onClick = onDownloads) {
                     Icon(Icons.Default.Download, contentDescription = "Downloads")
@@ -265,13 +226,7 @@ fun HomeScreen(
                     onCollapse = { expanded = null }
                 )
 
-                else -> LazyColumn(
-                    contentPadding = PaddingValues(bottom = 28.dp),
-                    // Requesting focus on a focus group hands it to the first
-                    // focusable child, which saves naming a particular poster
-                    // that may not be composed yet.
-                    modifier = Modifier.focusRequester(contentFocus).focusGroup()
-                ) {
+                else -> LazyColumn(contentPadding = PaddingValues(bottom = 28.dp)) {
                     shelves.forEach { (title, list) ->
                         item { Shelf(title, list, onOpen) { expanded = title } }
                     }
@@ -283,45 +238,20 @@ fun HomeScreen(
 
 /** One side-scrolling row of posters. */
 @Composable
-@OptIn(ExperimentalComposeUiApi::class)
 private fun Shelf(
     title: String,
     list: List<Anime>,
     onOpen: (Int) -> Unit,
     onExpand: () -> Unit
 ) {
-    val context = LocalContext.current
-    val tv = remember(context) { isTelevision(context) }
-
     Column(Modifier.padding(top = 14.dp)) {
-        // On a television the expand button leaves the header and becomes the
-        // last tile in the row. In the header it is a lone control at the far
-        // right, sitting directly between every row of posters and whatever is
-        // above it — so going up from any poster jumped sideways to it, and
-        // where the next press landed depended on which shelf's button you had
-        // caught. At the end of the row it is reached by continuing right past
-        // the last poster, and nothing sits between the rows any more.
-        SectionHeader(
-            text = title,
-            count = list.size,
-            actionIcon = Icons.Default.OpenInFull,
-            actionLabel = "Expand $title",
-            onAction = onExpand,
-            showAction = !tv
-        )
+        SectionHeader(title, list.size, Icons.Default.OpenInFull, "Expand $title", onExpand)
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            // No focusGroup here. Grouping a row changes how focus enters it —
-            // to the group's own first child rather than to whatever sits
-            // directly below where you were — which is what threw the selection
-            // sideways on every vertical press.
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(list) { anime ->
                 Box(Modifier.width(112.dp)) { PosterCard(anime, onOpen) }
-            }
-            if (tv) {
-                item { SeeAllTile("Expand $title", onExpand) }
             }
         }
     }
@@ -354,9 +284,7 @@ private fun SectionHeader(
     count: Int,
     actionIcon: androidx.compose.ui.graphics.vector.ImageVector,
     actionLabel: String,
-    onAction: () -> Unit,
-    /** False on a television, where the action lives at the end of the row instead. */
-    showAction: Boolean = true
+    onAction: () -> Unit
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -373,64 +301,15 @@ private fun SectionHeader(
             color = Ink.Mist
         )
         Spacer(Modifier.weight(1f))
-        if (showAction) {
-            IconButton(onClick = onAction) {
-                Icon(actionIcon, contentDescription = actionLabel, tint = Ink.Mist)
-            }
+        IconButton(onClick = onAction) {
+            Icon(actionIcon, contentDescription = actionLabel, tint = Ink.Mist)
         }
-    }
-}
-
-/**
- * The shelf's "show everything" control, as the tile after the last poster.
- *
- * Shaped like a poster so it sits in the row rather than interrupting it, and
- * so the d-pad reaches it by simply carrying on rightward.
- */
-@Composable
-private fun SeeAllTile(label: String, onExpand: () -> Unit) {
-    Column(
-        Modifier
-            .width(112.dp)
-            .tvClickable(shape = RoundedCornerShape(14.dp), lift = 0.06f) { onExpand() }
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(2f / 3f)
-                .clip(RoundedCornerShape(14.dp))
-                .background(Ink.Veil),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Default.OpenInFull,
-                contentDescription = label,
-                tint = Ink.Mist,
-                modifier = Modifier.size(24.dp)
-            )
-        }
-        // Shaped exactly like a poster, two-line caption included, so it is the
-        // same height as everything else in the row. A shorter tile would make
-        // the row uneven again, which is the whole problem this is avoiding.
-        Text(
-            "See all",
-            style = MaterialTheme.typography.bodySmall,
-            color = Ink.Mist,
-            minLines = 2,
-            maxLines = 2,
-            modifier = Modifier.padding(top = 7.dp)
-        )
     }
 }
 
 @Composable
 private fun PosterCard(anime: Anime, onOpen: (Int) -> Unit) {
-    Column(
-        Modifier.tvClickable(
-            shape = RoundedCornerShape(14.dp),
-            lift = 0.06f
-        ) { onOpen(anime.id) }
-    ) {
+    Column(Modifier.clickable { onOpen(anime.id) }) {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -545,7 +424,7 @@ private fun AiringStrip(airing: List<Anime>, onOpen: (Int) -> Unit) {
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
                     .background(Ink.Veil)
-                    .tvClickable(RoundedCornerShape(12.dp)) { onOpen(anime.id) }
+                    .clickable { onOpen(anime.id) }
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Text(
