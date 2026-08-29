@@ -402,21 +402,24 @@ private fun SeeAllTile(label: String, onExpand: () -> Unit) {
                 .background(Ink.Veil),
             contentAlignment = Alignment.Center
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    Icons.Default.OpenInFull,
-                    contentDescription = label,
-                    tint = Ink.Mist,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "See all",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Ink.Mist
-                )
-            }
+            Icon(
+                Icons.Default.OpenInFull,
+                contentDescription = label,
+                tint = Ink.Mist,
+                modifier = Modifier.size(24.dp)
+            )
         }
+        // Shaped exactly like a poster, two-line caption included, so it is the
+        // same height as everything else in the row. A shorter tile would make
+        // the row uneven again, which is the whole problem this is avoiding.
+        Text(
+            "See all",
+            style = MaterialTheme.typography.bodySmall,
+            color = Ink.Mist,
+            minLines = 2,
+            maxLines = 2,
+            modifier = Modifier.padding(top = 7.dp)
+        )
     }
 }
 
@@ -484,9 +487,18 @@ private fun PosterCard(anime: Anime, onOpen: (Int) -> Unit) {
                 }
             }
         }
+        // Both lines are reserved whether the title needs them or not, so every
+        // card in a row is exactly as tall as its neighbours.
+        //
+        // Uneven heights are what made pressing down inside a shelf jump along
+        // the row instead of leaving it: a taller card extends below its
+        // shorter neighbours, and a downward focus search takes anything whose
+        // bounds lie below the current item — including a sibling four places
+        // to the right on the very same row.
         Text(
             anime.title,
             style = MaterialTheme.typography.bodySmall,
+            minLines = 2,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 7.dp)
