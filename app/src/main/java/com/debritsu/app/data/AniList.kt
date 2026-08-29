@@ -2,6 +2,8 @@ package com.debritsu.app.data
 
 import com.debritsu.app.Http
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -135,20 +137,36 @@ object AniList {
     /** Anything on the user's "Plan to watch" list. */
     suspend fun planning(): List<Anime> = listFor(listOf("PLANNING"))
 
-    private var cachedViewerId: Int? = null
-    private var cachedViewerToken: String? = null
+    private val viewerLock = Mutex()
+
+    /**
+     * The signed-in account's id, fetched at most once per token.
+     *
+     * Held on disk rather than in memory, because in memory it was gone on
+     * every cold start and every list query then began with a round trip of its
+     * own — which is why the two list shelves lagged Trending, which needs no
+     * such thing. The lock matters now the shelves load together: without it
+     * both would find nothing cached and ask for the same id at the same time.
+     */
+    private suspend fun viewerId(): Int? = viewerLock.withLock {
+        val token = Settings.aniListToken
+        if (token.isEmpty()) return@withLock null
+        // Signing out or switching accounts must discard it.
+        if (token != Settings.aniListViewerToken) {
+            Settings.aniListViewerId = 0
+            Settings.aniListViewerToken = token
+        }
+        Settings.aniListViewerId.takeIf { it != 0 }?.let { return@withLock it }
+
+        val id = query("query { Viewer { id } }").obj("Viewer").int("id")
+            ?: return@withLock null
+        Settings.aniListViewerId = id
+        id
+    }
 
     private suspend fun listFor(statuses: List<String>): List<Anime> {
         if (Settings.aniListToken.isEmpty()) return emptyList()
-        // Signing out or switching accounts must invalidate the cached id.
-        val token = Settings.aniListToken
-        if (token != cachedViewerToken) {
-            cachedViewerId = null
-            cachedViewerToken = token
-        }
-        val viewer = cachedViewerId
-            ?: query("query { Viewer { id } }").obj("Viewer").int("id")?.also { cachedViewerId = it }
-            ?: return emptyList()
+        val viewer = viewerId() ?: return emptyList()
         val statusList = statuses.joinToString(", ")
         val d = query(
             "query (\$u: Int) { MediaListCollection(userId: \$u, type: ANIME, status_in: [$statusList]) " +

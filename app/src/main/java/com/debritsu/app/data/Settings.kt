@@ -39,6 +39,23 @@ object Settings {
             .split("\n").map { it.trim() }.filter { it.isNotEmpty() }
         set(v) = sp.edit().putString("addons", v.joinToString("\n")).apply()
 
+    /**
+     * The AniList account id, kept alongside the token it belongs to.
+     *
+     * Every list query needs it, and asking for it is a round trip of its own —
+     * which made "Continue watching" and "Plan to watch" cost two requests in
+     * series where "Trending" costs one, and paid it again on every cold start.
+     * It never changes for a given token, so it is stored rather than fetched.
+     */
+    var aniListViewerId: Int
+        get() = sp.getInt("anilist_viewer_id", 0)
+        set(v) = sp.edit().putInt("anilist_viewer_id", v).apply()
+
+    /** The token that id belongs to, so switching accounts discards it. */
+    var aniListViewerToken: String
+        get() = sp.getString("anilist_viewer_token", "") ?: ""
+        set(v) = sp.edit().putString("anilist_viewer_token", v).apply()
+
     // ----- audio -----
 
     /**
