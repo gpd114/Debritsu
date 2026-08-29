@@ -21,9 +21,9 @@ import com.debritsu.app.data.SyncQueue
 import kotlinx.coroutines.launch
 import com.debritsu.app.ui.DetailScreen
 import com.debritsu.app.ui.DownloadsScreen
-import com.debritsu.app.ui.HomeScreen
 import com.debritsu.app.ui.DebritsuTheme
 import com.debritsu.app.ui.SettingsScreen
+import com.debritsu.app.ui.tv.TvHomeScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -43,10 +43,12 @@ class MainActivity : ComponentActivity() {
                     val nav = rememberNavController()
                     NavHost(navController = nav, startDestination = "home") {
                         composable("home") {
-                            HomeScreen(
+                            // The television browse screen. The phone's Home is
+                            // gone from this build rather than kept behind a
+                            // check — the point of a separate application is
+                            // that it does not carry the other one around.
+                            TvHomeScreen(
                                 onOpen = { nav.navigate("detail/$it") },
-                                onSettings = { nav.navigate("settings") },
-                                onDownloads = { nav.navigate("downloads") },
                                 authFlash = authFlash
                             )
                         }
