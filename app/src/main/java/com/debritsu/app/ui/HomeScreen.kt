@@ -52,6 +52,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.debritsu.app.data.AniList
 import com.debritsu.app.data.Anime
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import com.debritsu.app.data.Settings
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,11 +83,18 @@ fun HomeScreen(
 
     suspend fun fetch(p: Int) = AniList.search(query, p)
 
+    // Three independent queries, so they go at once rather than one after
+    // another — waiting on all three in turn made opening the app cost the sum
+    // of them, and AniList is regularly slow enough for that to run to several
+    // seconds each. Each shelf is also assigned on its own, so it appears the
+    // moment its own query lands instead of everything waiting for the slowest.
     LaunchedEffect(authFlash) {
         loading = true
-        watching = runCatching { AniList.watching() }.getOrDefault(emptyList())
-        planning = runCatching { AniList.planning() }.getOrDefault(emptyList())
-        trending = runCatching { AniList.trending().items }.getOrDefault(emptyList())
+        coroutineScope {
+            launch { watching = runCatching { AniList.watching() }.getOrDefault(emptyList()) }
+            launch { planning = runCatching { AniList.planning() }.getOrDefault(emptyList()) }
+            launch { trending = runCatching { AniList.trending().items }.getOrDefault(emptyList()) }
+        }
         loading = false
     }
 
