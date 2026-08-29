@@ -424,23 +424,42 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                         }
                     }
                     Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = { findStreams(selectedEpisode) },
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth().height(50.dp)
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        val resumeFrac = remember(selectedEpisode, progressTick) {
-                            Progress.fraction(anilistId, selectedEpisode)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Button(
+                            onClick = { findStreams(selectedEpisode) },
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.weight(1f).height(50.dp)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            val resumeFrac = remember(selectedEpisode, progressTick) {
+                                Progress.fraction(anilistId, selectedEpisode)
+                            }
+                            Text(
+                                if (resumeFrac > 0f)
+                                    "Resume ${selectedEpisode.toString().padStart(2, '0')} · ${(resumeFrac * 100).toInt()}%"
+                                else
+                                    "Play episode ${selectedEpisode.toString().padStart(2, '0')}",
+                                style = MaterialTheme.typography.labelLarge
+                            )
                         }
-                        Text(
-                            if (resumeFrac > 0f)
-                                "Resume episode ${selectedEpisode.toString().padStart(2, '0')} · ${(resumeFrac * 100).toInt()}%"
-                            else
-                                "Play episode ${selectedEpisode.toString().padStart(2, '0')}",
-                            style = MaterialTheme.typography.labelLarge
-                        )
+                        Spacer(Modifier.width(10.dp))
+                        // The source list is the only place an episode can be
+                        // downloaded, and automatic selection walks straight
+                        // past it — which left downloading unreachable for
+                        // anyone on the default settings. This always opens it,
+                        // whatever auto-play is set to.
+                        OutlinedButton(
+                            onClick = { manualSearch(selectedEpisode) },
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.size(50.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = "Choose a source or download"
+                            )
+                        }
                     }
                     Spacer(Modifier.height(14.dp))
                     Text(
