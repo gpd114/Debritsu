@@ -115,7 +115,8 @@ fun Modifier.tvEscape(): Modifier {
  * and [clickable] is the one creating that target. Bundling them removes the
  * chance of wiring it up backwards at each call site and seeing nothing.
  *
- * Touching a control does not focus it, so this is invisible on a phone.
+ * Touching a control does not focus it, so this is invisible on a phone — and
+ * on a phone it is skipped outright rather than merely never drawn.
  */
 @Composable
 fun Modifier.tvClickable(
@@ -127,6 +128,13 @@ fun Modifier.tvClickable(
 ): Modifier {
     val context = LocalContext.current
     val tv = remember(context) { isTelevision(context) }
+    // Nothing below can ever show on a phone, since touching a control does not
+    // focus it — so a phone should not be paying for any of it. Two animated
+    // values, a border and a graphics layer on every poster, episode chip and
+    // list row is real work in a scrolling list, and it buys exactly nothing
+    // where there is no d-pad.
+    if (!tv) return this.clickable(enabled = enabled, onClick = onClick)
+
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (focused && lift > 0f) 1f + lift else 1f,
