@@ -77,7 +77,7 @@ fun DownloadsScreen(onBack: () -> Unit) {
             )
         }
     ) { pad ->
-        Column(Modifier.padding(pad)) {
+        Column(Modifier.padding(pad).padding(overscan())) {
 
             syncNote?.let {
                 Text(
@@ -116,7 +116,10 @@ fun DownloadsScreen(onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(enabled = complete) { play(context, d) }
+                            .tvClickable(
+                                shape = RoundedCornerShape(10.dp),
+                                enabled = complete
+                            ) { play(context, d) }
                             .padding(vertical = 10.dp)
                     ) {
                         AsyncImage(

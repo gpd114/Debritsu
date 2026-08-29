@@ -62,7 +62,8 @@ fun SettingsScreen(onBack: () -> Unit) {
             Modifier
                 .padding(pad)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(16.dp)
+                .padding(overscan()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
 

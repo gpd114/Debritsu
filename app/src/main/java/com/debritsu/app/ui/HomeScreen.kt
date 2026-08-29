@@ -112,7 +112,9 @@ fun HomeScreen(
     }
 
     Scaffold { pad ->
-        Column(Modifier.padding(pad)) {
+        // Zero on a phone; on a television it keeps content out of the slice
+        // the panel cuts off at the edges.
+        Column(Modifier.padding(pad).padding(overscan())) {
 
             // Search sits where the wordmark used to, alongside the actions.
             // Two rows of chrome before any content was a row too many, and the
@@ -300,7 +302,12 @@ private fun SectionHeader(
 
 @Composable
 private fun PosterCard(anime: Anime, onOpen: (Int) -> Unit) {
-    Column(Modifier.clickable { onOpen(anime.id) }) {
+    Column(
+        Modifier.tvClickable(
+            shape = RoundedCornerShape(14.dp),
+            lift = 0.06f
+        ) { onOpen(anime.id) }
+    ) {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -406,7 +413,7 @@ private fun AiringStrip(airing: List<Anime>, onOpen: (Int) -> Unit) {
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
                     .background(Ink.Veil)
-                    .clickable { onOpen(anime.id) }
+                    .tvClickable(RoundedCornerShape(12.dp)) { onOpen(anime.id) }
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Text(
