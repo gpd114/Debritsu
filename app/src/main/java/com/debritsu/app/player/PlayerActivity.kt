@@ -13,6 +13,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.GestureDetector
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.widget.ImageButton
@@ -73,6 +74,8 @@ class PlayerActivity : ComponentActivity() {
     private var player: ExoPlayer? = null
 
     /** The centred readout, shared by the touch gestures and the remote. */
+    private var playerView: PlayerView? = null
+
     private var hud: TextView? = null
     private val hideHud = Runnable { hud?.visibility = View.GONE }
 
@@ -120,6 +123,7 @@ class PlayerActivity : ComponentActivity() {
 
         setContentView(R.layout.activity_player)
         val view = findViewById<PlayerView>(R.id.player_view)
+        playerView = view
         view.setKeepContentOnPlayerReset(true)
 
         // The Sources button lives in the control bar, so it fades with the
@@ -439,6 +443,62 @@ class PlayerActivity : ComponentActivity() {
         loadSkipSegments()
     }
 
+
+    /**
+     * Remote and keyboard control.
+     *
+     * Everything the player could do without opening the transport controls was
+     * a touch gesture, and a television remote can produce none of them. This
+     * gives the same actions to the keys a remote does have.
+     *
+     * Keys are only taken while the controls are hidden. Once they are up, left
+     * and right belong to whichever button has focus, and stealing them would
+     * leave the controls impossible to move around — which is a common way to
+     * ship a television player that looks right and cannot be used.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val exo = player
+        val view = playerView
+        if (exo == null || view == null ||
+            event.action != KeyEvent.ACTION_DOWN ||
+            view.isControllerFullyVisible
+        ) {
+            return super.dispatchKeyEvent(event)
+        }
+
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                exo.seekBack()
+                readout("−${exo.seekBackIncrement / 1000}s")
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                exo.seekForward()
+                readout("+${exo.seekForwardIncrement / 1000}s")
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_SPACE -> {
+                exo.playWhenReady = !exo.playWhenReady
+                readout(if (exo.playWhenReady) "Play" else "Pause")
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                exo.playWhenReady = true
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                exo.playWhenReady = false
+                return true
+            }
+        }
+        // Anything else — centre, up, down, menu — falls through to PlayerView,
+        // which raises the controls. That is the right answer to a stray press,
+        // and it is what puts focus somewhere to navigate from.
+        return super.dispatchKeyEvent(event)
+    }
 
     /**
      * Double tap the left or right third to skip, drag up or down the left half
