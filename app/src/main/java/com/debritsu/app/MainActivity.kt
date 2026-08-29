@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 import com.debritsu.app.ui.DetailScreen
 import com.debritsu.app.ui.DownloadsScreen
 import com.debritsu.app.ui.DebritsuTheme
+import com.debritsu.app.ui.tv.TvDetailScreen
 import com.debritsu.app.ui.tv.TvHomeScreen
 import com.debritsu.app.ui.tv.TvSettingsScreen
 
@@ -54,10 +55,9 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable("detail/{id}") { entry ->
-                            DetailScreen(
+                            TvDetailScreen(
                                 anilistId = entry.arguments?.getString("id")?.toIntOrNull() ?: 0,
-                                onBack = { nav.popBackStack() },
-                                onOpen = { nav.navigate("detail/$it") }
+                                onBack = { nav.popBackStack() }
                             )
                         }
                         composable("downloads") {
