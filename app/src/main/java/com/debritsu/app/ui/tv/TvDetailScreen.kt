@@ -293,33 +293,37 @@ fun TvDetailScreen(
                 .clipToBounds()
                 .background(Ink.Veil)
         ) {
-            // Banner only. Falling back to the cover put a portrait image in a
-            // box four times as wide, so the crop threw away everything but a
-            // meaningless middle strip. Where there is no banner the artwork is
-            // the poster on the right instead, at its own shape.
-            anime?.banner?.let {
-                AsyncImage(
-                    model = it,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-            // Two scrims: sideways so the text has something solid behind it,
-            // and downward so the artwork meets the rows below without an edge.
+            // The cover stands in when there is no banner, exactly as the phone
+            // does. Holding out for a banner was the wrong call: AniList has
+            // none for a great many shows, and those landed on a flat empty
+            // box. A cropped cover is an imperfect backdrop, but the phone has
+            // used one at this same wide ratio all along and it reads well.
+            AsyncImage(
+                model = anime?.banner ?: anime?.cover,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            // Two scrims, and both are lighter than they were. The sideways one
+            // used to be fully opaque for the first 45% and near enough for the
+            // next — which is to say it painted over the banner and left only a
+            // strip of it visible behind the poster. It now darkens just enough
+            // to read white text against, and is gone by the halfway mark.
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.horizontalGradient(
-                        0f to Ink.Base,
-                        0.45f to Ink.Base.copy(alpha = 0.92f),
-                        1f to Ink.Base.copy(alpha = 0.15f)
+                        0f to Ink.Base.copy(alpha = 0.88f),
+                        0.5f to Ink.Base.copy(alpha = 0.45f),
+                        1f to androidx.compose.ui.graphics.Color.Transparent
                     )
                 )
             )
+            // Downward, so the artwork meets the rows below without an edge.
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.verticalGradient(
-                        0.55f to androidx.compose.ui.graphics.Color.Transparent,
+                        0f to Ink.Base.copy(alpha = 0.35f),
+                        0.5f to androidx.compose.ui.graphics.Color.Transparent,
                         1f to Ink.Base
                     )
                 )
