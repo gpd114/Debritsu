@@ -783,6 +783,22 @@ class PlayerActivity : ComponentActivity() {
     private data class Row(val title: String, val subtitle: String, val tag: String?)
 
     /** The app's panel styling, shared by the source and cast pickers. */
+    /**
+     * A violet plate behind whichever row the d-pad is on, and nothing
+     * otherwise. Built here rather than as a drawable resource so the colour
+     * sits beside the rest of the dialog's.
+     */
+    private fun focusHighlight(): android.graphics.drawable.Drawable {
+        val on = GradientDrawable().apply {
+            setColor(0x338B5CF6)
+            cornerRadius = 10 * resources.displayMetrics.density
+        }
+        return android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), on)
+            addState(intArrayOf(), android.graphics.drawable.ColorDrawable(0))
+        }
+    }
+
     private fun panelDialog(
         heading: String,
         subheading: String,
@@ -822,8 +838,16 @@ class PlayerActivity : ComponentActivity() {
         rows.forEachIndexed { index, row ->
             val item = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(0, px(12), 0, px(12))
+                setPadding(px(12), px(12), px(12), px(12))
                 isClickable = true
+                // Clickable is not focusable. Without this a remote cannot
+                // select a row at all: every picker opens and nothing in it can
+                // be reached, so there is no changing subtitles and no
+                // switching source mid-episode.
+                isFocusable = true
+                // Says which row the remote is on. A touch never focuses
+                // anything, so this is invisible on a phone.
+                background = focusHighlight()
                 setOnClickListener { dialog.dismiss(); onPick(index) }
             }
             item.addView(TextView(this).apply {
@@ -868,6 +892,11 @@ class PlayerActivity : ComponentActivity() {
                 (resources.displayMetrics.heightPixels * 0.80).toInt()
             )
             setGravity(Gravity.BOTTOM or Gravity.END)
+        }
+        // Start on the first row rather than nowhere, so the first press of the
+        // remote moves the selection instead of being spent creating one.
+        dialog.setOnShowListener {
+            (content.getChildAt(2) ?: content.getChildAt(0))?.requestFocus()
         }
         return dialog
     }
