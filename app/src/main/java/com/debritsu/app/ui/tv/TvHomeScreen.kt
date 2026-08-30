@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -36,6 +39,7 @@ import com.debritsu.app.data.Anime
 import com.debritsu.app.data.Settings
 import com.debritsu.app.ui.Ink
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -64,6 +68,31 @@ fun TvHomeScreen(
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var planning by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var trending by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    var query by remember { mutableStateOf("") }
+    var found by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    val searching = query.trim().length >= 3
+
+    // The search field refuses focus until the first shelf has had its chance
+    // to take it. A television gives focus to the first focusable on screen,
+    // which would be the field, and a focused field opens the keyboard — which
+    // then owns the d-pad, leaving the shows unreachable behind it. Held off
+    // rather than fought after the fact.
+    var allowSearchFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(600)
+        allowSearchFocus = true
+    }
+
+    // Three characters before asking, and a pause after the last keystroke, so
+    // a phone keyboard app typing a title does not fire a query per letter.
+    LaunchedEffect(query) {
+        if (!searching) {
+            found = emptyList()
+            return@LaunchedEffect
+        }
+        delay(350)
+        found = runCatching { AniList.search(query.trim()).items }.getOrDefault(emptyList())
+    }
 
     // Three independent queries, run together rather than one after another.
     // Each row is assigned on its own so it appears as its own query lands
@@ -92,12 +121,29 @@ fun TvHomeScreen(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp)
         ) {
-            Text(
-                "Debritsu",
-                style = androidx.tv.material3.MaterialTheme.typography.headlineMedium,
-                color = Ink.Bone
+            // Search takes the space the app's name used to. Nobody needs
+            // reminding what they are looking at while they are looking at it.
+            //
+            // Focus is kept off it at launch: a television hands focus to the
+            // first focusable on screen, and once a text field has it the
+            // keyboard opens and owns the d-pad entirely — the shows below
+            // become unreachable and the remote appears dead.
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                placeholder = { androidx.compose.material3.Text("Search anime") },
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedBorderColor = Ink.Edge,
+                    focusedBorderColor = Ink.Iris,
+                    unfocusedContainerColor = Ink.Veil,
+                    focusedContainerColor = Ink.Veil
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .focusProperties { canFocus = allowSearchFocus }
             )
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(12.dp))
             Button(onClick = onSettings) { Text("Settings") }
         }
 
@@ -114,9 +160,25 @@ fun TvHomeScreen(
             )
         }
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            items(shelves) { (title, list) ->
-                TvShelf(title, list, onOpen)
+        // Results take over from the shelves while there is a query, rather
+        // than appearing beneath them — with a remote, anything below the fold
+        // may as well not be there.
+        if (searching) {
+            if (found.isEmpty()) {
+                Text(
+                    "Searching…",
+                    style = androidx.tv.material3.MaterialTheme.typography.bodyLarge,
+                    color = Ink.Mist,
+                    modifier = Modifier.padding(start = 8.dp, top = 12.dp)
+                )
+            } else {
+                TvShelf("Results for “${query.trim()}”", found, onOpen)
+            }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                items(shelves) { (title, list) ->
+                    TvShelf(title, list, onOpen)
+                }
             }
         }
     }
