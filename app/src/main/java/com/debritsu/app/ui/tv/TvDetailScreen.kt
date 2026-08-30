@@ -45,7 +45,9 @@ import com.debritsu.app.data.AniList
 import com.debritsu.app.data.Anime
 import com.debritsu.app.data.AutoPlay
 import com.debritsu.app.data.Debrid
+import com.debritsu.app.data.Jikan
 import com.debritsu.app.data.Mappings
+import com.debritsu.app.data.Relation
 import com.debritsu.app.data.Progress
 import com.debritsu.app.data.SourceHandoff
 import com.debritsu.app.data.Settings
@@ -72,7 +74,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun TvDetailScreen(
     anilistId: Int,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpen: (Int) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -100,9 +103,22 @@ fun TvDetailScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
 
+    var relations by remember { mutableStateOf<List<Relation>>(emptyList()) }
+    var epMeta by remember { mutableStateOf<Map<Int, Jikan.EpisodeMeta>>(emptyMap()) }
+
     LaunchedEffect(anilistId, progressTick) {
         anime = runCatching { AniList.media(anilistId) }.getOrNull()
         selectedEpisode = ((anime?.progress ?: 0) + 1).coerceAtLeast(1)
+    }
+    LaunchedEffect(anilistId) {
+        relations = runCatching { AniList.relations(anilistId) }.getOrDefault(emptyList())
+    }
+    // Waits for the title: calling the mapper without one caches a kitsu-less
+    // result that the stream lookup would then reuse.
+    LaunchedEffect(anime?.id) {
+        val a = anime ?: return@LaunchedEffect
+        val mal = runCatching { Mappings.forAniList(a.id, a.title).mal?.toIntOrNull() }.getOrNull()
+        epMeta = runCatching { Jikan.episodes(mal) }.getOrDefault(emptyMap())
     }
 
     fun startPlayer(
@@ -205,23 +221,22 @@ fun TvDetailScreen(
             .padding(OVERSCAN),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Artwork beside the text rather than behind it: a banner washed under
-        // a title is the usual television treatment and it makes both harder to
-        // read across a room.
-        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        // Laid out as the phone screen is: artwork, then the format line, then
+        // the score given room of its own, then genres, then the synopsis.
+        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
             AsyncImage(
                 model = anime?.cover,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .width(220.dp)
+                    .width(240.dp)
                     .aspectRatio(2f / 3f)
                     .clip(RoundedCornerShape(14.dp))
                     .background(Ink.Veil)
             )
             Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth(0.8f)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(0.82f)
             ) {
                 Text(
                     anime?.title ?: "…",
@@ -231,31 +246,71 @@ fun TvDetailScreen(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                // The line of facts worth knowing before starting something.
-                val facts = listOfNotNull(
-                    anime?.averageScore?.let { "$it%" },
-                    anime?.format,
-                    anime?.seasonLabel,
-                    anime?.episodes?.let { "$it episodes" },
-                    anime?.studio
+                Text(
+                    listOfNotNull(
+                        anime?.format,
+                        anime?.episodes?.let { "${it.toString().padStart(2, '0')} EP" },
+                        anime?.durationMins?.let { "${it}m" },
+                        anime?.seasonLabel,
+                        anime?.airingStatus
+                    ).joinToString("  ·  ").uppercase(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Ink.Mist
                 )
-                if (facts.isNotEmpty()) {
-                    Text(
-                        facts.joinToString("  ·  "),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Ink.Orchid
-                    )
+
+                // Score first — it is the thing that decides whether to bother.
+                anime?.averageScore?.let { avg ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "$avg%",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = when {
+                                avg >= 80 -> Ink.Iris
+                                avg >= 65 -> Ink.Bone
+                                else -> Ink.Mist
+                            }
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                "AVERAGE SCORE",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Ink.Mist
+                            )
+                            Text(
+                                listOfNotNull(
+                                    anime?.popularity?.let { "#$it BY POPULARITY" },
+                                    anime?.favourites?.takeIf { it > 0 }?.let { "$it ♥" }
+                                ).joinToString("  ·  "),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Ink.Mist
+                            )
+                        }
+                    }
                 }
-                anime?.genres?.take(5)?.takeIf { it.isNotEmpty() }?.let {
-                    Text(
-                        it.joinToString("  ·  "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Ink.Mist
-                    )
+
+                anime?.genres?.take(5)?.takeIf { it.isNotEmpty() }?.let { genres ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        genres.forEach { g ->
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Ink.Veil)
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    g,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Ink.Mist
+                                )
+                            }
+                        }
+                    }
                 }
+
                 anime?.description?.let {
                     Text(
-                        it.replace(Regex("<[^>]*>"), "").replace("&quot;", "\"").take(400),
+                        it.replace(Regex("<[^>]*>"), "").replace("&quot;", "\"").take(420),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Ink.Mist,
                         maxLines = 5,
@@ -284,20 +339,90 @@ fun TvDetailScreen(
             contentPadding = PaddingValues(vertical = 10.dp)
         ) {
             items((1..total).toList()) { ep ->
+                val watched = ep <= (anime?.progress ?: 0)
+                val resume = remember(ep, progressTick) { Progress.fraction(anilistId, ep) }
+                val meta = epMeta[ep]
+                val skippable = meta?.filler == true || meta?.recap == true
+
                 // Fixed size, so no episode ever hangs below its neighbours and
                 // a downward press cannot find one along the row instead of
                 // leaving it.
                 Card(onClick = { selectedEpisode = ep; play(ep) }) {
                     Box(
                         Modifier.size(96.dp).background(
-                            if (ep == selectedEpisode) Ink.Iris else Ink.Veil
+                            when {
+                                ep == selectedEpisode -> Ink.Iris
+                                watched -> Ink.Edge
+                                else -> Ink.Veil
+                            }
                         ),
                         contentAlignment = Alignment.Center
                     ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                ep.toString().padStart(2, '0'),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Ink.Bone
+                            )
+                            // Marked from MyAnimeList data, so you know what is
+                            // safe to skip before starting it.
+                            if (skippable) {
+                                Text(
+                                    if (meta?.filler == true) "FILLER" else "RECAP",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Ink.Orchid
+                                )
+                            }
+                        }
+                        // How far into this one you got, along the bottom edge.
+                        if (resume > 0f) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomStart)
+                                    .fillMaxWidth(resume)
+                                    .height(4.dp)
+                                    .background(Ink.Orchid)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (relations.isNotEmpty()) {
+            Text("Related", style = MaterialTheme.typography.titleMedium, color = Ink.Bone)
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(vertical = 10.dp)
+            ) {
+                items(relations) { rel ->
+                    Column(Modifier.width(140.dp)) {
+                        Card(onClick = { onOpen(rel.anime.id) }) {
+                            AsyncImage(
+                                model = rel.anime.cover,
+                                contentDescription = rel.anime.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(2f / 3f)
+                                    .background(Ink.Veil)
+                            )
+                        }
                         Text(
-                            ep.toString().padStart(2, '0'),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Ink.Bone
+                            rel.type.uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Ink.Orchid,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                        // Both lines reserved, so every card in the row is the
+                        // same height and a downward press leaves the row.
+                        Text(
+                            rel.anime.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Ink.Mist,
+                            minLines = 2,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
