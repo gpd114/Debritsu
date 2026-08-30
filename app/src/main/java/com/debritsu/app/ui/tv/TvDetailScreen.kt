@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -230,15 +231,27 @@ fun TvDetailScreen(
         // than a poster beside a column of text. Laid out as a phone screen it
         // wasted two thirds of a 1920 panel and squeezed the synopsis into one
         // truncated line.
-        // Sized so the hero and the controls beneath it both fit on screen at
-        // once. The panel is 1920x1080 at 2x, so the viewport is 540dp; at 470
-        // the hero plus its spacing plus the control row came to exactly that,
-        // and focusing a control scrolled the page just enough to carry the
-        // title off the top. 400 leaves about 70dp of headroom, so nothing has
-        // to move.
+        // A constant height, not a minimum, and this is the whole reason the
+        // top of the page kept disappearing.
         //
-        // The title going missing was never clipping — it was this scroll.
-        Box(Modifier.fillMaxWidth().heightIn(min = 400.dp).background(Ink.Veil)) {
+        // The show arrives about a second after the screen does. Until then the
+        // hero holds almost nothing and is short; when the title, score, genres
+        // and synopsis land it grows, everything below it moves down, and the
+        // scroll container chases the control that already had focus — taking
+        // the top of the page with it. A minimum height cannot prevent that,
+        // because growing is precisely what a minimum allows.
+        //
+        // Fixed, the box is the same size empty or full, so nothing below it
+        // moves and there is nothing to chase. 400dp: the panel is 1920x1080 at
+        // 2x, so the viewport is 540dp, and the hero plus its spacing plus the
+        // control row has to fit inside that with room to spare.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(400.dp)
+                .clipToBounds()
+                .background(Ink.Veil)
+        ) {
             // Banner only. Falling back to the cover put a portrait image in a
             // box four times as wide, so the crop threw away everything but a
             // meaningless middle strip. Where there is no banner the artwork is
