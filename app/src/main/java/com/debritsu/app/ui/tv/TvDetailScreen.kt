@@ -41,7 +41,6 @@ import com.debritsu.app.data.AniList
 import com.debritsu.app.data.Anime
 import com.debritsu.app.data.AutoPlay
 import com.debritsu.app.data.Debrid
-import com.debritsu.app.data.Downloads
 import com.debritsu.app.data.Mappings
 import com.debritsu.app.data.Progress
 import com.debritsu.app.data.SourceHandoff
@@ -137,22 +136,9 @@ fun TvDetailScreen(
     }
 
     fun play(episode: Int) {
-        val offline = Downloads.get(anilistId, episode)?.takeIf { Downloads.isComplete(it) }
-        if (offline != null) {
-            context.startActivity(
-                Intent(context, PlayerActivity::class.java)
-                    .putExtra(
-                        PlayerActivity.EXTRA_URL,
-                        android.net.Uri.fromFile(Downloads.fileFor(offline)).toString()
-                    )
-                    .putExtra(PlayerActivity.EXTRA_TITLE, "${anime?.title} — EP $episode")
-                    .putExtra(PlayerActivity.EXTRA_SERIES_TITLE, anime?.title.orEmpty())
-                    .putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, anime?.episodes ?: 0)
-                    .putExtra(PlayerActivity.EXTRA_ANILIST_ID, anilistId)
-                    .putExtra(PlayerActivity.EXTRA_EPISODE, episode)
-            )
-            return
-        }
+        // No offline check: this build has no way to make a download, so it
+        // could never find one. Downloads are for a phone away from the house,
+        // and these boxes have barely any storage to spend on them.
         if (!Settings.autoPlay) {
             manualSearch(episode)
             return

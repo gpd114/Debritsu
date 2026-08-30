@@ -20,7 +20,6 @@ import com.debritsu.app.data.Settings
 import com.debritsu.app.data.SyncQueue
 import kotlinx.coroutines.launch
 import com.debritsu.app.ui.DetailScreen
-import com.debritsu.app.ui.DownloadsScreen
 import com.debritsu.app.ui.DebritsuTheme
 import com.debritsu.app.ui.tv.TvDetailScreen
 import com.debritsu.app.ui.tv.TvHomeScreen
@@ -59,9 +58,6 @@ class MainActivity : ComponentActivity() {
                                 anilistId = entry.arguments?.getString("id")?.toIntOrNull() ?: 0,
                                 onBack = { nav.popBackStack() }
                             )
-                        }
-                        composable("downloads") {
-                            DownloadsScreen(onBack = { nav.popBackStack() })
                         }
                         composable("settings") {
                             TvSettingsScreen(onBack = { nav.popBackStack() })
