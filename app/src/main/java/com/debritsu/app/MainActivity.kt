@@ -21,6 +21,7 @@ import com.debritsu.app.data.SyncQueue
 import kotlinx.coroutines.launch
 import com.debritsu.app.ui.DetailScreen
 import com.debritsu.app.ui.DebritsuTheme
+import com.debritsu.app.ui.tv.DebritsuTvTheme
 import com.debritsu.app.ui.tv.TvDetailScreen
 import com.debritsu.app.ui.tv.TvHomeScreen
 import com.debritsu.app.ui.tv.TvSettingsScreen
@@ -38,8 +39,12 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { runCatching { SyncQueue.flush() } }
 
         setContent {
+            // Both themes: the phone one still dresses the shared player and
+            // its dialogs, while tv-material's components take their colours
+            // from ours rather than from its defaults.
             DebritsuTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
+                DebritsuTvTheme {
+                    Surface(modifier = Modifier.fillMaxSize()) {
                     val nav = rememberNavController()
                     NavHost(navController = nav, startDestination = "home") {
                         composable("home") {
@@ -62,6 +67,7 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("settings") {
                             TvSettingsScreen(onBack = { nav.popBackStack() })
+                        }
                         }
                     }
                 }

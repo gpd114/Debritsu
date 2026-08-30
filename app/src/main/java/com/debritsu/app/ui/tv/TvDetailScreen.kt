@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -217,30 +218,53 @@ fun TvDetailScreen(
         Modifier
             .fillMaxSize()
             .background(Ink.Base)
-            .verticalScroll(rememberScrollState())
-            .padding(OVERSCAN),
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Laid out as the phone screen is: artwork, then the format line, then
-        // the score given room of its own, then genres, then the synopsis.
-        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+        // A hero across the full width, the way a television expects, rather
+        // than a poster beside a column of text. Laid out as a phone screen it
+        // wasted two thirds of a 1920 panel and squeezed the synopsis into one
+        // truncated line.
+        Box(Modifier.fillMaxWidth().height(470.dp)) {
             AsyncImage(
-                model = anime?.cover,
+                model = anime?.banner ?: anime?.cover,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .width(240.dp)
-                    .aspectRatio(2f / 3f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Ink.Veil)
+                modifier = Modifier.fillMaxSize().background(Ink.Veil)
             )
+            // Two scrims: sideways so the text has something solid behind it,
+            // and downward so the artwork meets the rows below without an edge.
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.horizontalGradient(
+                        0f to Ink.Base,
+                        0.45f to Ink.Base.copy(alpha = 0.92f),
+                        1f to Ink.Base.copy(alpha = 0.15f)
+                    )
+                )
+            )
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(
+                        0.55f to androidx.compose.ui.graphics.Color.Transparent,
+                        1f to Ink.Base
+                    )
+                )
+            )
+
             Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth(0.82f)
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                // Sat against the bottom rather than centred: centring left a
+                // dead band between the buttons and the episode row, and
+                // pushed the title off the top once focus scrolled the page.
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth(0.52f)
+                    .padding(start = OVERSCAN, end = 24.dp, bottom = 20.dp)
             ) {
                 Text(
                     anime?.title ?: "…",
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.displaySmall,
                     color = Ink.Bone,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -254,7 +278,7 @@ fun TvDetailScreen(
                         anime?.seasonLabel,
                         anime?.airingStatus
                     ).joinToString("  ·  ").uppercase(),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelLarge,
                     color = Ink.Mist
                 )
 
@@ -263,14 +287,14 @@ fun TvDetailScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             "$avg%",
-                            style = MaterialTheme.typography.headlineSmall,
+                            style = MaterialTheme.typography.headlineMedium,
                             color = when {
                                 avg >= 80 -> Ink.Iris
                                 avg >= 65 -> Ink.Bone
                                 else -> Ink.Mist
                             }
                         )
-                        Spacer(Modifier.width(12.dp))
+                        Spacer(Modifier.width(14.dp))
                         Column {
                             Text(
                                 "AVERAGE SCORE",
@@ -280,7 +304,7 @@ fun TvDetailScreen(
                             Text(
                                 listOfNotNull(
                                     anime?.popularity?.let { "#$it BY POPULARITY" },
-                                    anime?.favourites?.takeIf { it > 0 }?.let { "$it ♥" }
+                                    anime?.favourites?.takeIf { it > 0 }?.let { "$it FAVOURITES" }
                                 ).joinToString("  ·  "),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Ink.Mist
@@ -289,7 +313,7 @@ fun TvDetailScreen(
                     }
                 }
 
-                anime?.genres?.take(5)?.takeIf { it.isNotEmpty() }?.let { genres ->
+                anime?.genres?.take(4)?.takeIf { it.isNotEmpty() }?.let { genres ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         genres.forEach { g ->
                             Box(
@@ -310,33 +334,40 @@ fun TvDetailScreen(
 
                 anime?.description?.let {
                     Text(
-                        it.replace(Regex("<[^>]*>"), "").replace("&quot;", "\"").take(420),
-                        style = MaterialTheme.typography.bodyMedium,
+                        it.replace(Regex("<[^>]*>"), "").replace("&quot;", "\"").trim(),
+                        style = MaterialTheme.typography.bodyLarge,
                         color = Ink.Mist,
-                        maxLines = 5,
+                        maxLines = 4,
                         overflow = TextOverflow.Ellipsis
                     )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = { play(selectedEpisode) }) {
+                        Text(
+                            if (resumeFrac > 0f)
+                                "Resume episode ${selectedEpisode.toString().padStart(2, '0')}  ·  " +
+                                    "${(resumeFrac * 100).toInt()}%"
+                            else "Play episode ${selectedEpisode.toString().padStart(2, '0')}"
+                        )
+                    }
+                    Button(onClick = { manualSearch(selectedEpisode) }) { Text("Choose source") }
+                    Button(onClick = onBack) { Text("Back") }
                 }
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { play(selectedEpisode) }) {
-                Text(
-                    if (resumeFrac > 0f)
-                        "Resume episode ${selectedEpisode.toString().padStart(2, '0')} · " +
-                            "${(resumeFrac * 100).toInt()}%"
-                    else "Play episode ${selectedEpisode.toString().padStart(2, '0')}"
-                )
-            }
-            Button(onClick = { manualSearch(selectedEpisode) }) { Text("Choose source") }
-            Button(onClick = onBack) { Text("Back") }
-        }
-
-        Text("Episodes", style = MaterialTheme.typography.titleMedium, color = Ink.Bone)
+        // The hero runs edge to edge, so everything below it carries the
+        // overscan margin itself rather than inheriting one from the column.
+        Text(
+            "Episodes",
+            style = MaterialTheme.typography.titleMedium,
+            color = Ink.Bone,
+            modifier = Modifier.padding(start = OVERSCAN)
+        )
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(vertical = 10.dp)
+            contentPadding = PaddingValues(horizontal = OVERSCAN, vertical = 10.dp)
         ) {
             items((1..total).toList()) { ep ->
                 val watched = ep <= (anime?.progress ?: 0)
@@ -390,10 +421,15 @@ fun TvDetailScreen(
         }
 
         if (relations.isNotEmpty()) {
-            Text("Related", style = MaterialTheme.typography.titleMedium, color = Ink.Bone)
+            Text(
+                "Related",
+                style = MaterialTheme.typography.titleMedium,
+                color = Ink.Bone,
+                modifier = Modifier.padding(start = OVERSCAN)
+            )
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = PaddingValues(vertical = 10.dp)
+                contentPadding = PaddingValues(horizontal = OVERSCAN, vertical = 10.dp)
             ) {
                 items(relations) { rel ->
                     Column(Modifier.width(140.dp)) {
@@ -433,11 +469,17 @@ fun TvDetailScreen(
             Text(
                 stepLabel(step),
                 style = MaterialTheme.typography.bodyLarge,
-                color = Ink.Orchid
+                color = Ink.Orchid,
+                modifier = Modifier.padding(horizontal = OVERSCAN)
             )
         }
         status?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = Ink.Orchid)
+            Text(
+                it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Ink.Orchid,
+                modifier = Modifier.padding(horizontal = OVERSCAN)
+            )
         }
 
         if (showSources) {
@@ -445,7 +487,8 @@ fun TvDetailScreen(
             Text(
                 "Sources · ${streams.size} found",
                 style = MaterialTheme.typography.titleMedium,
-                color = Ink.Bone
+                color = Ink.Bone,
+                modifier = Modifier.padding(horizontal = OVERSCAN)
             )
             streams.take(40).forEach { s ->
                 Button(
@@ -461,7 +504,7 @@ fun TvDetailScreen(
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = OVERSCAN)
                 ) {
                     Text(
                         s.name.replace("\n", " ").take(90),
