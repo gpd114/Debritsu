@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,7 +37,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.CircleShape
 import androidx.tv.material3.Button
+import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Card
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
@@ -89,6 +92,7 @@ fun TvDetailScreen(
     var autoJob by remember { mutableStateOf<Job?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var showSources by remember { mutableStateOf(false) }
+    var showStatus by remember { mutableStateOf(false) }
 
     // Bumped on every return to this screen. Without it nothing is re-read
     // after watching: the resume percentage stays as it was at first
@@ -225,13 +229,19 @@ fun TvDetailScreen(
         // than a poster beside a column of text. Laid out as a phone screen it
         // wasted two thirds of a 1920 panel and squeezed the synopsis into one
         // truncated line.
-        Box(Modifier.fillMaxWidth().height(470.dp)) {
-            AsyncImage(
-                model = anime?.banner ?: anime?.cover,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().background(Ink.Veil)
-            )
+        Box(Modifier.fillMaxWidth().height(470.dp).background(Ink.Veil)) {
+            // Banner only. Falling back to the cover put a portrait image in a
+            // box four times as wide, so the crop threw away everything but a
+            // meaningless middle strip. Where there is no banner the artwork is
+            // the poster on the right instead, at its own shape.
+            anime?.banner?.let {
+                AsyncImage(
+                    model = it,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
             // Two scrims: sideways so the text has something solid behind it,
             // and downward so the artwork meets the rows below without an edge.
             Box(
@@ -250,6 +260,21 @@ fun TvDetailScreen(
                         1f to Ink.Base
                     )
                 )
+            )
+
+            // The poster, at its own two-to-three shape. Always present, so a
+            // show without a banner still has artwork on screen.
+            AsyncImage(
+                model = anime?.cover,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = OVERSCAN)
+                    .height(340.dp)
+                    .aspectRatio(2f / 3f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Ink.Edge)
             )
 
             Column(
@@ -343,7 +368,15 @@ fun TvDetailScreen(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = { play(selectedEpisode) }) {
+                    // The primary action carries the app's colour rather than
+                    // the library's default, so it reads as the thing to press.
+                    Button(
+                        onClick = { play(selectedEpisode) },
+                        colors = ButtonDefaults.colors(
+                            containerColor = Ink.Iris,
+                            contentColor = Ink.Bone
+                        )
+                    ) {
                         Text(
                             if (resumeFrac > 0f)
                                 "Resume episode ${selectedEpisode.toString().padStart(2, '0')}  ·  " +
@@ -352,7 +385,39 @@ fun TvDetailScreen(
                         )
                     }
                     Button(onClick = { manualSearch(selectedEpisode) }) { Text("Choose source") }
+                    if (Settings.aniListToken.isNotEmpty()) {
+                        Button(onClick = { showStatus = true }) {
+                            Text(statusLabel(anime?.listStatus))
+                        }
+                    }
                     Button(onClick = onBack) { Text("Back") }
+                }
+
+                // Setting the list status, which the phone screen has and this
+                // did not: no way to mark something watching, completed or
+                // dropped without reaching for another device.
+                if (showStatus) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        STATUS_CHOICES.forEach { (value, label) ->
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        runCatching {
+                                            AniList.saveEntry(anilistId, status = value)
+                                        }
+                                        showStatus = false
+                                        progressTick++
+                                    }
+                                },
+                                colors = if (anime?.listStatus == value)
+                                    ButtonDefaults.colors(
+                                        containerColor = Ink.Iris,
+                                        contentColor = Ink.Bone
+                                    )
+                                else ButtonDefaults.colors()
+                            ) { Text(label) }
+                        }
+                    }
                 }
             }
         }
@@ -378,22 +443,23 @@ fun TvDetailScreen(
                 // Fixed size, so no episode ever hangs below its neighbours and
                 // a downward press cannot find one along the row instead of
                 // leaving it.
+                val selected = ep == selectedEpisode
                 Card(onClick = { selectedEpisode = ep; play(ep) }) {
                     Box(
-                        Modifier.size(96.dp).background(
-                            when {
-                                ep == selectedEpisode -> Ink.Iris
-                                watched -> Ink.Edge
-                                else -> Ink.Veil
-                            }
-                        ),
+                        Modifier.size(96.dp)
+                            .background(if (selected) Ink.Iris else Ink.Veil),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 ep.toString().padStart(2, '0'),
                                 style = MaterialTheme.typography.titleMedium,
-                                color = Ink.Bone
+                                // Watched ones recede rather than shout.
+                                color = when {
+                                    selected -> Ink.Bone
+                                    watched -> Ink.Mist
+                                    else -> Ink.Bone
+                                }
                             )
                             // Marked from MyAnimeList data, so you know what is
                             // safe to skip before starting it.
@@ -401,17 +467,35 @@ fun TvDetailScreen(
                                 Text(
                                     if (meta?.filler == true) "FILLER" else "RECAP",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Ink.Orchid
+                                    color = if (selected) Ink.Bone else Ink.Orchid
                                 )
                             }
                         }
-                        // How far into this one you got, along the bottom edge.
-                        if (resume > 0f) {
-                            Box(
+                        when {
+                            // Part-watched wins over the watched dot: it is the
+                            // more actionable state.
+                            resume > 0f -> Box(
                                 Modifier
-                                    .align(Alignment.BottomStart)
-                                    .fillMaxWidth(resume)
+                                    .align(Alignment.BottomCenter)
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                                    .fillMaxWidth()
                                     .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(Ink.Edge)
+                            ) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth(resume)
+                                        .fillMaxHeight()
+                                        .background(Ink.Orchid)
+                                )
+                            }
+                            watched && !selected -> Box(
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 11.dp)
+                                    .size(6.dp)
+                                    .clip(CircleShape)
                                     .background(Ink.Orchid)
                             )
                         }
@@ -516,6 +600,18 @@ fun TvDetailScreen(
         }
     }
 }
+
+/** The AniList statuses worth setting from a remote, with their labels. */
+private val STATUS_CHOICES = listOf(
+    "CURRENT" to "Watching",
+    "COMPLETED" to "Completed",
+    "PAUSED" to "Paused",
+    "DROPPED" to "Dropped",
+    "PLANNING" to "Plan to watch"
+)
+
+private fun statusLabel(raw: String?): String =
+    STATUS_CHOICES.firstOrNull { it.first == raw }?.second ?: "Not on list"
 
 private fun stepLabel(step: AutoPlay.Step): String = when (step) {
     AutoPlay.Step.Locating -> "Finding this episode…"
