@@ -25,7 +25,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -72,15 +75,30 @@ fun TvHomeScreen(
     var found by remember { mutableStateOf<List<Anime>>(emptyList()) }
     val searching = query.trim().length >= 3
 
-    // The search field refuses focus until the first shelf has had its chance
-    // to take it. A television gives focus to the first focusable on screen,
-    // which would be the field, and a focused field opens the keyboard — which
-    // then owns the d-pad, leaving the shows unreachable behind it. Held off
-    // rather than fought after the fact.
-    var allowSearchFocus by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        delay(600)
-        allowSearchFocus = true
+    // The field can only be focused once search is deliberately started, and a
+    // button is what starts it.
+    //
+    // Blocking focus for a moment after launch was tried first and does not
+    // work: nothing holds focus during that window, so the first press of the
+    // remote simply takes the first focusable on screen — which is the field.
+    // Once it has focus the keyboard opens and owns the d-pad, and the shows
+    // are unreachable behind it. Measured on the box: down, right and up all
+    // left the selection sitting in the field.
+    var searchActive by remember { mutableStateOf(false) }
+    val searchFocus = remember { FocusRequester() }
+
+    LaunchedEffect(searchActive) {
+        if (searchActive) {
+            delay(50)
+            runCatching { searchFocus.requestFocus() }
+        }
+    }
+
+    // Back leaves search rather than the screen, and clears what was typed so
+    // the shelves come back.
+    BackHandler(enabled = searchActive) {
+        searchActive = false
+        query = ""
     }
 
     // Three characters before asking, and a pause after the last keystroke, so
@@ -124,26 +142,40 @@ fun TvHomeScreen(
             // Search takes the space the app's name used to. Nobody needs
             // reminding what they are looking at while they are looking at it.
             //
-            // Focus is kept off it at launch: a television hands focus to the
-            // first focusable on screen, and once a text field has it the
-            // keyboard opens and owns the d-pad entirely — the shows below
-            // become unreachable and the remote appears dead.
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                singleLine = true,
-                placeholder = { androidx.compose.material3.Text("Search anime") },
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedBorderColor = Ink.Edge,
-                    focusedBorderColor = Ink.Iris,
-                    unfocusedContainerColor = Ink.Veil,
-                    focusedContainerColor = Ink.Veil
-                ),
-                modifier = Modifier
-                    .weight(1f)
-                    .focusProperties { canFocus = allowSearchFocus }
-            )
+            // The field only exists while searching. Marking it unfocusable was
+            // tried and does not hold — focusProperties has no effect on a text
+            // field's own focus target — so at launch the remote's first press
+            // landed in it, the keyboard opened, and the shows became
+            // unreachable behind it. A control that is not in the tree cannot
+            // take focus, which is the only version of this that survives
+            // contact with the box.
+            if (searchActive) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    placeholder = { androidx.compose.material3.Text("Search anime") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedBorderColor = Ink.Edge,
+                        focusedBorderColor = Ink.Iris,
+                        unfocusedContainerColor = Ink.Veil,
+                        focusedContainerColor = Ink.Veil
+                    ),
+                    modifier = Modifier.weight(1f).focusRequester(searchFocus)
+                )
+            } else {
+                Text(
+                    if (query.isBlank()) "Search anime" else "Results for “${query.trim()}”",
+                    style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
+                    color = Ink.Mist,
+                    modifier = Modifier.weight(1f)
+                )
+            }
             Spacer(Modifier.width(12.dp))
+            if (!searchActive) {
+                Button(onClick = { searchActive = true }) { Text("Search") }
+                Spacer(Modifier.width(12.dp))
+            }
             Button(onClick = onSettings) { Text("Settings") }
         }
 
