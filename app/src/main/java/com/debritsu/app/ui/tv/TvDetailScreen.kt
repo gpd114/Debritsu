@@ -289,7 +289,7 @@ fun TvDetailScreen(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(400.dp)
+                .height(460.dp)
                 .clipToBounds()
                 .background(Ink.Base)
         ) {
@@ -328,18 +328,19 @@ fun TvDetailScreen(
                 )
             }
             // Sideways, so the text has something to be read against. Light
-            // enough to leave the artwork visible through it.
+            // enough to leave the artwork visible through it, and reaching far
+            // enough right to cover the text column, which is wider than it was.
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.horizontalGradient(
                         0f to Ink.Base.copy(alpha = 0.88f),
-                        0.5f to Ink.Base.copy(alpha = 0.45f),
-                        1f to androidx.compose.ui.graphics.Color.Transparent
+                        0.5f to Ink.Base.copy(alpha = 0.6f),
+                        0.78f to androidx.compose.ui.graphics.Color.Transparent
                     )
                 )
             )
             // Downward, and it has to end where the picture does or it draws a
-            // line across it. A banner stops at 202dp of this 400dp box, so the
+            // line across it. A banner stops at 202dp of this 460dp box, so the
             // fade is finished by then and its bottom edge dissolves. A cover
             // fills the whole box, so the fade takes the full height instead —
             // finishing early there left a visible edge with bright artwork
@@ -348,8 +349,8 @@ fun TvDetailScreen(
                 Modifier.fillMaxSize().background(
                     if (hasBanner) {
                         Brush.verticalGradient(
-                            0.28f to androidx.compose.ui.graphics.Color.Transparent,
-                            0.52f to Ink.Base
+                            0.24f to androidx.compose.ui.graphics.Color.Transparent,
+                            0.44f to Ink.Base
                         )
                     } else {
                         Brush.verticalGradient(
@@ -383,14 +384,22 @@ fun TvDetailScreen(
                 // simply grows to take it.
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .fillMaxWidth(0.52f)
+                    // Two thirds rather than half. The poster starts at 685dp
+                    // of the 960dp width, so there was 185dp of empty middle
+                    // that the synopsis can have — and a wider line holds more
+                    // of it for the same height.
+                    .fillMaxWidth(0.66f)
                     .padding(start = OVERSCAN, end = 24.dp, top = OVERSCAN, bottom = 20.dp)
             ) {
                 Text(
                     anime?.title ?: "…",
-                    style = MaterialTheme.typography.displaySmall,
+                    // A step down from displaySmall. At 36sp a long title ate
+                    // the space the rest of the block needed and still did not
+                    // finish; smaller, three lines fit in less room than two
+                    // used to take.
+                    style = MaterialTheme.typography.headlineMedium,
                     color = Ink.Bone,
-                    maxLines = 2,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
 
@@ -458,13 +467,22 @@ fun TvDetailScreen(
 
                 anime?.description?.let {
                     Text(
-                        it.replace(Regex("<[^>]*>"), "").replace("&quot;", "\"").trim(),
+                        synopsis(it),
                         style = MaterialTheme.typography.bodyLarge,
                         color = Ink.Mist,
-                        // Two lines keeps the hero inside its minimum for most
-                        // shows, so the height stays predictable.
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        // Whatever room is left, rather than a fixed count of
+                        // lines. A fixed six cut a synopsis short on a show
+                        // whose title took one line and left the space below it
+                        // empty; weighted, a short title hands its spare height
+                        // to the description and a three-line one takes it back.
+                        //
+                        // It is still not unlimited. The block and the buttons
+                        // below it have to stay inside the 540dp the screen has,
+                        // or focusing play scrolls the title off the top — the
+                        // very problem this screen has just come out of.
+                        maxLines = 12,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
                 }
 
@@ -727,6 +745,29 @@ fun TvDetailScreen(
     }
     }
 }
+
+/**
+ * An AniList description, made fit to read on a television.
+ *
+ * They arrive as HTML: `<br>` between paragraphs, escaped entities, and very
+ * often a "(Source: Crunchyroll News)" credit on the end. Stripping the tags
+ * and nothing else left the blank lines behind, and on a block six lines tall
+ * that cost half the space to say nothing — one show spent three of its six
+ * lines on an empty gap and a credit.
+ *
+ * So it all becomes a single paragraph, and the credit goes.
+ */
+private fun synopsis(raw: String): String =
+    raw.replace(Regex("<[^>]*>"), " ")
+        .replace("&quot;", "\"")
+        .replace("&#039;", "'")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace(Regex("\\(Source:[^)]*\\)"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
 
 /** The AniList statuses worth setting from a remote, with their labels. */
 private val STATUS_CHOICES = listOf(
