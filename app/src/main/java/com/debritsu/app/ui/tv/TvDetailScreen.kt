@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -229,7 +230,10 @@ fun TvDetailScreen(
         // than a poster beside a column of text. Laid out as a phone screen it
         // wasted two thirds of a 1920 panel and squeezed the synopsis into one
         // truncated line.
-        Box(Modifier.fillMaxWidth().height(470.dp).background(Ink.Veil)) {
+        // A minimum rather than a fixed height. Fixed, with the content sat
+        // against the bottom, anything taller than the box overflowed upward
+        // and the title was clipped off the top of the screen.
+        Box(Modifier.fillMaxWidth().heightIn(min = 470.dp).background(Ink.Veil)) {
             // Banner only. Falling back to the cover put a portrait image in a
             // box four times as wide, so the crop threw away everything but a
             // meaningless middle strip. Where there is no banner the artwork is
@@ -279,13 +283,17 @@ fun TvDetailScreen(
 
             Column(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
-                // Sat against the bottom rather than centred: centring left a
-                // dead band between the buttons and the episode row, and
-                // pushed the title off the top once focus scrolled the page.
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth(0.52f)
-                    .padding(start = OVERSCAN, end = 24.dp, bottom = 20.dp)
+                    .padding(
+                        start = OVERSCAN,
+                        end = 24.dp,
+                        // Clears the top of the screen, so the title has room
+                        // even when the hero has grown to fit a long synopsis.
+                        top = OVERSCAN,
+                        bottom = 20.dp
+                    )
             ) {
                 Text(
                     anime?.title ?: "…",
@@ -362,7 +370,7 @@ fun TvDetailScreen(
                         it.replace(Regex("<[^>]*>"), "").replace("&quot;", "\"").trim(),
                         style = MaterialTheme.typography.bodyLarge,
                         color = Ink.Mist,
-                        maxLines = 4,
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
