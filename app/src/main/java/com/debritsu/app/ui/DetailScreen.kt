@@ -322,41 +322,29 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     ) { pad ->
         LazyColumn(Modifier.padding(pad).fillMaxSize()) {
             item {
-                // The box takes the banner's own shape rather than a height of
-                // its own choosing.
+                // 150dp: cropped, but only a little, and drawn at its own size.
                 //
-                // A banner is 1900x400, near enough five times as wide as it is
-                // tall, and this was a 220dp band about twice as wide as tall.
-                // Cropping to cover takes the larger of the two scales, which
-                // was the vertical one, so the banner was drawn at half again
-                // its size and about a third of its width was all that fitted.
-                // At its own ratio the two scales are equal and nothing is cut.
+                // The band's height decides how much of a banner is lost,
+                // because cropping to cover scales by whichever side needs it
+                // more, and for a 1900x400 banner in a band this wide that is
+                // always the height. On a 411dp screen:
                 //
-                // A cover is portrait and has no such ratio to honour. Cropping
-                // one into a band five times as wide as it is tall would show a
-                // sliver of it at more than twice its size, so it keeps the
-                // fixed band and is cropped into that instead.
+                //   220dp  39% of the width shows, magnified 1.45x and soft
+                //   150dp  58% shows, at 1.0x — the 400px artwork almost
+                //          exactly fills 393px of band, so nothing is scaled
+                //    86dp  all of it, but the band is a thin strip
                 //
-                // While the metadata loads there is no banner to ask about, so
-                // the band is used then too. Assuming a banner instead was
-                // tried and measured worse: on an emulator held at 1080x2400,
-                // the play button sat at 940px before the metadata arrived and
-                // 826px after, moving 114px. Assuming a banner put it at 588px
-                // beforehand, so it moved 238px — twice as far. The text that
-                // appears pushes everything down, and the taller band while
-                // loading happens to absorb most of that. It is better for the
-                // show with no banner as well, whose band then never changes
-                // size at all.
-                val banner = anime?.banner
-                Box(
-                    if (banner != null) {
-                        Modifier.fillMaxWidth().aspectRatio(1900f / 400f)
-                    } else {
-                        Modifier.fillMaxWidth().height(220.dp)
-                    }
-                ) {
+                // So this is not really a compromise between the first and the
+                // last: it beats 220dp on both counts, showing half again as
+                // much of the picture and sharply rather than blown up. It only
+                // gives up height.
+                //
+                // Showing all of it inside a full 220dp band was tried — the
+                // banner laid sharp over a blurred enlargement of itself to
+                // fill the space around it — and looked muddy.
+                Box(Modifier.fillMaxWidth().height(150.dp)) {
                     AsyncImage(
-                        model = banner ?: anime?.cover,
+                        model = anime?.banner ?: anime?.cover,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
