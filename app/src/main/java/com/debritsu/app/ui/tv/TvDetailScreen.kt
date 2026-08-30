@@ -230,10 +230,15 @@ fun TvDetailScreen(
         // than a poster beside a column of text. Laid out as a phone screen it
         // wasted two thirds of a 1920 panel and squeezed the synopsis into one
         // truncated line.
-        // A minimum rather than a fixed height. Fixed, with the content sat
-        // against the bottom, anything taller than the box overflowed upward
-        // and the title was clipped off the top of the screen.
-        Box(Modifier.fillMaxWidth().heightIn(min = 470.dp).background(Ink.Veil)) {
+        // Sized so the hero and the controls beneath it both fit on screen at
+        // once. The panel is 1920x1080 at 2x, so the viewport is 540dp; at 470
+        // the hero plus its spacing plus the control row came to exactly that,
+        // and focusing a control scrolled the page just enough to carry the
+        // title off the top. 400 leaves about 70dp of headroom, so nothing has
+        // to move.
+        //
+        // The title going missing was never clipping — it was this scroll.
+        Box(Modifier.fillMaxWidth().heightIn(min = 400.dp).background(Ink.Veil)) {
             // Banner only. Falling back to the cover put a portrait image in a
             // box four times as wide, so the crop threw away everything but a
             // meaningless middle strip. Where there is no banner the artwork is
@@ -283,17 +288,14 @@ fun TvDetailScreen(
 
             Column(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
+                // Anchored to the top, not the bottom. Bottom-anchored, a show
+                // with more to say pushes its own title upward and out of the
+                // box; top-anchored, the overflow goes downward where the box
+                // simply grows to take it.
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
+                    .align(Alignment.TopStart)
                     .fillMaxWidth(0.52f)
-                    .padding(
-                        start = OVERSCAN,
-                        end = 24.dp,
-                        // Clears the top of the screen, so the title has room
-                        // even when the hero has grown to fit a long synopsis.
-                        top = OVERSCAN,
-                        bottom = 20.dp
-                    )
+                    .padding(start = OVERSCAN, end = 24.dp, top = OVERSCAN, bottom = 20.dp)
             ) {
                 Text(
                     anime?.title ?: "…",
@@ -370,7 +372,9 @@ fun TvDetailScreen(
                         it.replace(Regex("<[^>]*>"), "").replace("&quot;", "\"").trim(),
                         style = MaterialTheme.typography.bodyLarge,
                         color = Ink.Mist,
-                        maxLines = 3,
+                        // Two lines keeps the hero inside its minimum for most
+                        // shows, so the height stays predictable.
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
