@@ -45,18 +45,22 @@ object Http {
      * bad ones sat there for two and a half minutes rather than failing and
      * being asked again.
      *
-     * Twenty seconds, not the twelve first tried. Measured against AniList the
-     * same day, the app's own media query answered in 0.9 to 3.1 seconds, so
-     * twenty is roughly six times the worst healthy case — enough room for a
-     * phone on a bad connection, while still turning a stall into a wait of
-     * twenty seconds rather than two and a half minutes.
+     * Ten seconds. Measured against AniList the same day, the app's own media
+     * query answered in 0.9 to 3.1 seconds, so this is about three times the
+     * worst healthy case — and with one retry behind it, a stall costs twenty
+     * seconds in total rather than two and a half minutes.
+     *
+     * Twenty was tried first, on the belief that a shorter limit was killing
+     * requests that would otherwise have worked. It was not: those failures
+     * were rate limiting, which returns immediately and is not a timeout at
+     * all. Nothing in the measurements justified the extra room.
      *
      * The connection and thread pools are shared, so this costs nothing to
      * keep around.
      */
     val meta: OkHttpClient = client.newBuilder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .callTimeout(20, TimeUnit.SECONDS)
+        .connectTimeout(6, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .callTimeout(10, TimeUnit.SECONDS)
         .build()
 }
