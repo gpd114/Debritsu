@@ -132,7 +132,10 @@ class PlayerActivity : ComponentActivity() {
         sourcesButton.visibility = if (sources.size > 1) View.VISIBLE else View.GONE
         sourcesButton.setOnClickListener { showSourcePicker() }
 
-        findViewById<ImageButton>(R.id.cast_button).setOnClickListener { showCastPicker() }
+        // No casting from a television: the destinations it would offer are the
+        // set it is already playing on, or another room's. It is one more
+        // control for the remote to travel past on the way to something useful.
+        findViewById<ImageButton>(R.id.cast_button).visibility = View.GONE
 
         // Take the CC button over from the player's own dialog. PlayerView wires
         // it during inflation, so this has to replace the listener afterwards.

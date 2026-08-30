@@ -3,6 +3,7 @@ package com.debritsu.app.ui.tv
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -37,6 +40,7 @@ import androidx.tv.material3.Card
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import coil.compose.AsyncImage
 import com.debritsu.app.data.AniList
 import com.debritsu.app.data.Anime
 import com.debritsu.app.data.AutoPlay
@@ -49,6 +53,9 @@ import com.debritsu.app.data.Stremio
 import com.debritsu.app.data.StreamOption
 import com.debritsu.app.data.Subtitle
 import com.debritsu.app.player.PlayerActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.debritsu.app.ui.Ink
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -79,7 +86,21 @@ fun TvDetailScreen(
     var status by remember { mutableStateOf<String?>(null) }
     var showSources by remember { mutableStateOf(false) }
 
-    LaunchedEffect(anilistId) {
+    // Bumped on every return to this screen. Without it nothing is re-read
+    // after watching: the resume percentage stays as it was at first
+    // composition and the next episode never advances, which looks exactly
+    // like progress not being saved when in fact it is.
+    var progressTick by remember { mutableStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) progressTick++
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
+
+    LaunchedEffect(anilistId, progressTick) {
         anime = runCatching { AniList.media(anilistId) }.getOrNull()
         selectedEpisode = ((anime?.progress ?: 0) + 1).coerceAtLeast(1)
     }
@@ -172,7 +193,7 @@ fun TvDetailScreen(
     }
 
     val total = (anime?.episodes ?: 1).coerceAtLeast(1)
-    val resumeFrac = remember(selectedEpisode, anime) {
+    val resumeFrac = remember(selectedEpisode, progressTick) {
         Progress.fraction(anilistId, selectedEpisode)
     }
 
@@ -184,22 +205,64 @@ fun TvDetailScreen(
             .padding(OVERSCAN),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text(
-            anime?.title ?: "…",
-            style = MaterialTheme.typography.headlineMedium,
-            color = Ink.Bone,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-        anime?.description?.let {
-            Text(
-                it.replace(Regex("<[^>]*>"), "").take(320),
-                style = MaterialTheme.typography.bodyMedium,
-                color = Ink.Mist,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth(0.7f)
+        // Artwork beside the text rather than behind it: a banner washed under
+        // a title is the usual television treatment and it makes both harder to
+        // read across a room.
+        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            AsyncImage(
+                model = anime?.cover,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .width(220.dp)
+                    .aspectRatio(2f / 3f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Ink.Veil)
             )
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth(0.8f)
+            ) {
+                Text(
+                    anime?.title ?: "…",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = Ink.Bone,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                // The line of facts worth knowing before starting something.
+                val facts = listOfNotNull(
+                    anime?.averageScore?.let { "$it%" },
+                    anime?.format,
+                    anime?.seasonLabel,
+                    anime?.episodes?.let { "$it episodes" },
+                    anime?.studio
+                )
+                if (facts.isNotEmpty()) {
+                    Text(
+                        facts.joinToString("  ·  "),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Ink.Orchid
+                    )
+                }
+                anime?.genres?.take(5)?.takeIf { it.isNotEmpty() }?.let {
+                    Text(
+                        it.joinToString("  ·  "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Ink.Mist
+                    )
+                }
+                anime?.description?.let {
+                    Text(
+                        it.replace(Regex("<[^>]*>"), "").replace("&quot;", "\"").take(400),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Ink.Mist,
+                        maxLines = 5,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

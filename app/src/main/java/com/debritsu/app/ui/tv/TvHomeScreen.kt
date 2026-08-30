@@ -26,7 +26,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
@@ -115,7 +122,19 @@ fun TvHomeScreen(
     // Three independent queries, run together rather than one after another.
     // Each row is assigned on its own so it appears as its own query lands
     // instead of every row waiting for the slowest.
-    LaunchedEffect(authFlash) {
+    // Reloaded on every return, so Continue watching reflects the episode just
+    // finished rather than the state this screen was first built with.
+    var refresh by remember { mutableStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) refresh++
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
+
+    LaunchedEffect(authFlash, refresh) {
         coroutineScope {
             launch { watching = runCatching { AniList.watching() }.getOrDefault(emptyList()) }
             launch { planning = runCatching { AniList.planning() }.getOrDefault(emptyList()) }
@@ -216,6 +235,25 @@ fun TvHomeScreen(
     }
 }
 
+/** A small dark pill over the artwork, legible at a distance. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun Badge(text: String, colour: androidx.compose.ui.graphics.Color, modifier: Modifier) {
+    Box(
+        modifier
+            .padding(6.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(androidx.compose.ui.graphics.Color(0xCC08070D))
+            .padding(horizontal = 7.dp, vertical = 3.dp)
+    ) {
+        Text(
+            text,
+            style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
+            color = colour
+        )
+    }
+}
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun TvShelf(title: String, list: List<Anime>, onOpen: (Int) -> Unit) {
@@ -242,15 +280,35 @@ private fun TvShelf(title: String, list: List<Anime>, onOpen: (Int) -> Unit) {
 private fun TvPoster(anime: Anime, onOpen: (Int) -> Unit) {
     Column(Modifier.width(POSTER_WIDTH)) {
         Card(onClick = { onOpen(anime.id) }) {
-            AsyncImage(
-                model = anime.cover,
-                contentDescription = anime.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(2f / 3f)
-                    .background(Ink.Veil)
-            )
+            Box {
+                AsyncImage(
+                    model = anime.cover,
+                    contentDescription = anime.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(2f / 3f)
+                        .background(Ink.Veil)
+                )
+                // How far in you are, bottom left.
+                if (anime.progress > 0) {
+                    Badge(
+                        "EP ${anime.progress.toString().padStart(2, '0')}",
+                        Ink.Bone,
+                        Modifier.align(Alignment.BottomStart)
+                    )
+                }
+                // Opposite corner, and only when AniList has a score — a new or
+                // obscure title often has none, and an empty pill reads worse
+                // than no pill.
+                anime.averageScore?.let { score ->
+                    Badge(
+                        "$score%",
+                        if (score >= 75) Ink.Iris else Ink.Bone,
+                        Modifier.align(Alignment.BottomEnd)
+                    )
+                }
+            }
         }
         // Both lines reserved whether the title needs them or not. Cards of
         // differing height in one row let a taller one hang below its
