@@ -322,9 +322,37 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     ) { pad ->
         LazyColumn(Modifier.padding(pad).fillMaxSize()) {
             item {
-                Box(Modifier.fillMaxWidth().height(220.dp)) {
+                // The box takes the banner's own shape rather than a height of
+                // its own choosing.
+                //
+                // A banner is 1900x400, near enough five times as wide as it is
+                // tall, and this was a 220dp band about twice as wide as tall.
+                // Cropping to cover takes the larger of the two scales, which
+                // was the vertical one, so the banner was drawn at half again
+                // its size and about a third of its width was all that fitted.
+                // At its own ratio the two scales are equal and nothing is cut.
+                //
+                // A cover is portrait and has no such ratio to honour. Cropping
+                // one into a band five times as wide as it is tall would show a
+                // sliver of it at more than twice its size, so it keeps the
+                // fixed band and is cropped into that instead.
+                //
+                // While the metadata is still loading there is no banner to ask
+                // about, and taking the fixed band then meant the whole page
+                // jumped up by 134dp the moment one arrived. Assume a banner
+                // until told otherwise: most shows have one, so most loads now
+                // settle without moving. A show that turns out to have none
+                // still grows once, which is the lesser of the two.
+                val banner = anime?.banner
+                Box(
+                    if (banner != null || anime == null) {
+                        Modifier.fillMaxWidth().aspectRatio(1900f / 400f)
+                    } else {
+                        Modifier.fillMaxWidth().height(220.dp)
+                    }
+                ) {
                     AsyncImage(
-                        model = anime?.banner ?: anime?.cover,
+                        model = banner ?: anime?.cover,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
