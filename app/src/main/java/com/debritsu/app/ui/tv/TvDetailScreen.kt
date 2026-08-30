@@ -367,57 +367,67 @@ fun TvDetailScreen(
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // The primary action carries the app's colour rather than
-                    // the library's default, so it reads as the thing to press.
-                    Button(
-                        onClick = { play(selectedEpisode) },
-                        colors = ButtonDefaults.colors(
-                            containerColor = Ink.Iris,
-                            contentColor = Ink.Bone
-                        )
-                    ) {
-                        Text(
-                            if (resumeFrac > 0f)
-                                "Resume episode ${selectedEpisode.toString().padStart(2, '0')}  ·  " +
-                                    "${(resumeFrac * 100).toInt()}%"
-                            else "Play episode ${selectedEpisode.toString().padStart(2, '0')}"
-                        )
-                    }
-                    Button(onClick = { manualSearch(selectedEpisode) }) { Text("Choose source") }
-                    if (Settings.aniListToken.isNotEmpty()) {
-                        Button(onClick = { showStatus = true }) {
-                            Text(statusLabel(anime?.listStatus))
-                        }
-                    }
-                    Button(onClick = onBack) { Text("Back") }
-                }
+            }
+        }
 
-                // Setting the list status, which the phone screen has and this
-                // did not: no way to mark something watching, completed or
-                // dropped without reaching for another device.
-                if (showStatus) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        STATUS_CHOICES.forEach { (value, label) ->
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        runCatching {
-                                            AniList.saveEntry(anilistId, status = value)
-                                        }
-                                        showStatus = false
-                                        progressTick++
-                                    }
-                                },
-                                colors = if (anime?.listStatus == value)
-                                    ButtonDefaults.colors(
-                                        containerColor = Ink.Iris,
-                                        contentColor = Ink.Bone
-                                    )
-                                else ButtonDefaults.colors()
-                            ) { Text(label) }
-                        }
-                    }
+        // Controls sit below the hero at full width. Inside the text
+        // column they were constrained to just over half the screen,
+        // which four buttons and a five-way status row overflowed.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = OVERSCAN)
+        ) {
+            // The primary action carries the app's colour rather than
+            // the library's default, so it reads as the thing to press.
+            Button(
+                onClick = { play(selectedEpisode) },
+                colors = ButtonDefaults.colors(
+                    containerColor = Ink.Iris,
+                    contentColor = Ink.Bone
+                )
+            ) {
+                Text(
+                    if (resumeFrac > 0f)
+                        "Resume episode ${selectedEpisode.toString().padStart(2, '0')}  ·  " +
+                            "${(resumeFrac * 100).toInt()}%"
+                    else "Play episode ${selectedEpisode.toString().padStart(2, '0')}"
+                )
+            }
+            Button(onClick = { manualSearch(selectedEpisode) }) { Text("Choose source") }
+            if (Settings.aniListToken.isNotEmpty()) {
+                Button(onClick = { showStatus = true }) {
+                    Text(statusLabel(anime?.listStatus))
+                }
+            }
+            Button(onClick = onBack) { Text("Back") }
+        }
+
+        // Setting the list status, which the phone screen has and this
+        // did not: no way to mark something watching, completed or
+        // dropped without reaching for another device.
+        if (showStatus) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = OVERSCAN)
+            ) {
+                STATUS_CHOICES.forEach { (value, label) ->
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                runCatching {
+                                    AniList.saveEntry(anilistId, status = value)
+                                }
+                                showStatus = false
+                                progressTick++
+                            }
+                        },
+                        colors = if (anime?.listStatus == value)
+                            ButtonDefaults.colors(
+                                containerColor = Ink.Iris,
+                                contentColor = Ink.Bone
+                            )
+                        else ButtonDefaults.colors()
+                    ) { Text(label) }
                 }
             }
         }
