@@ -1,7 +1,11 @@
 package com.debritsu.app.ui.tv
 
 import android.content.Intent
+import kotlin.math.abs
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
@@ -22,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -75,7 +80,7 @@ import kotlinx.coroutines.launch
  * Intent. Only the arrangement is different, and the controls are ones a remote
  * can reach.
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TvDetailScreen(
     anilistId: Int,
@@ -219,12 +224,45 @@ fun TvDetailScreen(
         Progress.fraction(anilistId, selectedEpisode)
     }
 
+    // Leave the list alone when the focused control is already on screen.
+    //
+    // This is what was carrying the title away. The lazy list positions a
+    // focused item at a preferred spot rather than merely making sure it is
+    // visible, so landing on the play button scrolled about 500px — past a hero
+    // that was already fully in view. And because nothing in the hero takes
+    // focus, there was no way to scroll back: the title, score and synopsis
+    // were simply gone.
+    //
+    // Measured on the box: focus sat at y=316 with an 800px hero above it and
+    // nothing else in the tree, so the list had moved with everything visible
+    // and no reason to.
+    val onlyScrollWhenNeeded = remember {
+        object : BringIntoViewSpec {
+            override fun calculateScrollDistance(
+                offset: Float,
+                size: Float,
+                containerSize: Float
+            ): Float {
+                val top = offset
+                val bottom = offset + size
+                return when {
+                    // Already on screen, or too tall to ever fit: don't move.
+                    top >= 0f && bottom <= containerSize -> 0f
+                    top < 0f && bottom > containerSize -> 0f
+                    // Otherwise travel the shorter of the two distances that
+                    // would bring it in — the least movement that does the job.
+                    abs(top) < abs(bottom - containerSize) -> top
+                    else -> bottom - containerSize
+                }
+            }
+        }
+    }
+
     // A LazyColumn, not a Column with verticalScroll. Android's guidance for
-    // television is explicit: since Compose Foundation 1.7 the lazy layouts
-    // carry focus positioning of their own, which is what keeps a focused item
-    // sensibly in view, and nesting same-direction scrollables — these rows
-    // inside a scrolling column — is named as the thing not to do. Every
-    // earlier attempt at the jumping page was fighting that by hand.
+    // television is explicit: the lazy layouts carry focus positioning of their
+    // own, and nesting same-direction scrollables — rows inside a scrolling
+    // column — is named as the thing not to do.
+    CompositionLocalProvider(LocalBringIntoViewSpec provides onlyScrollWhenNeeded) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(Ink.Base),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -651,6 +689,7 @@ fun TvDetailScreen(
             }
         }
         }
+    }
     }
 }
 
