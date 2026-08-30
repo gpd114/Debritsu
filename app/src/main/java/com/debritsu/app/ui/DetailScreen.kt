@@ -337,15 +337,19 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                 // sliver of it at more than twice its size, so it keeps the
                 // fixed band and is cropped into that instead.
                 //
-                // While the metadata is still loading there is no banner to ask
-                // about, and taking the fixed band then meant the whole page
-                // jumped up by 134dp the moment one arrived. Assume a banner
-                // until told otherwise: most shows have one, so most loads now
-                // settle without moving. A show that turns out to have none
-                // still grows once, which is the lesser of the two.
+                // While the metadata loads there is no banner to ask about, so
+                // the band is used then too. Assuming a banner instead was
+                // tried and measured worse: on an emulator held at 1080x2400,
+                // the play button sat at 940px before the metadata arrived and
+                // 826px after, moving 114px. Assuming a banner put it at 588px
+                // beforehand, so it moved 238px — twice as far. The text that
+                // appears pushes everything down, and the taller band while
+                // loading happens to absorb most of that. It is better for the
+                // show with no banner as well, whose band then never changes
+                // size at all.
                 val banner = anime?.banner
                 Box(
-                    if (banner != null || anime == null) {
+                    if (banner != null) {
                         Modifier.fillMaxWidth().aspectRatio(1900f / 400f)
                     } else {
                         Modifier.fillMaxWidth().height(220.dp)
