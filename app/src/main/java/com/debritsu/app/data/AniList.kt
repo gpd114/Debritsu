@@ -2,6 +2,7 @@ package com.debritsu.app.data
 
 import com.debritsu.app.Http
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -34,10 +35,32 @@ object AniList {
                 }
                 .build()
 
-            Http.client.newCall(req).execute().use { res ->
-                val txt = res.body?.string().orEmpty()
-                json.parseToJsonElement(txt).obj("data") ?: JsonObject(emptyMap())
+            // Asked twice before giving up, on the metadata client.
+            //
+            // AniList stalls on a fraction of requests rather than answering
+            // slowly: measured on 2026-08-30, one request in five never came
+            // back at all while the other four took one to two seconds. Held
+            // open on the long client that was two and a half minutes of
+            // nothing; timed out and asked again, the second attempt almost
+            // always lands, which turns a one-in-five stall into roughly one
+            // in twenty-five.
+            //
+            // Only IOException is retried, so this deliberately does not fire
+            // on a 429 — being rate limited is an answer, and asking again
+            // immediately would only make it worse.
+            var last: Throwable? = null
+            repeat(2) { attempt ->
+                try {
+                    return@withContext Http.meta.newCall(req).execute().use { res ->
+                        val txt = res.body?.string().orEmpty()
+                        json.parseToJsonElement(txt).obj("data") ?: JsonObject(emptyMap())
+                    }
+                } catch (e: java.io.IOException) {
+                    last = e
+                    if (attempt == 0) delay(300)
+                }
             }
+            throw last ?: java.io.IOException("AniList request failed")
         }
 
     private fun mediaOf(m: JsonElement?, progress: Int = 0): Anime {

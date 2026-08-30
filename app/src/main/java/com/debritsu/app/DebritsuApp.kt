@@ -24,9 +24,39 @@ class DebritsuApp : Application() {
 }
 
 object Http {
+    /**
+     * For addons, debrid and downloads: things that are genuinely big or
+     * genuinely slow, and worth waiting on.
+     */
     val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .callTimeout(150, TimeUnit.SECONDS)
+        .build()
+
+    /**
+     * For metadata: AniList, Jikan, the id mappers. Small requests that either
+     * answer in about a second or are not going to.
+     *
+     * These used to share the client above, and inherited its 150 second call
+     * timeout. That is right for a debrid link and badly wrong here. Measured
+     * against AniList on 2026-08-30, one request in five simply hung — the
+     * other four answered in 1 to 2 seconds — so a shelf that drew one of the
+     * bad ones sat there for two and a half minutes rather than failing and
+     * being asked again.
+     *
+     * Twenty seconds, not the twelve first tried. Measured against AniList the
+     * same day, the app's own media query answered in 0.9 to 3.1 seconds, so
+     * twenty is roughly six times the worst healthy case — enough room for a
+     * phone on a bad connection, while still turning a stall into a wait of
+     * twenty seconds rather than two and a half minutes.
+     *
+     * The connection and thread pools are shared, so this costs nothing to
+     * keep around.
+     */
+    val meta: OkHttpClient = client.newBuilder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(20, TimeUnit.SECONDS)
         .build()
 }
