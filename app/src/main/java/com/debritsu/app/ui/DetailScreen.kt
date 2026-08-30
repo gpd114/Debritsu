@@ -308,7 +308,12 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(anime?.title ?: "", maxLines = 1) },
+                // No title up here. The banner carries it a few pixels below,
+                // in full and at a size worth reading, while this one had a
+                // single line and a back button's width taken out of it — so it
+                // truncated the long titles that most need showing, to repeat
+                // something already on screen.
+                title = {},
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
