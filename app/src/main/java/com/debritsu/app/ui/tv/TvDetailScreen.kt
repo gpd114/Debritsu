@@ -291,24 +291,44 @@ fun TvDetailScreen(
                 .fillMaxWidth()
                 .height(400.dp)
                 .clipToBounds()
-                .background(Ink.Veil)
+                .background(Ink.Base)
         ) {
-            // The cover stands in when there is no banner, exactly as the phone
-            // does. Holding out for a banner was the wrong call: AniList has
-            // none for a great many shows, and those landed on a flat empty
-            // box. A cropped cover is an imperfect backdrop, but the phone has
-            // used one at this same wide ratio all along and it reads well.
-            AsyncImage(
-                model = anime?.banner ?: anime?.cover,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            // Two scrims, and both are lighter than they were. The sideways one
-            // used to be fully opaque for the first 45% and near enough for the
-            // next — which is to say it painted over the banner and left only a
-            // strip of it visible behind the poster. It now darkens just enough
-            // to read white text against, and is gone by the halfway mark.
+            // Two different shapes of picture doing the same job, so they are
+            // not scaled the same way.
+            //
+            // A banner is about 1900x400 — nearly five times as wide as it is
+            // tall — and this box is 1920x800. Cropping to cover took the
+            // larger of the two scales, which is the vertical one, so the
+            // banner was drawn 3800px wide at twice its own size and you saw
+            // the middle half of it, blown up past its own resolution. That is
+            // the zoom, and the softness with it.
+            //
+            // Filling the width instead scales it 1.01x: the whole banner, at
+            // very nearly one pixel to one. It stands at the top of the box and
+            // the page colour carries on beneath it.
+            val banner = anime?.banner
+            val hasBanner = banner != null
+            if (banner != null) {
+                AsyncImage(
+                    model = banner,
+                    contentDescription = null,
+                    contentScale = ContentScale.FillWidth,
+                    alignment = Alignment.TopCenter,
+                    modifier = Modifier.fillMaxWidth().align(Alignment.TopStart)
+                )
+            } else {
+                // A cover is portrait, so there is no framing of it that is not
+                // a crop. The phone has cropped one to this same wide ratio all
+                // along and it reads as soft artwork rather than an absence.
+                AsyncImage(
+                    model = anime?.cover,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            // Sideways, so the text has something to be read against. Light
+            // enough to leave the artwork visible through it.
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.horizontalGradient(
@@ -318,14 +338,25 @@ fun TvDetailScreen(
                     )
                 )
             )
-            // Downward, so the artwork meets the rows below without an edge.
+            // Downward, and it has to end where the picture does or it draws a
+            // line across it. A banner stops at 202dp of this 400dp box, so the
+            // fade is finished by then and its bottom edge dissolves. A cover
+            // fills the whole box, so the fade takes the full height instead —
+            // finishing early there left a visible edge with bright artwork
+            // still going on underneath it.
             Box(
                 Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        0f to Ink.Base.copy(alpha = 0.35f),
-                        0.5f to androidx.compose.ui.graphics.Color.Transparent,
-                        1f to Ink.Base
-                    )
+                    if (hasBanner) {
+                        Brush.verticalGradient(
+                            0.28f to androidx.compose.ui.graphics.Color.Transparent,
+                            0.52f to Ink.Base
+                        )
+                    } else {
+                        Brush.verticalGradient(
+                            0.45f to androidx.compose.ui.graphics.Color.Transparent,
+                            1f to Ink.Base
+                        )
+                    }
                 )
             )
 
