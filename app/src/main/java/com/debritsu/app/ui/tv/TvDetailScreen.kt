@@ -17,11 +17,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -220,13 +219,17 @@ fun TvDetailScreen(
         Progress.fraction(anilistId, selectedEpisode)
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Ink.Base)
-            .verticalScroll(rememberScrollState()),
+    // A LazyColumn, not a Column with verticalScroll. Android's guidance for
+    // television is explicit: since Compose Foundation 1.7 the lazy layouts
+    // carry focus positioning of their own, which is what keeps a focused item
+    // sensibly in view, and nesting same-direction scrollables — these rows
+    // inside a scrolling column — is named as the thing not to do. Every
+    // earlier attempt at the jumping page was fighting that by hand.
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(Ink.Base),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        item {
         // A hero across the full width, the way a television expects, rather
         // than a poster beside a column of text. Laid out as a phone screen it
         // wasted two thirds of a 1920 panel and squeezed the synopsis into one
@@ -394,10 +397,12 @@ fun TvDetailScreen(
 
             }
         }
+        }
 
         // Controls sit below the hero at full width. Inside the text
         // column they were constrained to just over half the screen,
         // which four buttons and a five-way status row overflowed.
+        item {
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.padding(horizontal = OVERSCAN)
@@ -426,10 +431,12 @@ fun TvDetailScreen(
             }
             Button(onClick = onBack) { Text("Back") }
         }
+        }
 
         // Setting the list status, which the phone screen has and this
         // did not: no way to mark something watching, completed or
         // dropped without reaching for another device.
+        item {
         if (showStatus) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -456,9 +463,11 @@ fun TvDetailScreen(
                 }
             }
         }
+        }
 
         // The hero runs edge to edge, so everything below it carries the
         // overscan margin itself rather than inheriting one from the column.
+        item {
         Text(
             "Episodes",
             style = MaterialTheme.typography.titleMedium,
@@ -538,7 +547,9 @@ fun TvDetailScreen(
                 }
             }
         }
+        }
 
+        item {
         if (relations.isNotEmpty()) {
             Text(
                 "Related",
@@ -583,7 +594,9 @@ fun TvDetailScreen(
                 }
             }
         }
+        }
 
+        item {
         autoStep?.let { step ->
             Text(
                 stepLabel(step),
@@ -592,6 +605,8 @@ fun TvDetailScreen(
                 modifier = Modifier.padding(horizontal = OVERSCAN)
             )
         }
+        }
+        item {
         status?.let {
             Text(
                 it,
@@ -600,7 +615,9 @@ fun TvDetailScreen(
                 modifier = Modifier.padding(horizontal = OVERSCAN)
             )
         }
+        }
 
+        item {
         if (showSources) {
             val streams = results.flatMap { it.streams }
             Text(
@@ -632,6 +649,7 @@ fun TvDetailScreen(
                     )
                 }
             }
+        }
         }
     }
 }
