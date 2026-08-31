@@ -57,6 +57,7 @@ fun HomeScreen(
     var planning by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var trending by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var recommended by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    var listed by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var browse by remember { mutableStateOf<List<Anime>>(emptyList()) }
     val searching = query.length >= 3
     var loading by remember { mutableStateOf(true) }
@@ -82,6 +83,7 @@ fun HomeScreen(
             launch { planning = runCatching { AniList.planning() }.getOrDefault(emptyList()) }
             launch { trending = runCatching { AniList.trending().items }.getOrDefault(emptyList()) }
             launch { recommended = runCatching { AniList.recommended().items }.getOrDefault(emptyList()) }
+            launch { listed = runCatching { AniList.listedIds() }.getOrDefault(emptySet()) }
         }
         loading = false
     }
@@ -191,9 +193,11 @@ fun HomeScreen(
             }
 
             // Anything already on a list is not a discovery, so the
-            // recommendations drop it. Both lists are already in hand, so this
-            // costs nothing beyond comparing a few dozen ids.
-            val onMyList = (watching + planning).mapTo(mutableSetOf()) { it.id }
+            // recommendations drop it — and that means the whole list, not
+            // just the two shelves above. Filtering on those alone let shows
+            // through that were finished and marked completed years ago, which
+            // is the one thing this shelf should never suggest.
+            val onMyList = listed + (watching + planning).map { it.id }
 
             val shelves = buildList {
                 if (watching.isNotEmpty()) add("Continue watching" to watching)
