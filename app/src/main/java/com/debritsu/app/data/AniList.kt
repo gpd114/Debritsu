@@ -108,17 +108,24 @@ object AniList {
      * Each row of that graph is a pair, "people who liked A also liked B", so
      * a popular B appears under many different A's. Deduplicated here, or the
      * shelf would be Your Name four times.
+     *
+     * Anime only. This corner of the API is not typed the way the rest is:
+     * Page.recommendations spans everything AniList tracks and takes no type
+     * argument, so a page of 50 came back with 9 manga in it — Vinland Saga,
+     * Vagabond, Chainsaw Man — which this app cannot play. The type has to be
+     * asked for and checked here.
      */
     suspend fun recommended(page: Int = 1): Page {
         val d = query(
             "query (\$p: Int) { Page(page: \$p, perPage: 50) { pageInfo { hasNextPage } " +
-                "recommendations(sort: RATING_DESC) { mediaRecommendation { $MEDIA_FIELDS } } } }",
+                "recommendations(sort: RATING_DESC) { mediaRecommendation { type $MEDIA_FIELDS } } } }",
             buildJsonObject { put("p", page) }
         )
         val p = d.obj("Page")
         val seen = mutableSetOf<Int>()
         val items = p.arr("recommendations")
             ?.mapNotNull { r -> (r as? JsonObject)?.get("mediaRecommendation") }
+            ?.filter { it.str("type") == "ANIME" }
             ?.map { mediaOf(it) }
             ?.filter { it.id != 0 && seen.add(it.id) }
             ?: emptyList()
@@ -293,8 +300,8 @@ object AniList {
         val d = query(
             "query (\$id: Int) { Media(id: \$id) { relations { edges { relationType " +
                 "node { id type title { romaji english } coverImage { large } episodes } } } " +
-                "recommendations(sort: RATING_DESC, perPage: 12) { nodes { " +
-                "mediaRecommendation { $MEDIA_FIELDS } } } } }",
+                "recommendations(sort: RATING_DESC, perPage: 16) { nodes { " +
+                "mediaRecommendation { type $MEDIA_FIELDS } } } } }",
             buildJsonObject { put("id", id) }
         )
         val m = d.obj("Media")
@@ -308,8 +315,12 @@ object AniList {
             }
             ?: emptyList()
 
+        // Anime only, for the same reason as the shelf: a show's
+        // recommendations include its manga and anyone else's. Sixteen are
+        // asked for so that filtering still leaves a row worth having.
         val recommended = m.obj("recommendations").arr("nodes")
             ?.mapNotNull { n -> (n as? JsonObject)?.get("mediaRecommendation") }
+            ?.filter { it.str("type") == "ANIME" }
             ?.map { mediaOf(it) }
             ?.filter { it.id != 0 && it.id != id }
             ?: emptyList()
