@@ -101,6 +101,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     var progressTick by remember { mutableStateOf(0) }
     var relations by remember { mutableStateOf<List<Relation>>(emptyList()) }
     var recommended by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    var listed by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var epMeta by remember { mutableStateOf<Map<Int, Jikan.EpisodeMeta>>(emptyMap()) }
     var showListEditor by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -123,10 +124,20 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
         selectedEpisode = ((anime?.progress ?: 0) + 1).coerceAtLeast(1)
     }
     LaunchedEffect(anilistId) {
-        // Both rows come out of one request rather than two.
+        // Both rows come out of one request rather than two, and this one is
+        // deliberately not keyed on progressTick: the relations and
+        // recommendations of a show do not change while you watch an episode
+        // of it, and refetching them on every return would cost a request for
+        // nothing.
         val extras = runCatching { AniList.extras(anilistId) }.getOrNull()
         relations = extras?.relations.orEmpty()
         recommended = extras?.recommended.orEmpty()
+    }
+    // What is on the list does change — finishing something adds it — so this
+    // half refreshes on return. It is answered from the session's cache unless
+    // a write dropped it, so it is usually free.
+    LaunchedEffect(anilistId, progressTick) {
+        listed = runCatching { AniList.listedIds() }.getOrDefault(emptySet())
     }
     // Wait for the title: calling the mapper without it would cache a
     // kitsu-less result that findStreams() would then reuse.
@@ -662,7 +673,13 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
             // What people who liked this went on to like. Distinct from
             // Related, which is the same story — sequels and side stories —
             // where this is somewhere else to go next.
-            if (recommended.isNotEmpty()) {
+            //
+            // Anything already on the list is dropped, the same as on the home
+            // shelf: being told to watch what you have already finished is no
+            // more use here than there. The row simply goes away if that
+            // leaves nothing, which is the honest outcome.
+            val unseen = recommended.filter { it.id !in listed }
+            if (unseen.isNotEmpty()) {
                 item {
                     Text(
                         "Recommended",
@@ -675,7 +692,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(recommended) { rec ->
+                        items(unseen) { rec ->
                             Column(
                                 Modifier
                                     .width(104.dp)
