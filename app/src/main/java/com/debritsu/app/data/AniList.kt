@@ -175,20 +175,37 @@ object AniList {
      *
      * Ids alone, so it stays small: a list of 697 entries came back in 876ms
      * at 16KB.
+     *
+     * Held for the session once fetched, because a show page wants the same
+     * answer and paying a request per show opened would be a poor trade for
+     * hiding a handful of cards. Dropped whenever the list is written to, or
+     * the show just marked completed would keep being recommended.
      */
+    private var listedCache: Set<Int>? = null
+    private var listedToken: String? = null
+
+    /** After any write, so the next read reflects it. */
+    private fun forgetListedIds() {
+        listedCache = null
+    }
+
     suspend fun listedIds(): Set<Int> {
         if (Settings.aniListToken.isEmpty()) return emptySet()
+        if (listedToken == Settings.aniListToken) listedCache?.let { return it }
         val viewer = viewerId() ?: return emptySet()
         val d = query(
             "query (\$u: Int) { MediaListCollection(userId: \$u, type: ANIME) " +
                 "{ lists { entries { media { id } } } } }",
             buildJsonObject { put("u", viewer) }
         )
-        return d.obj("MediaListCollection").arr("lists")
+        val ids = d.obj("MediaListCollection").arr("lists")
             ?.flatMap { l -> l.arr("entries") ?: JsonArray(emptyList()) }
             ?.mapNotNull { e -> (e as? JsonObject)?.get("media").int("id") }
             ?.toSet()
             ?: emptySet()
+        listedCache = ids
+        listedToken = Settings.aniListToken
+        return ids
     }
 
     private val viewerLock = Mutex()
@@ -309,6 +326,7 @@ object AniList {
                 score?.let { put("sc", it) }
             }
         )
+        forgetListedIds()
     }
 
     /** Remove the title from the user's list entirely. */
@@ -318,6 +336,7 @@ object AniList {
             "mutation (\$id: Int) { DeleteMediaListEntry(id: \$id) { deleted } }",
             buildJsonObject { put("id", entryId) }
         )
+        forgetListedIds()
     }
 
     /** Push watch progress back to AniList after an episode finishes. */
@@ -327,5 +346,7 @@ object AniList {
             "mutation (\$id: Int, \$p: Int) { SaveMediaListEntry(mediaId: \$id, progress: \$p) { id progress } }",
             buildJsonObject { put("id", mediaId); put("p", episode) }
         )
+        // Watching an episode of something not yet on the list adds it.
+        forgetListedIds()
     }
 }

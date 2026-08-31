@@ -116,6 +116,7 @@ fun TvDetailScreen(
 
     var relations by remember { mutableStateOf<List<Relation>>(emptyList()) }
     var recommended by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    var listed by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var epMeta by remember { mutableStateOf<Map<Int, Jikan.EpisodeMeta>>(emptyMap()) }
 
     LaunchedEffect(anilistId, progressTick) {
@@ -123,10 +124,19 @@ fun TvDetailScreen(
         selectedEpisode = ((anime?.progress ?: 0) + 1).coerceAtLeast(1)
     }
     LaunchedEffect(anilistId) {
-        // Both rows come out of one request rather than two.
+        // Both rows come out of one request rather than two, and this is
+        // deliberately not keyed on progressTick: a show's relations and
+        // recommendations do not change while you watch an episode of it, and
+        // refetching them on every return would cost a request for nothing.
         val extras = runCatching { AniList.extras(anilistId) }.getOrNull()
         relations = extras?.relations.orEmpty()
         recommended = extras?.recommended.orEmpty()
+    }
+    // What is on the list does change — finishing something adds it — so this
+    // half refreshes on return. It is answered from the session's cache unless
+    // a write dropped it, so it is usually free.
+    LaunchedEffect(anilistId, progressTick) {
+        listed = runCatching { AniList.listedIds() }.getOrDefault(emptySet())
     }
     // Waits for the title: calling the mapper without one caches a kitsu-less
     // result that the stream lookup would then reuse.
@@ -694,8 +704,14 @@ fun TvDetailScreen(
         // What people who liked this went on to like. Distinct from Related,
         // which is the same story — sequels and side stories — where this is
         // somewhere else to go next.
+        //
+        // Anything already on the list is dropped, the same as on the home
+        // shelf: being told to watch what you have already finished is no more
+        // use here than there. The row simply goes away if that leaves
+        // nothing, which is the honest outcome.
         item {
-        if (recommended.isNotEmpty()) {
+        val unseen = recommended.filter { it.id !in listed }
+        if (unseen.isNotEmpty()) {
             Text(
                 "Recommended",
                 style = MaterialTheme.typography.titleMedium,
@@ -706,7 +722,7 @@ fun TvDetailScreen(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 contentPadding = PaddingValues(horizontal = OVERSCAN, vertical = 10.dp)
             ) {
-                items(recommended) { rec ->
+                items(unseen) { rec ->
                     Column(Modifier.width(140.dp)) {
                         Card(onClick = { onOpen(rec.id) }) {
                             AsyncImage(
