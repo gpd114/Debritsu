@@ -165,6 +165,32 @@ object AniList {
     /** Anything on the user's "Plan to watch" list. */
     suspend fun planning(): List<Anime> = listFor(listOf("PLANNING"))
 
+    /**
+     * Every anime already on the signed-in user's list, whatever its status.
+     *
+     * For deciding what is not a discovery. The two shelves the home screen
+     * already holds cover only Watching and Plan to watch, so recommending
+     * something finished years ago slipped straight past them — which is
+     * exactly the thing a Recommended shelf should never do.
+     *
+     * Ids alone, so it stays small: a list of 697 entries came back in 876ms
+     * at 16KB.
+     */
+    suspend fun listedIds(): Set<Int> {
+        if (Settings.aniListToken.isEmpty()) return emptySet()
+        val viewer = viewerId() ?: return emptySet()
+        val d = query(
+            "query (\$u: Int) { MediaListCollection(userId: \$u, type: ANIME) " +
+                "{ lists { entries { media { id } } } } }",
+            buildJsonObject { put("u", viewer) }
+        )
+        return d.obj("MediaListCollection").arr("lists")
+            ?.flatMap { l -> l.arr("entries") ?: JsonArray(emptyList()) }
+            ?.mapNotNull { e -> (e as? JsonObject)?.get("media").int("id") }
+            ?.toSet()
+            ?: emptySet()
+    }
+
     private val viewerLock = Mutex()
 
     /**
