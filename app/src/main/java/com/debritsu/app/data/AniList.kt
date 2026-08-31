@@ -74,6 +74,34 @@ object AniList {
         return pageOf(d)
     }
 
+    /**
+     * What the community recommends, most-voted first.
+     *
+     * Not personalised — AniList has no such endpoint, and asking for one gets
+     * a 401 without a token and nothing useful with one. This is the whole
+     * site's recommendation graph sorted by votes, which is exactly right for
+     * finding well-liked shows you have never heard of.
+     *
+     * Each row of that graph is a pair, "people who liked A also liked B", so
+     * a popular B appears under many different A's. Deduplicated here, or the
+     * shelf would be Your Name four times.
+     */
+    suspend fun recommended(page: Int = 1): Page {
+        val d = query(
+            "query (\$p: Int) { Page(page: \$p, perPage: 50) { pageInfo { hasNextPage } " +
+                "recommendations(sort: RATING_DESC) { mediaRecommendation { $MEDIA_FIELDS } } } }",
+            buildJsonObject { put("p", page) }
+        )
+        val p = d.obj("Page")
+        val seen = mutableSetOf<Int>()
+        val items = p.arr("recommendations")
+            ?.mapNotNull { r -> (r as? JsonObject)?.get("mediaRecommendation") }
+            ?.map { mediaOf(it) }
+            ?.filter { it.id != 0 && seen.add(it.id) }
+            ?: emptyList()
+        return Page(items, p.obj("pageInfo").str("hasNextPage") == "true")
+    }
+
     suspend fun search(term: String, page: Int = 1): Page {
         val d = query(
             "query (\$s: String, \$p: Int) { Page(page: \$p, perPage: 40) { pageInfo { hasNextPage } " +
@@ -180,18 +208,31 @@ object AniList {
             ?: emptyList()
     }
 
+    /** The two side lists a show page carries, fetched together. */
+    data class Extras(val relations: List<Relation>, val recommended: List<Anime>)
+
     /**
-     * Prequels, sequels and side stories. AniList models these as a relation
-     * graph, so this keeps only the edges worth surfacing in a viewer.
+     * Prequels and sequels, and what people who liked this went on to like.
+     *
+     * One query for both. They are different fields of the same Media, and
+     * asking separately would spend two of AniList's thirty requests a minute
+     * where one does.
+     *
+     * Relations are a graph of every edge AniList models, most of which are
+     * not worth showing a viewer, so only these five kinds survive.
      */
-    suspend fun relations(id: Int): List<Relation> {
+    suspend fun extras(id: Int): Extras {
         val wanted = setOf("PREQUEL", "SEQUEL", "SIDE_STORY", "PARENT", "ALTERNATIVE")
         val d = query(
             "query (\$id: Int) { Media(id: \$id) { relations { edges { relationType " +
-                "node { id type title { romaji english } coverImage { large } episodes } } } } }",
+                "node { id type title { romaji english } coverImage { large } episodes } } } " +
+                "recommendations(sort: RATING_DESC, perPage: 12) { nodes { " +
+                "mediaRecommendation { $MEDIA_FIELDS } } } } }",
             buildJsonObject { put("id", id) }
         )
-        return d.obj("Media").obj("relations").arr("edges")
+        val m = d.obj("Media")
+
+        val relations = m.obj("relations").arr("edges")
             ?.mapNotNull { e ->
                 val type = e.str("relationType") ?: return@mapNotNull null
                 val node = (e as? JsonObject)?.get("node")
@@ -199,7 +240,18 @@ object AniList {
                 Relation(mediaOf(node), type.lowercase().replace('_', ' '))
             }
             ?: emptyList()
+
+        val recommended = m.obj("recommendations").arr("nodes")
+            ?.mapNotNull { n -> (n as? JsonObject)?.get("mediaRecommendation") }
+            ?.map { mediaOf(it) }
+            ?.filter { it.id != 0 && it.id != id }
+            ?: emptyList()
+
+        return Extras(relations, recommended)
     }
+
+    /** Kept for the phone screen, which this build does not show. */
+    suspend fun relations(id: Int): List<Relation> = extras(id).relations
 
     /** Set list status, progress or score in one call. */
     suspend fun saveEntry(

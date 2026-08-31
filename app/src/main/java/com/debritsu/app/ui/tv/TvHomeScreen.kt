@@ -78,6 +78,7 @@ fun TvHomeScreen(
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var planning by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var trending by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    var recommended by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var query by remember { mutableStateOf("") }
     var found by remember { mutableStateOf<List<Anime>>(emptyList()) }
     val searching = query.trim().length >= 3
@@ -139,13 +140,21 @@ fun TvHomeScreen(
             launch { watching = runCatching { AniList.watching() }.getOrDefault(emptyList()) }
             launch { planning = runCatching { AniList.planning() }.getOrDefault(emptyList()) }
             launch { trending = runCatching { AniList.trending().items }.getOrDefault(emptyList()) }
+            launch { recommended = runCatching { AniList.recommended().items }.getOrDefault(emptyList()) }
         }
     }
+
+    // Anything already on a list is not a discovery, so the recommendations
+    // drop it. Both lists are already in hand, so this costs nothing beyond
+    // comparing a few dozen ids.
+    val onMyList = (watching + planning).mapTo(mutableSetOf()) { it.id }
 
     val shelves = buildList {
         if (watching.isNotEmpty()) add("Continue watching" to watching)
         if (planning.isNotEmpty()) add("Plan to watch" to planning)
         if (trending.isNotEmpty()) add("Trending" to trending)
+        val fresh = recommended.filter { it.id !in onMyList }
+        if (fresh.isNotEmpty()) add("Recommended" to fresh)
     }
 
     Column(

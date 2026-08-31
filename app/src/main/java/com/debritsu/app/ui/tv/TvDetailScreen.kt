@@ -115,6 +115,7 @@ fun TvDetailScreen(
     }
 
     var relations by remember { mutableStateOf<List<Relation>>(emptyList()) }
+    var recommended by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var epMeta by remember { mutableStateOf<Map<Int, Jikan.EpisodeMeta>>(emptyMap()) }
 
     LaunchedEffect(anilistId, progressTick) {
@@ -122,7 +123,10 @@ fun TvDetailScreen(
         selectedEpisode = ((anime?.progress ?: 0) + 1).coerceAtLeast(1)
     }
     LaunchedEffect(anilistId) {
-        relations = runCatching { AniList.relations(anilistId) }.getOrDefault(emptyList())
+        // Both rows come out of one request rather than two.
+        val extras = runCatching { AniList.extras(anilistId) }.getOrNull()
+        relations = extras?.relations.orEmpty()
+        recommended = extras?.recommended.orEmpty()
     }
     // Waits for the title: calling the mapper without one caches a kitsu-less
     // result that the stream lookup would then reuse.
@@ -675,6 +679,56 @@ fun TvDetailScreen(
                         // same height and a downward press leaves the row.
                         Text(
                             rel.anime.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Ink.Mist,
+                            minLines = 2,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+        }
+
+        // What people who liked this went on to like. Distinct from Related,
+        // which is the same story — sequels and side stories — where this is
+        // somewhere else to go next.
+        item {
+        if (recommended.isNotEmpty()) {
+            Text(
+                "Recommended",
+                style = MaterialTheme.typography.titleMedium,
+                color = Ink.Bone,
+                modifier = Modifier.padding(start = OVERSCAN)
+            )
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(horizontal = OVERSCAN, vertical = 10.dp)
+            ) {
+                items(recommended) { rec ->
+                    Column(Modifier.width(140.dp)) {
+                        Card(onClick = { onOpen(rec.id) }) {
+                            AsyncImage(
+                                model = rec.cover,
+                                contentDescription = rec.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(2f / 3f)
+                                    .background(Ink.Veil)
+                            )
+                        }
+                        // Where Related names the kind of relation, the useful
+                        // thing here is whether it is any good.
+                        Text(
+                            rec.averageScore?.let { "$it%" } ?: " ",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Ink.Iris,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                        Text(
+                            rec.title,
                             style = MaterialTheme.typography.bodySmall,
                             color = Ink.Mist,
                             minLines = 2,
