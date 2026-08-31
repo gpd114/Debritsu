@@ -56,6 +56,7 @@ fun HomeScreen(
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var planning by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var trending by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    var recommended by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var browse by remember { mutableStateOf<List<Anime>>(emptyList()) }
     val searching = query.length >= 3
     var loading by remember { mutableStateOf(true) }
@@ -69,9 +70,9 @@ fun HomeScreen(
 
     suspend fun fetch(p: Int) = AniList.search(query, p)
 
-    // Three independent queries, so they go at once rather than one after
-    // another — waiting on all three in turn made opening the app cost the sum
-    // of them, and AniList is regularly slow enough for that to run to several
+    // Four independent queries, so they go at once rather than one after
+    // another — waiting on them in turn made opening the app cost the sum of
+    // them, and AniList is regularly slow enough for that to run to several
     // seconds each. Each shelf is also assigned on its own, so it appears the
     // moment its own query lands instead of everything waiting for the slowest.
     LaunchedEffect(authFlash) {
@@ -80,6 +81,7 @@ fun HomeScreen(
             launch { watching = runCatching { AniList.watching() }.getOrDefault(emptyList()) }
             launch { planning = runCatching { AniList.planning() }.getOrDefault(emptyList()) }
             launch { trending = runCatching { AniList.trending().items }.getOrDefault(emptyList()) }
+            launch { recommended = runCatching { AniList.recommended().items }.getOrDefault(emptyList()) }
         }
         loading = false
     }
@@ -188,10 +190,17 @@ fun HomeScreen(
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             }
 
+            // Anything already on a list is not a discovery, so the
+            // recommendations drop it. Both lists are already in hand, so this
+            // costs nothing beyond comparing a few dozen ids.
+            val onMyList = (watching + planning).mapTo(mutableSetOf()) { it.id }
+
             val shelves = buildList {
                 if (watching.isNotEmpty()) add("Continue watching" to watching)
                 if (planning.isNotEmpty()) add("Plan to watch" to planning)
                 add("Trending" to trending)
+                val fresh = recommended.filter { it.id !in onMyList }
+                if (fresh.isNotEmpty()) add("Recommended" to fresh)
             }
             val openShelf = shelves.firstOrNull { it.first == expanded }
 

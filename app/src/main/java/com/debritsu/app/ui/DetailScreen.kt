@@ -100,6 +100,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     // Bumped on return from the player so resume bars redraw.
     var progressTick by remember { mutableStateOf(0) }
     var relations by remember { mutableStateOf<List<Relation>>(emptyList()) }
+    var recommended by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var epMeta by remember { mutableStateOf<Map<Int, Jikan.EpisodeMeta>>(emptyMap()) }
     var showListEditor by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -122,7 +123,10 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
         selectedEpisode = ((anime?.progress ?: 0) + 1).coerceAtLeast(1)
     }
     LaunchedEffect(anilistId) {
-        relations = runCatching { AniList.relations(anilistId) }.getOrDefault(emptyList())
+        // Both rows come out of one request rather than two.
+        val extras = runCatching { AniList.extras(anilistId) }.getOrNull()
+        relations = extras?.relations.orEmpty()
+        recommended = extras?.recommended.orEmpty()
     }
     // Wait for the title: calling the mapper without it would cache a
     // kitsu-less result that findStreams() would then reuse.
@@ -644,6 +648,62 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                                 // rather than whatever is under the row.
                                 Text(
                                     rel.anime.title,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    minLines = 2,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // What people who liked this went on to like. Distinct from
+            // Related, which is the same story — sequels and side stories —
+            // where this is somewhere else to go next.
+            if (recommended.isNotEmpty()) {
+                item {
+                    Text(
+                        "Recommended",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(start = 16.dp, top = 26.dp, bottom = 10.dp)
+                    )
+                }
+                item {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(recommended) { rec ->
+                            Column(
+                                Modifier
+                                    .width(104.dp)
+                                    .clickable { onOpen(rec.id) }
+                            ) {
+                                AsyncImage(
+                                    model = rec.cover,
+                                    contentDescription = rec.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(2f / 3f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Ink.Veil)
+                                )
+                                // Where Related names the kind of relation, the
+                                // useful thing here is whether it is any good.
+                                Text(
+                                    rec.averageScore?.let { "$it%" } ?: " ",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Ink.Iris,
+                                    modifier = Modifier.padding(top = 6.dp)
+                                )
+                                // Both lines reserved, for the same reason as
+                                // the row above: uneven cards break which one a
+                                // downward press finds.
+                                Text(
+                                    rec.title,
                                     style = MaterialTheme.typography.bodySmall,
                                     minLines = 2,
                                     maxLines = 2,
