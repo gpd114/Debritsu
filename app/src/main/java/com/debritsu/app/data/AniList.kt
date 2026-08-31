@@ -1,7 +1,9 @@
 package com.debritsu.app.data
 
+import com.debritsu.app.BuildConfig
 import com.debritsu.app.Http
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -34,10 +36,43 @@ object AniList {
                 }
                 .build()
 
-            Http.client.newCall(req).execute().use { res ->
-                val txt = res.body?.string().orEmpty()
-                json.parseToJsonElement(txt).obj("data") ?: JsonObject(emptyMap())
+            // Asked twice before giving up, on the metadata client.
+            //
+            // AniList stalls on a fraction of requests rather than answering
+            // slowly: measured on 2026-08-30, one request in five never came
+            // back at all while the other four took one to two seconds. Held
+            // open on the long client that was two and a half minutes of
+            // nothing; timed out at ten seconds and asked again, the second
+            // attempt almost always lands.
+            //
+            // A reply that arrives carrying no data is retried too, not just a
+            // connection that fails. An answer with no data is
+            // indistinguishable, to everything above this, from a show with no
+            // title, no score and no episodes — which is how Berserk came to be
+            // reported as a manga entry. If the second attempt is empty as
+            // well, the caller gets the same empty answer as before.
+            var last: Throwable? = null
+            repeat(2) { attempt ->
+                try {
+                    val data = Http.meta.newCall(req).execute().use { res ->
+                        val txt = res.body?.string().orEmpty()
+                        if (BuildConfig.DEBUG && !res.isSuccessful) {
+                            android.util.Log.d(
+                                "DebritsuAniList",
+                                "HTTP ${res.code} — ${txt.take(160)}"
+                            )
+                        }
+                        json.parseToJsonElement(txt).obj("data")
+                    }
+                    if (data != null) return@withContext data
+                    if (attempt == 0) delay(700)
+                } catch (e: java.io.IOException) {
+                    last = e
+                    if (attempt == 0) delay(300)
+                }
             }
+            last?.let { throw it }
+            JsonObject(emptyMap())
         }
 
     private fun mediaOf(m: JsonElement?, progress: Int = 0): Anime {

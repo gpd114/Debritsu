@@ -579,6 +579,19 @@ fun TvDetailScreen(
             color = Ink.Bone,
             modifier = Modifier.padding(start = OVERSCAN)
         )
+        // Nothing at all until the metadata arrives, rather than one invented
+        // episode. Falling back to a count of 1 when the show had not loaded
+        // drew a single episode button under an otherwise blank page, which
+        // reads as a title with one episode — a manga entry, say — instead of
+        // a title that failed to load.
+        if (anime == null) {
+            Text(
+                "Still loading — reopen if this stays empty.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Ink.Mist,
+                modifier = Modifier.padding(start = OVERSCAN, top = 6.dp)
+            )
+        } else {
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(horizontal = OVERSCAN, vertical = 10.dp)
@@ -651,6 +664,7 @@ fun TvDetailScreen(
                     }
                 }
             }
+        }
         }
         }
 

@@ -45,7 +45,7 @@ object Mappings {
         val req = Request.Builder()
             .url("https://api.ani.zip/mappings?anilist_id=$anilistId")
             .build()
-        Http.client.newCall(req).execute().use { res ->
+        Http.meta.newCall(req).execute().use { res ->
             val m = json.parseToJsonElement(res.body?.string().orEmpty()).obj("mappings")
             Ids(
                 kitsu = m.int("kitsu_id")?.toString() ?: m.str("kitsu_id"),
@@ -55,6 +55,10 @@ object Mappings {
         }
     }.getOrDefault(Ids(null, null, null))
 
+    /**
+     * Deliberately still on the long client: this one downloads the whole
+     * mapping table, which is far too big to hold to a metadata timeout.
+     */
     private fun fribb(anilistId: Int): Ids = runCatching {
         val req = Request.Builder()
             .url("https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-full.json")
@@ -77,7 +81,7 @@ object Mappings {
             .url("https://kitsu.io/api/edge/anime?filter[text]=$q&page[limit]=1")
             .header("Accept", "application/vnd.api+json")
             .build()
-        Http.client.newCall(req).execute().use { res ->
+        Http.meta.newCall(req).execute().use { res ->
             val root = json.parseToJsonElement(res.body?.string().orEmpty())
             root.arr("data")?.firstOrNull().str("id")
         }

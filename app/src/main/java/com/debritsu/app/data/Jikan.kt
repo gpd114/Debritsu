@@ -30,7 +30,7 @@ object Jikan {
                 val req = Request.Builder()
                     .url("https://api.jikan.moe/v4/anime/$malId/episodes?page=$page")
                     .build()
-                val more = Http.client.newCall(req).execute().use { res ->
+                val more = Http.meta.newCall(req).execute().use { res ->
                     if (!res.isSuccessful) return@use false
                     val root = json.parseToJsonElement(res.body?.string().orEmpty())
                     root.arr("data")?.forEach { e ->
