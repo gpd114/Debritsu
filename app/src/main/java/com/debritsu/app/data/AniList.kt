@@ -1,5 +1,6 @@
 package com.debritsu.app.data
 
+import com.debritsu.app.BuildConfig
 import com.debritsu.app.Http
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -45,22 +46,42 @@ object AniList {
             // always lands, which turns a one-in-five stall into roughly one
             // in twenty-five.
             //
-            // Only IOException is retried, so this deliberately does not fire
-            // on a 429 — being rate limited is an answer, and asking again
-            // immediately would only make it worse.
+            // A reply that arrives carrying no data is retried as well, not
+            // just a connection that fails.
+            //
+            // This was left alone at first, on the reasoning that a 429 is an
+            // answer and asking again would only make it worse. That was true
+            // of the request and wrong about the screen: an answer with no
+            // data is indistinguishable, to everything above this, from a show
+            // with no title, no score and no episodes. Berserk arrived that way
+            // and was reported as a manga entry — which is exactly what it
+            // looked like.
+            //
+            // One more go, after a longer pause than the connection retry. If
+            // that is empty too the caller gets the same empty answer it got
+            // before, so being wrong costs a single request.
             var last: Throwable? = null
             repeat(2) { attempt ->
                 try {
-                    return@withContext Http.meta.newCall(req).execute().use { res ->
+                    val data = Http.meta.newCall(req).execute().use { res ->
                         val txt = res.body?.string().orEmpty()
-                        json.parseToJsonElement(txt).obj("data") ?: JsonObject(emptyMap())
+                        if (BuildConfig.DEBUG && !res.isSuccessful) {
+                            android.util.Log.d(
+                                "DebritsuAniList",
+                                "HTTP ${res.code} — ${txt.take(160)}"
+                            )
+                        }
+                        json.parseToJsonElement(txt).obj("data")
                     }
+                    if (data != null) return@withContext data
+                    if (attempt == 0) delay(700)
                 } catch (e: java.io.IOException) {
                     last = e
                     if (attempt == 0) delay(300)
                 }
             }
-            throw last ?: java.io.IOException("AniList request failed")
+            last?.let { throw it }
+            JsonObject(emptyMap())
         }
 
     private fun mediaOf(m: JsonElement?, progress: Int = 0): Anime {

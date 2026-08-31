@@ -535,6 +535,24 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                     modifier = Modifier.padding(start = 16.dp, top = 22.dp, bottom = 10.dp)
                 )
             }
+            // Nothing at all until the metadata arrives, rather than one
+            // invented episode.
+            //
+            // Falling back to a count of 1 when the show had not loaded drew a
+            // single episode button under an otherwise blank page, which reads
+            // as a title that has one episode — a manga entry, say — rather
+            // than a title that failed to load. Berserk's 25 episodes appeared
+            // as exactly that, and were reported as manga, reasonably enough.
+            if (anime == null) {
+                item {
+                    Text(
+                        "Still loading — reopen if this stays empty.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Ink.Mist,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                }
+            } else {
             item {
                 val total = (anime?.episodes ?: 1).coerceAtLeast(1)
                 LazyRow(
@@ -606,6 +624,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                         }
                     }
                 }
+            }
             }
             epMeta[selectedEpisode]?.title?.let { epTitle ->
                 item {
