@@ -58,6 +58,16 @@ fun HomeScreen(
     var trending by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var recommended by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var listed by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    // Paging for the two shelves that have more to give. Expanding one used to
+    // show the same items the row already held, just laid out as a grid, which
+    // is a poor reward for tapping expand — the point of the bigger view is
+    // more of them.
+    val scope = rememberCoroutineScope()
+    var trendingPage by remember { mutableStateOf(1) }
+    var trendingMore by remember { mutableStateOf(true) }
+    var recPage by remember { mutableStateOf(1) }
+    var recMore by remember { mutableStateOf(true) }
+    var shelfLoadingMore by remember { mutableStateOf(false) }
     var browse by remember { mutableStateOf<List<Anime>>(emptyList()) }
     val searching = query.length >= 3
     var loading by remember { mutableStateOf(true) }
@@ -236,7 +246,41 @@ fun HomeScreen(
                     title = openShelf.first,
                     list = openShelf.second,
                     onOpen = onOpen,
-                    onCollapse = { expanded = null }
+                    onCollapse = { expanded = null },
+                    loadingMore = shelfLoadingMore,
+                    // The two list shelves are the whole of a list already and
+                    // have no next page; only these two are worth asking for
+                    // more of. Ids are checked as pages are joined, because a
+                    // show can appear on two pages of a changing ranking.
+                    onNearEnd = {
+                        if (!shelfLoadingMore) when (openShelf.first) {
+                            "Trending" -> if (trendingMore) scope.launch {
+                                shelfLoadingMore = true
+                                val next = trendingPage + 1
+                                val res = runCatching { AniList.trending(next) }.getOrNull()
+                                if (res != null) {
+                                    val have = trending.mapTo(mutableSetOf()) { it.id }
+                                    trending = trending + res.items.filter { have.add(it.id) }
+                                    trendingMore = res.hasMore
+                                    trendingPage = next
+                                } else trendingMore = false
+                                shelfLoadingMore = false
+                            }
+                            "Recommended" -> if (recMore) scope.launch {
+                                shelfLoadingMore = true
+                                val next = recPage + 1
+                                val res = runCatching { AniList.recommended(next) }.getOrNull()
+                                if (res != null) {
+                                    val have = recommended.mapTo(mutableSetOf()) { it.id }
+                                    recommended = recommended + res.items.filter { have.add(it.id) }
+                                    recMore = res.hasMore
+                                    recPage = next
+                                } else recMore = false
+                                shelfLoadingMore = false
+                            }
+                            else -> Unit
+                        }
+                    }
                 )
 
                 else -> LazyColumn(contentPadding = PaddingValues(bottom = 28.dp)) {
@@ -276,17 +320,40 @@ private fun ExpandedShelf(
     title: String,
     list: List<Anime>,
     onOpen: (Int) -> Unit,
-    onCollapse: () -> Unit
+    onCollapse: () -> Unit,
+    loadingMore: Boolean = false,
+    onNearEnd: () -> Unit = {}
 ) {
+    val grid = rememberLazyGridState()
+
+    // Ask for the next page as the grid nears its end, the same way search
+    // does. Eight from the bottom, so the next page is usually there before
+    // the scrolling reaches it.
+    LaunchedEffect(grid, list.size) {
+        snapshotFlow { grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
+            .collect { last -> if (list.isNotEmpty() && last >= list.size - 8) onNearEnd() }
+    }
+
     Column {
         SectionHeader(title, list.size, Icons.Default.CloseFullscreen, "Collapse $title", onCollapse)
         LazyVerticalGrid(
+            state = grid,
             columns = GridCells.Adaptive(112.dp),
             contentPadding = PaddingValues(16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             items(list) { PosterCard(it, onOpen) }
+            if (loadingMore) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(
+                        Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Ink.Iris, strokeWidth = 2.dp)
+                    }
+                }
+            }
         }
     }
 }
