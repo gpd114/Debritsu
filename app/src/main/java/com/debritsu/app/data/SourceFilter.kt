@@ -39,7 +39,9 @@ data class StreamMeta(
      */
     val isPack: Boolean,
     /** An archive or disc image. No player here can open one. */
-    val unplayable: Boolean
+    val unplayable: Boolean,
+    /** A creditless opening, a trailer — something other than the episode. */
+    val isExtra: Boolean
 ) {
     companion object {
         private val RESOLUTION = Regex("""(2160|1440|1080|720|480|360)\s*p""", RegexOption.IGNORE_CASE)
@@ -58,6 +60,26 @@ data class StreamMeta(
         // source built from one is a guaranteed failure however good it looks.
         private val UNPLAYABLE = listOf(
             ".rar", ".zip", ".7z", ".tar", ".iso", "bdmv", "video_ts", ".part1."
+        )
+
+        /**
+         * The extras that ship inside a season pack and are not the episode.
+         *
+         * A creditless opening is, literally, the opening song with no titles
+         * over it — about ninety seconds of it. Picked instead of the episode
+         * it plays perfectly and looks like a working source, which is how
+         * "I opened episode 1 of season 2 and it was just a song" happens.
+         *
+         * Deliberately narrow. NCOP, NCED, creditless and textless are release
+         * conventions that mean one thing; "opening" and "ending" on their own
+         * are not, since they turn up in episode titles — Bleach alone has
+         * several. A missed extra is one bad tap; a wrongly rejected episode is
+         * a show that will not play at all.
+         */
+        private val EXTRA = Regex(
+            """\b(nc(op|ed)\d*|creditless|textless|clean\s+(opening|ending)|""" +
+                """trailer|teaser|promo\s*video|preview)\b""",
+            RegexOption.IGNORE_CASE
         )
 
         // Debrid-aware addons mark what the provider already holds. Torrentio
@@ -125,7 +147,8 @@ data class StreamMeta(
                 cached = cached,
                 packSizeMb = packSizeMb,
                 isPack = isPack,
-                unplayable = UNPLAYABLE.any { it in lower }
+                unplayable = UNPLAYABLE.any { it in lower },
+                isExtra = EXTRA.containsMatchIn(text)
             )
         }
     }
@@ -147,6 +170,11 @@ data class SourceFilter(
 ) {
     fun accepts(stream: StreamOption, meta: StreamMeta): Boolean {
         if (meta.unplayable) return false
+
+        // A creditless opening plays flawlessly and is not the episode. It is
+        // the one wrong source that gives no sign of being wrong until the
+        // song starts.
+        if (meta.isExtra) return false
 
         // A pack is fine when the stream says which file it wants. Without that
         // the resolver picks the largest video in the torrent, which on a season
