@@ -13,16 +13,6 @@ package com.debritsu.app.data
  * So this is pattern matching over free text, and it will not always be right.
  * Every field is nullable: absent means "the addon didn't say", never zero.
  */
-/**
- * The least an episode of this length could weigh, in megabytes.
- *
- * 1.5 MB a minute — roughly 200 kbps — is beneath every real encode and far
- * above a ninety second opening. Zero when the running time is unknown, which
- * turns the check off rather than guessing at it.
- */
-fun minEpisodeSizeMb(episodeMinutes: Int): Int =
-    if (episodeMinutes > 0) (episodeMinutes * 3) / 2 else 0
-
 data class StreamMeta(
     val resolution: Int?,
     val sizeMb: Int?,
@@ -259,3 +249,13 @@ data class SourceFilter(
         val Default = SourceFilter(maxResolution = 1080, maxSizeMb = 600, preferEnglish = true)
     }
 }
+
+/**
+ * The least an episode of this length could weigh, in megabytes.
+ *
+ * 1.5 MB a minute — roughly 200 kbps — is beneath every real encode and far
+ * above a ninety second opening. Zero when the running time is unknown, which
+ * turns the check off rather than guessing at it.
+ */
+fun minEpisodeSizeMb(episodeMinutes: Int): Int =
+    if (episodeMinutes > 0) (episodeMinutes * 3) / 2 else 0
