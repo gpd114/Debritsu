@@ -13,7 +13,21 @@ import java.net.URLEncoder
  */
 object Mappings {
 
-    data class Ids(val kitsu: String?, val imdb: String?, val mal: String?) {
+    /**
+     * @param season which season of the IMDb/TVDB series this AniList entry is.
+     *
+     * AniList gives every season its own entry; IMDb and TVDB keep one entry
+     * for the whole series and number the seasons inside it. All four seasons
+     * of Shield Hero share tt9529546, so an IMDb-shaped request has to say
+     * which season it means or it asks for the first one. Null where the
+     * source could not say, which is treated as season one.
+     */
+    data class Ids(
+        val kitsu: String?,
+        val imdb: String?,
+        val mal: String?,
+        val season: Int? = null
+    ) {
         val any: Boolean get() = kitsu != null || imdb != null || mal != null
     }
 
@@ -29,7 +43,14 @@ object Mappings {
         //    usually updated before ani.zip picks a new season up.
         if (ids.kitsu == null) {
             val fribb = fribb(anilistId)
-            ids = Ids(fribb.kitsu ?: ids.kitsu, ids.imdb ?: fribb.imdb, ids.mal ?: fribb.mal)
+            ids = Ids(
+                fribb.kitsu ?: ids.kitsu,
+                ids.imdb ?: fribb.imdb,
+                ids.mal ?: fribb.mal,
+                // Fribb's table has no season column, so whatever ani.zip knew
+                // is kept rather than overwritten with nothing.
+                ids.season
+            )
         }
 
         // 3. Last resort: ask Kitsu directly by title.
@@ -46,11 +67,19 @@ object Mappings {
             .url("https://api.ani.zip/mappings?anilist_id=$anilistId")
             .build()
         Http.meta.newCall(req).execute().use { res ->
-            val m = json.parseToJsonElement(res.body?.string().orEmpty()).obj("mappings")
+            val root = json.parseToJsonElement(res.body?.string().orEmpty())
+            val m = root.obj("mappings")
+            // ani.zip carries the season each episode belongs to, which is the
+            // only place this is available — AniList does not model it, since
+            // to AniList a season is simply another show. Read off episode one,
+            // which every entry has; the specials are keyed "S1" and so are
+            // skipped by asking for "1" directly.
+            val season = root.obj("episodes").obj("1").int("seasonNumber")
             Ids(
                 kitsu = m.int("kitsu_id")?.toString() ?: m.str("kitsu_id"),
                 imdb = m.str("imdb_id"),
-                mal = m.int("mal_id")?.toString()
+                mal = m.int("mal_id")?.toString(),
+                season = season
             )
         }
     }.getOrDefault(Ids(null, null, null))
