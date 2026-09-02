@@ -214,7 +214,8 @@ fun TvDetailScreen(
                 title = anime?.title,
                 episode = episode,
                 isMovie = (anime?.episodes ?: 1) <= 1,
-                filter = Settings.sourceFilter
+                filter = Settings.sourceFilter,
+                episodeMinutes = anime?.durationMins ?: 0
             ) { autoStep = it }
 
             results = outcome.results

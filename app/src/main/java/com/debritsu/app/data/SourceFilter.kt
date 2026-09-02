@@ -13,6 +13,16 @@ package com.debritsu.app.data
  * So this is pattern matching over free text, and it will not always be right.
  * Every field is nullable: absent means "the addon didn't say", never zero.
  */
+/**
+ * The least an episode of this length could weigh, in megabytes.
+ *
+ * 1.5 MB a minute — roughly 200 kbps — is beneath every real encode and far
+ * above a ninety second opening. Zero when the running time is unknown, which
+ * turns the check off rather than guessing at it.
+ */
+fun minEpisodeSizeMb(episodeMinutes: Int): Int =
+    if (episodeMinutes > 0) (episodeMinutes * 3) / 2 else 0
+
 data class StreamMeta(
     val resolution: Int?,
     val sizeMb: Int?,
@@ -167,8 +177,28 @@ data class SourceFilter(
     val maxSizeMb: Int,
     val preferEnglish: Boolean
 ) {
-    fun accepts(stream: StreamOption, meta: StreamMeta): Boolean {
+    /**
+     * @param minSizeMb the smallest this episode could plausibly be, from its
+     *   running time. Zero where that is unknown, which skips the check.
+     */
+    fun accepts(stream: StreamOption, meta: StreamMeta, minSizeMb: Int = 0): Boolean {
         if (meta.unplayable) return false
+
+        // Far too small to be the episode.
+        //
+        // This is the one that catches what naming cannot. The addon behind
+        // the Shield Hero report returns no filename at all — only size,
+        // bitrate and language — so there is no "NCOP" to match on. But the
+        // file it offered for a 24 minute episode was 13.2 MB, which is about
+        // 73 kbps: not a bad encode, not an encode at all. It was the ninety
+        // second opening.
+        //
+        // The floor is 1.5 MB a minute, well beneath any real episode — a poor
+        // 480p rip runs four or five times that — and far above a clip.
+        if (minSizeMb > 0) {
+            val size = meta.sizeMb
+            if (size != null && size < minSizeMb) return false
+        }
 
         // A creditless opening plays flawlessly and is not the episode. It is
         // the one wrong source that gives no sign of being wrong until the

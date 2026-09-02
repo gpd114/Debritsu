@@ -55,6 +55,8 @@ object AutoPlay {
         episode: Int,
         isMovie: Boolean,
         filter: SourceFilter,
+        /** Running time of one episode, for the plausible-size floor. */
+        episodeMinutes: Int = 0,
         autoSelect: Boolean = true,
         onStep: (Step) -> Unit
     ): Outcome {
@@ -84,6 +86,8 @@ object AutoPlay {
 
         val parsed = streams.map { it to StreamMeta.of(it) }
 
+        val minSize = minEpisodeSizeMb(episodeMinutes)
+
         // Parsing addon free text is guesswork, so make it inspectable: every
         // source, what was read out of it, and whether it survived. Kept out of
         // release builds — it is a debugging aid, not telemetry — but kept,
@@ -92,7 +96,7 @@ object AutoPlay {
         if (BuildConfig.DEBUG) parsed.forEach { (stream, meta) ->
             Log.d(
                 "DebritsuFilter",
-                "accept=${filter.accepts(stream, meta)} score=${filter.score(stream, meta)} " +
+                "accept=${filter.accepts(stream, meta, minSize)} score=${filter.score(stream, meta)} " +
                     "res=${meta.resolution} size=${meta.sizeMb}MB pack=${meta.packSizeMb}MB " +
                     "isPack=${meta.isPack} fileIdx=${stream.fileIdx} direct=${stream.isDirect} " +
                     "unplayable=${meta.unplayable} cached=${meta.cached} " +
@@ -103,7 +107,7 @@ object AutoPlay {
         }
 
         val ranked = parsed
-            .filter { (stream, meta) -> filter.accepts(stream, meta) }
+            .filter { (stream, meta) -> filter.accepts(stream, meta, minSize) }
             .sortedByDescending { (stream, meta) -> filter.score(stream, meta) }
         onStep(Step.Filtering(streams.size, ranked.size))
 
