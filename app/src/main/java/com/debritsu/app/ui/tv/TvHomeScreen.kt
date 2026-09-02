@@ -180,8 +180,6 @@ fun TvHomeScreen(
     // suggest.
     val onMyList = listed + (watching + planning).map { it.id }
 
-    val firstCard = remember { FocusRequester() }
-
     val shelves = buildList {
         if (watching.isNotEmpty()) add("Continue watching" to watching)
         if (planning.isNotEmpty()) add("Plan to watch" to planning)
@@ -196,25 +194,21 @@ fun TvHomeScreen(
             .background(Ink.Base)
             .padding(OVERSCAN)
     ) {
-        // Down from here goes to the first card, not to whatever happens to be
-        // underneath.
+        // Pressing down from here lands on the fifth card rather than the
+        // first, because focus moves geometrically and Search and Settings sit
+        // at the right-hand end of this row.
         //
-        // Focus moves geometrically: it looks for the nearest focusable in the
-        // direction pressed. Search and Settings sit at the right-hand end of
-        // this row, so down from either found the poster beneath them — the
-        // fifth or sixth along — and the shelf scrolled to it. Aimed
-        // explicitly, down always arrives at the start of the row.
+        // Aiming down at the first card with focusProperties was tried twice
+        // and is not the answer. Pointed at a FocusRequester no card held, it
+        // threw and closed the app; once attached, it swallowed the key press
+        // and focus stopped moving at all. There is already a note further down
+        // this file about focusProperties not taking on a text field either, so
+        // that is twice this mechanism has not done what it says.
         //
-        // Default when there are no shelves yet: a FocusRequester that nothing
-        // is attached to throws when it is asked for.
+        // Left alone deliberately rather than guessed at a third time.
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 8.dp, bottom = 8.dp)
-                .focusProperties {
-                    down = if (shelves.isNotEmpty()) firstCard else FocusRequester.Default
-                }
+            modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp)
         ) {
             // Search takes the space the app's name used to. Nobody needs
             // reminding what they are looking at while they are looking at it.
@@ -314,13 +308,7 @@ private fun Badge(text: String, colour: androidx.compose.ui.graphics.Color, modi
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun TvShelf(
-    title: String,
-    list: List<Anime>,
-    onOpen: (Int) -> Unit,
-    /** Attached to the first card, so the row above can aim at it. */
-    firstCard: FocusRequester? = null
-) {
+private fun TvShelf(title: String, list: List<Anime>, onOpen: (Int) -> Unit) {
     Column {
         Text(
             title,
@@ -334,29 +322,16 @@ private fun TvShelf(
             // row's own bounds.
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
         ) {
-            itemsIndexed(list) { index, anime ->
-                TvPoster(
-                    anime,
-                    onOpen,
-                    focusRequester = firstCard.takeIf { index == 0 }
-                )
-            }
+            items(list) { anime -> TvPoster(anime, onOpen) }
         }
     }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun TvPoster(
-    anime: Anime,
-    onOpen: (Int) -> Unit,
-    focusRequester: FocusRequester? = null
-) {
+private fun TvPoster(anime: Anime, onOpen: (Int) -> Unit) {
     Column(Modifier.width(POSTER_WIDTH)) {
-        Card(
-            onClick = { onOpen(anime.id) },
-            modifier = focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
-        ) {
+        Card(onClick = { onOpen(anime.id) }) {
             Box {
                 AsyncImage(
                     model = anime.cover,
