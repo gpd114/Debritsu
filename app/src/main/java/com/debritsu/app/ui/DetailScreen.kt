@@ -121,7 +121,18 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
 
     LaunchedEffect(anilistId, progressTick) {
         anime = runCatching { AniList.media(anilistId) }.getOrNull()
-        selectedEpisode = ((anime?.progress ?: 0) + 1).coerceAtLeast(1)
+        // Where you left off, and never past the end.
+        //
+        // Progress plus one is the next episode to watch, which is right until
+        // the show is finished: 25 of 25 watched made this 26, an episode that
+        // does not exist. The grid only draws 1..25 so nothing was highlighted,
+        // but the play button offered it and the addons were asked for it.
+        // Finished, it settles on the last episode, which is what somebody
+        // returning to a completed show is most likely reaching for.
+        val known = anime?.episodes ?: 0
+        selectedEpisode = ((anime?.progress ?: 0) + 1)
+            .coerceAtLeast(1)
+            .let { if (known > 0) it.coerceAtMost(known) else it }
     }
     LaunchedEffect(anilistId) {
         // Both rows come out of one request rather than two, and this one is
