@@ -89,11 +89,16 @@ fun HomeScreen(
     LaunchedEffect(authFlash) {
         loading = true
         coroutineScope {
-            launch { watching = runCatching { AniList.watching() }.getOrDefault(emptyList()) }
-            launch { planning = runCatching { AniList.planning() }.getOrDefault(emptyList()) }
-            launch { trending = runCatching { AniList.trending().items }.getOrDefault(emptyList()) }
-            launch { recommended = runCatching { AniList.recommended().items }.getOrDefault(emptyList()) }
-            launch { listed = runCatching { AniList.listedIds() }.getOrDefault(emptySet()) }
+            // Each keeps what it had when its request fails, rather than being
+            // emptied. A shelf is hidden when it is empty, so falling back to
+            // an empty list made one refused request erase the shelf — which is
+            // how Continue watching came to disappear at random on television.
+            // A failure means "no answer", not "nothing there".
+            launch { runCatching { AniList.watching() }.onSuccess { watching = it } }
+            launch { runCatching { AniList.planning() }.onSuccess { planning = it } }
+            launch { runCatching { AniList.trending().items }.onSuccess { trending = it } }
+            launch { runCatching { AniList.recommended().items }.onSuccess { recommended = it } }
+            launch { runCatching { AniList.listedIds() }.onSuccess { listed = it } }
         }
         loading = false
     }
