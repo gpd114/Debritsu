@@ -74,7 +74,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
         val filter = Settings.sourceFilter
         results.flatMap { it.streams }
             .map { it to StreamMeta.of(it) }
-            .filter { (s, m) -> filter.accepts(s, m) }
+            .filter { (s, m) -> filter.accepts(s, m, minEpisodeSizeMb(anime?.durationMins ?: 0)) }
             .maxByOrNull { (s, m) -> filter.score(s, m) }
             ?.first
     }
@@ -232,7 +232,8 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                 title = anime?.title,
                 episode = episode,
                 isMovie = (anime?.episodes ?: 1) <= 1,
-                filter = Settings.sourceFilter
+                filter = Settings.sourceFilter,
+                episodeMinutes = anime?.durationMins ?: 0
             ) { autoStep = it }
 
             results = outcome.results
