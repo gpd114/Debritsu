@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -136,13 +137,39 @@ fun TvHomeScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
 
+    // Every one of these keeps what it had when a request fails, rather than
+    // being emptied.
+    //
+    // They used to fall back to an empty list, and a shelf is hidden when it is
+    // empty, so a single failed request made Continue watching disappear —
+    // reported as it vanishing at random. It was not random: this refetches on
+    // every return from a show, five requests a time against AniList's thirty a
+    // minute, so a few episodes in a row is exactly when one gets refused. A
+    // failure means "no answer", which is not the same as "nothing there".
+    //
+    // Split in two as well. Watching an episode changes your own lists and
+    // nothing else, so only those are asked for again on return; Trending and
+    // Recommended are fetched once. That takes a return from five requests to
+    // three, and the ids are usually answered from the session cache.
     LaunchedEffect(authFlash, refresh) {
         coroutineScope {
-            launch { watching = runCatching { AniList.watching() }.getOrDefault(emptyList()) }
-            launch { planning = runCatching { AniList.planning() }.getOrDefault(emptyList()) }
-            launch { trending = runCatching { AniList.trending().items }.getOrDefault(emptyList()) }
-            launch { recommended = runCatching { AniList.recommended().items }.getOrDefault(emptyList()) }
-            launch { listed = runCatching { AniList.listedIds() }.getOrDefault(emptySet()) }
+            // Your own lists change when you watch something, so these are
+            // always asked for again.
+            launch { runCatching { AniList.watching() }.onSuccess { watching = it } }
+            launch { runCatching { AniList.planning() }.onSuccess { planning = it } }
+            launch { runCatching { AniList.listedIds() }.onSuccess { listed = it } }
+
+            // These two do not change while you watch an episode, so they are
+            // asked for only while missing. That is both halves of the problem
+            // at once: a return costs three requests instead of five, and a
+            // shelf that failed on the way in gets another go every time you
+            // come back rather than staying empty for the session.
+            if (trending.isEmpty()) {
+                launch { runCatching { AniList.trending().items }.onSuccess { trending = it } }
+            }
+            if (recommended.isEmpty()) {
+                launch { runCatching { AniList.recommended().items }.onSuccess { recommended = it } }
+            }
         }
     }
 
@@ -152,6 +179,8 @@ fun TvHomeScreen(
     // completed years ago, which is the one thing this shelf should never
     // suggest.
     val onMyList = listed + (watching + planning).map { it.id }
+
+    val firstCard = remember { FocusRequester() }
 
     val shelves = buildList {
         if (watching.isNotEmpty()) add("Continue watching" to watching)
@@ -167,9 +196,25 @@ fun TvHomeScreen(
             .background(Ink.Base)
             .padding(OVERSCAN)
     ) {
+        // Down from here goes to the first card, not to whatever happens to be
+        // underneath.
+        //
+        // Focus moves geometrically: it looks for the nearest focusable in the
+        // direction pressed. Search and Settings sit at the right-hand end of
+        // this row, so down from either found the poster beneath them — the
+        // fifth or sixth along — and the shelf scrolled to it. Aimed
+        // explicitly, down always arrives at the start of the row.
+        //
+        // Default when there are no shelves yet: a FocusRequester that nothing
+        // is attached to throws when it is asked for.
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 8.dp, bottom = 8.dp)
+                .focusProperties {
+                    down = if (shelves.isNotEmpty()) firstCard else FocusRequester.Default
+                }
         ) {
             // Search takes the space the app's name used to. Nobody needs
             // reminding what they are looking at while they are looking at it.
@@ -269,7 +314,13 @@ private fun Badge(text: String, colour: androidx.compose.ui.graphics.Color, modi
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun TvShelf(title: String, list: List<Anime>, onOpen: (Int) -> Unit) {
+private fun TvShelf(
+    title: String,
+    list: List<Anime>,
+    onOpen: (Int) -> Unit,
+    /** Attached to the first card, so the row above can aim at it. */
+    firstCard: FocusRequester? = null
+) {
     Column {
         Text(
             title,
@@ -283,16 +334,29 @@ private fun TvShelf(title: String, list: List<Anime>, onOpen: (Int) -> Unit) {
             // row's own bounds.
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
         ) {
-            items(list) { anime -> TvPoster(anime, onOpen) }
+            itemsIndexed(list) { index, anime ->
+                TvPoster(
+                    anime,
+                    onOpen,
+                    focusRequester = firstCard.takeIf { index == 0 }
+                )
+            }
         }
     }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun TvPoster(anime: Anime, onOpen: (Int) -> Unit) {
+private fun TvPoster(
+    anime: Anime,
+    onOpen: (Int) -> Unit,
+    focusRequester: FocusRequester? = null
+) {
     Column(Modifier.width(POSTER_WIDTH)) {
-        Card(onClick = { onOpen(anime.id) }) {
+        Card(
+            onClick = { onOpen(anime.id) },
+            modifier = focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
+        ) {
             Box {
                 AsyncImage(
                     model = anime.cover,
