@@ -39,12 +39,25 @@ object Stremio {
      * Builds the Stremio content ID. Anime series use `kitsu:<id>:<episode>`;
      * single-episode entries (films, OVAs) use the bare id.
      */
+    /**
+     * The season an IMDb-shaped id has to name, which is not always the first.
+     *
+     * AniList gives each season its own entry, and its own Kitsu id, so a
+     * kitsu: id needs no season — the id already is the season. IMDb and TVDB
+     * keep one entry per series: all four seasons of Shield Hero are
+     * tt9529546, and asking for episode 1 of it without saying which season
+     * fetches the first season's first episode. This was hardcoded to 1, so
+     * every season past the first asked for the wrong thing.
+     */
+    private fun Mappings.Ids.seasonOrFirst() = season ?: 1
+
     fun contentId(ids: Mappings.Ids, episode: Int?, isMovie: Boolean): Pair<String, String>? {
         val kitsu = ids.kitsu
         return when {
             kitsu != null && !isMovie && episode != null -> "series" to "kitsu:$kitsu:$episode"
             kitsu != null -> "movie" to "kitsu:$kitsu"
-            ids.imdb != null && !isMovie && episode != null -> "series" to "${ids.imdb}:1:$episode"
+            ids.imdb != null && !isMovie && episode != null ->
+                "series" to "${ids.imdb}:${ids.seasonOrFirst()}:$episode"
             ids.imdb != null -> "movie" to ids.imdb
             else -> null
         }
@@ -115,7 +128,10 @@ object Stremio {
                 else add("movie" to "kitsu:$it")
             }
             ids.imdb?.let {
-                if (!isMovie && episode != null) add("series" to "$it:1:$episode")
+                // Same season correction as contentId. This list feeds the
+                // subtitle addons, so getting it wrong fetched the subtitles
+                // for season one's episode of the same number.
+                if (!isMovie && episode != null) add("series" to "$it:${ids.seasonOrFirst()}:$episode")
                 else add("movie" to it)
             }
         }.distinct()

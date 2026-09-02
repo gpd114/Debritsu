@@ -94,7 +94,28 @@ class PlayerActivity : ComponentActivity() {
     private var currentUrl: String? = null
     private var currentTitle: String = "Debritsu"
     private var episodeCount = 0
+    private var episodeMinutes = 0
     private var seriesTitle: String = ""
+
+    /**
+     * Whether what is playing is long enough to be the episode it claims.
+     *
+     * Progress is pushed at 85% watched, which is right for an episode and
+     * disastrous for anything short: a creditless opening runs about ninety
+     * seconds, so 85% of it arrives after little over a minute and the episode
+     * is marked watched. A season's worth of those marked a whole season
+     * watched that had never been played.
+     *
+     * Half of AniList's own minutes-per-episode where it knows, since a file
+     * can legitimately be a little short of the nominal running time. Where it
+     * does not, four minutes — beneath any real episode, above every opening,
+     * ending and trailer. Anime shorts do exist at three minutes an episode,
+     * which is why the known duration is preferred over the floor.
+     */
+    private fun looksLikeTheEpisode(durationMs: Long): Boolean {
+        val floorMs = if (episodeMinutes > 0) episodeMinutes * 60_000L / 2 else 4 * 60_000L
+        return durationMs >= floorMs
+    }
     private var switchingEpisode = false
     private var segments: List<AniSkip.Segment> = emptyList()
     /** Index into [sources] of what is playing, or -1 when it isn't one of them. */
@@ -110,6 +131,7 @@ class PlayerActivity : ComponentActivity() {
         anilistId = intent.getIntExtra(EXTRA_ANILIST_ID, 0)
         episode = intent.getIntExtra(EXTRA_EPISODE, 0)
         episodeCount = intent.getIntExtra(EXTRA_EPISODE_COUNT, 0)
+        episodeMinutes = intent.getIntExtra(EXTRA_EPISODE_MINUTES, 0)
         seriesTitle = intent.getStringExtra(EXTRA_SERIES_TITLE).orEmpty()
         currentSourceIndex = intent.getIntExtra(EXTRA_SOURCE_INDEX, -1)
         // Not an Intent extra: a busy episode returns hundreds of sources, each
@@ -266,7 +288,8 @@ class PlayerActivity : ComponentActivity() {
                 override fun onEvents(p: Player, events: Player.Events) {
                     val duration = p.duration
                     if (!progressPushed && anilistId > 0 && episode > 0 &&
-                        duration > 0 && p.currentPosition > duration * 0.85
+                        duration > 0 && looksLikeTheEpisode(duration) &&
+                        p.currentPosition > duration * 0.85
                     ) {
                         progressPushed = true
                         Progress.clear(anilistId, episode)
@@ -1167,6 +1190,8 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_SOURCE_INDEX = "source_index"
         const val EXTRA_ANILIST_ID = "anilist_id"
         const val EXTRA_EPISODE = "episode"
+        /** AniList's minutes per episode, for judging whether this is one. */
+        const val EXTRA_EPISODE_MINUTES = "episode_minutes"
         const val EXTRA_SUB_URLS = "sub_urls"
         const val EXTRA_SUB_LANGS = "sub_langs"
         /** Which addon each subtitle came from, parallel to the arrays above. */

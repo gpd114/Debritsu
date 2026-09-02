@@ -169,6 +169,7 @@ fun TvDetailScreen(
                 .putExtra(PlayerActivity.EXTRA_TITLE, "${anime?.title} — EP $episode")
                 .putExtra(PlayerActivity.EXTRA_SERIES_TITLE, anime?.title.orEmpty())
                 .putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, anime?.episodes ?: 0)
+                .putExtra(PlayerActivity.EXTRA_EPISODE_MINUTES, anime?.durationMins ?: 0)
                 .putExtra(PlayerActivity.EXTRA_ANILIST_ID, anilistId)
                 .putExtra(PlayerActivity.EXTRA_EPISODE, episode)
                 .putExtra(PlayerActivity.EXTRA_SOURCE_INDEX, sourceIndex)
