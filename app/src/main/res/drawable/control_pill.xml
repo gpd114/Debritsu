@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sits behind the centre transport buttons only.
+
+     The controls used to darken the whole screen, which is unreadable when
+     you have paused precisely to read a subtitle. Without any backing at all
+     the white icons disappear against a bright scene, so the shading follows
+     the buttons instead of covering the picture. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#73000000" />
+    <corners android:radius="40dp" />
+</shape>
