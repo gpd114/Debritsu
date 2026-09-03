@@ -37,6 +37,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -306,9 +307,12 @@ private fun Badge(text: String, colour: androidx.compose.ui.graphics.Color, modi
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun TvShelf(title: String, list: List<Anime>, onOpen: (Int) -> Unit) {
+    // Held by the first card, and used only when there is nothing to restore.
+    val firstCard = remember { FocusRequester() }
+
     Column {
         Text(
             title,
@@ -320,18 +324,39 @@ private fun TvShelf(title: String, list: List<Anime>, onOpen: (Int) -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             // Room for a focused card to grow into without being clipped by the
             // row's own bounds.
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+            // The row remembers which card you were on and gives focus back to
+            // it, and starts at the first card when there is nothing to
+            // remember.
+            //
+            // Measured: the Settings button sits at x=1518..1672 and the cards
+            // at 70, 378, 686, 994, 1302, so entering the row by geometry
+            // found the one at 1302 — the fifth — and the row scrolled to meet
+            // it. Restoring alone was not enough: it faithfully brought back
+            // that same fifth card, since that is where geometry had put it
+            // the first time. The fallback is what makes the first entry land
+            // at the start.
+            modifier = Modifier.focusRestorer { firstCard }
         ) {
-            items(list) { anime -> TvPoster(anime, onOpen) }
+            itemsIndexed(list) { index, anime ->
+                TvPoster(anime, onOpen, firstCard.takeIf { index == 0 })
+            }
         }
     }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun TvPoster(anime: Anime, onOpen: (Int) -> Unit) {
+private fun TvPoster(
+    anime: Anime,
+    onOpen: (Int) -> Unit,
+    focus: FocusRequester? = null
+) {
     Column(Modifier.width(POSTER_WIDTH)) {
-        Card(onClick = { onOpen(anime.id) }) {
+        Card(
+            onClick = { onOpen(anime.id) },
+            modifier = focus?.let { Modifier.focusRequester(it) } ?: Modifier
+        ) {
             Box {
                 AsyncImage(
                     model = anime.cover,
