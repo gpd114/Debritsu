@@ -46,28 +46,29 @@
             android:contentDescription="Next episode" />
     </LinearLayout>
 
-    <!-- Subtitles, sources, settings and the scrubber all carry the same
-         shading, for the same reason: white on bare video disappears against a
-         bright scene. It is kept to the block the controls occupy, which sits
-         below the subtitles rather than over them. -->
+    <!-- Nothing behind this block as a whole. Backing it shaded the full width
+         of the band the subtitles sit in — media3 does not lift them above the
+         controls, so a subtitle lands level with the icons and inside anything
+         drawn behind them. Each row carries its own shading instead, and the
+         icon row is only as wide as its icons, which leaves the middle of that
+         band — where the subtitle actually is — untouched. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:orientation="vertical"
-        android:background="@drawable/control_pill"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp"
-        android:layout_marginBottom="12dp"
-        android:paddingTop="4dp"
         android:paddingBottom="16dp">
 
         <!-- Track and source controls sit bottom-right, above the scrubber. -->
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="end"
             android:gravity="end|center_vertical"
             android:orientation="horizontal"
+            android:background="@drawable/control_pill"
+            android:layout_marginEnd="12dp"
+            android:layout_marginBottom="6dp"
             android:paddingEnd="8dp"
             android:paddingStart="8dp">
 
@@ -98,6 +99,9 @@
                 style="@style/ExoStyledControls.Button.Bottom.Settings" />
         </LinearLayout>
 
+        <!-- The scrubber carries no shading. It is a bright purple bar with the
+             times at either end, and reads perfectly well on its own — one
+             less thing over the picture. -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
