@@ -1,18 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Custom transport controls so the Sources button can sit alongside the
      subtitle and settings buttons instead of floating over the video. -->
+<!-- No tint across the picture. Showing the controls used to darken the whole
+     screen, and the controls are shown by pausing — which is exactly what
+     somebody does to read a subtitle they could not keep up with. The shading
+     now follows the buttons rather than covering the video. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#66000000">
+    android:layout_height="match_parent">
 
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
         android:gravity="center"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:background="@drawable/control_pill"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp">
 
         <!-- Custom ids, not exo_prev/exo_next: those are wired to playlist
              navigation, and there is no playlist — each episode is resolved
@@ -40,11 +46,20 @@
             android:contentDescription="Next episode" />
     </LinearLayout>
 
+    <!-- Subtitles, cast, sources, settings and the scrubber all carry the same
+         shading, for the same reason: white on bare video disappears against a
+         bright scene. It is kept to the block the controls occupy, which sits
+         below the subtitles rather than over them. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:orientation="vertical"
+        android:background="@drawable/control_pill"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginBottom="12dp"
+        android:paddingTop="4dp"
         android:paddingBottom="16dp">
 
         <!-- Track and source controls sit bottom-right, above the scrubber. -->
