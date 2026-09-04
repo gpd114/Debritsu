@@ -1,12 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Sits behind the centre transport buttons only.
+<!-- Sits behind the controls, and only behind them.
 
-     The controls used to darken the whole screen, which is unreadable when
-     you have paused precisely to read a subtitle. Without any backing at all
-     the white icons disappear against a bright scene, so the shading follows
-     the buttons instead of covering the picture. -->
+     They used to darken the whole screen, which is unreadable when you have
+     paused precisely to read a subtitle. Taking the shading away entirely was
+     considered and is worse in both directions: white icons vanish against a
+     bright scene, and making the panel solid dark instead would be the same
+     fault reversed — an obvious black block sitting on a dark one.
+
+     So it is deliberately faint. A quarter opacity is enough to hold an edge
+     under a white icon and little enough to read the picture through. This is
+     the one number to change if it should go either way. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#73000000" />
+    <solid android:color="#40000000" />
     <corners android:radius="40dp" />
 </shape>
