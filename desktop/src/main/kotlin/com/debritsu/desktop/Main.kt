@@ -227,6 +227,28 @@ private fun App() {
         }
     }
 
+    val sources: (Anime, Int) -> Unit = { anime, ep ->
+        scope.launch {
+            Watch.sources(
+                anilistId = anime.id,
+                title = anime.title,
+                episode = ep,
+                episodeMinutes = anime.durationMins ?: 0,
+                isMovie = (anime.episodes ?: 0) == 1
+            ) { state ->
+                status = when (state) {
+                    is Watch.State.Preparing -> state.what
+                    is Watch.State.Choose -> {
+                        choosing = state
+                        ""
+                    }
+                    is Watch.State.Failed -> state.why
+                    else -> status
+                }
+            }
+        }
+    }
+
     val download: (Anime, Int) -> Unit = { anime, ep ->
         scope.launch {
             val result = Downloader.episode(anime, ep) { step -> status = "Episode $ep — $step" }
@@ -315,6 +337,7 @@ private fun App() {
             onBack = { detailOf = null; reload++ },
             onOpenOther = { detailOf = it },
             onDownload = download,
+            onSources = sources,
             onPlay = play
         )
         return

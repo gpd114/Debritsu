@@ -134,6 +134,32 @@ object Watch {
         )
     }
 
+    /**
+     * Finds sources and hands them over without playing anything.
+     *
+     * The same finding as playing does, with the choosing left out. Reachable
+     * whatever the auto-play setting says: wanting to pick a source for one
+     * episode — because the automatic choice was dubbed, or the wrong release,
+     * or would not resolve — is a normal thing to want, and making it require a
+     * change to a global setting first was the wrong shape.
+     */
+    suspend fun sources(
+        anilistId: Int,
+        title: String,
+        episode: Int,
+        episodeMinutes: Int,
+        isMovie: Boolean,
+        onState: (State) -> Unit
+    ) {
+        onState(State.Preparing("Locating"))
+        val outcome = find(anilistId, title, episode, episodeMinutes, isMovie, false, onState)
+        if (outcome.results.flatMap { it.streams }.isEmpty()) {
+            onState(State.Failed(outcome.message ?: "No sources were found."))
+            return
+        }
+        onState(State.Choose(outcome, anilistId, title, episode, episodeMinutes))
+    }
+
     /** The finding half, shared by playing and by listing sources. */
     private suspend fun find(
         anilistId: Int,

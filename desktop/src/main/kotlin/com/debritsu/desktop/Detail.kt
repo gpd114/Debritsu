@@ -53,6 +53,8 @@ fun DetailScreen(
     /** Opening a related or recommended show, which replaces this page. */
     onOpenOther: (Anime) -> Unit,
     onDownload: (Anime, Int) -> Unit,
+    /** List the sources for an episode and choose one by hand. */
+    onSources: (Anime, Int) -> Unit,
     onPlay: (Anime, Int) -> Unit
 ) {
     // Starts from what the list already knew, so the page draws immediately and
@@ -134,6 +136,13 @@ fun DetailScreen(
                     }
                     TextButton(onClick = { onDownload(anime, next) }) {
                         Text("Download $next", color = DetailMuted)
+                    }
+                    // Always here, not only when automatic selection is off.
+                    // Picking a source for one episode — because the automatic
+                    // choice was dubbed, or would not resolve — should not need
+                    // a global setting changed first.
+                    TextButton(onClick = { onSources(anime, next) }) {
+                        Text("Sources", color = DetailMuted)
                     }
                 }
 
