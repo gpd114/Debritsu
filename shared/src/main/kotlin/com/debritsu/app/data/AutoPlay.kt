@@ -1,8 +1,5 @@
 package com.debritsu.app.data
 
-import android.util.Log
-import com.debritsu.app.BuildConfig
-
 /**
  * Everything between pressing play and a URL that will actually play, narrated
  * as it goes.
@@ -93,8 +90,8 @@ object AutoPlay {
         // release builds — it is a debugging aid, not telemetry — but kept,
         // because when an addon changes its wording this is the only thing that
         // says so.
-        if (BuildConfig.DEBUG) parsed.forEach { (stream, meta) ->
-            Log.d(
+        if (BuildInfo.debug) parsed.forEach { (stream, meta) ->
+            BuildInfo.log(
                 "DebritsuFilter",
                 "accept=${filter.accepts(stream, meta, minSize)} score=${filter.score(stream, meta)} " +
                     "res=${meta.resolution} size=${meta.sizeMb}MB pack=${meta.packSizeMb}MB " +
