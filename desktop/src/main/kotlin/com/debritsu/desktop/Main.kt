@@ -36,9 +36,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.debritsu.app.data.AniList
@@ -82,14 +87,35 @@ fun main() {
     BuildInfo.log = Logging.install()
 
     application {
+        // Held here rather than inside the player, because the window is what
+        // goes fullscreen and Escape has to reach it wherever focus happens to
+        // be — which, while mpv is drawing, is often the native surface.
+        val windowState = rememberWindowState(width = 1100.dp, height = 760.dp)
+        var fullscreen by remember { mutableStateOf(false) }
+
+        LaunchedEffect(fullscreen) {
+            windowState.placement =
+                if (fullscreen) WindowPlacement.Fullscreen else WindowPlacement.Floating
+        }
+
         Window(
             onCloseRequest = ::exitApplication,
             title = "Debritsu",
+            onKeyEvent = { event ->
+                if (fullscreen && event.type == KeyEventType.KeyDown &&
+                    event.key == Key.Escape
+                ) {
+                    fullscreen = false
+                    true
+                } else {
+                    false
+                }
+            },
             // The window's icon is separate from the executable's: jpackage
             // stamps the .ico onto the .exe, and this is what the title bar and
             // the running taskbar entry show.
             icon = painterResource("icon.png"),
-            state = rememberWindowState(width = 1100.dp, height = 760.dp)
+            state = windowState
         ) {
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -100,14 +126,16 @@ fun main() {
                     onSurface = Paper
                 )
             ) {
-                Surface(Modifier.fillMaxSize(), color = Ink) { App() }
+                Surface(Modifier.fillMaxSize(), color = Ink) {
+                    App(fullscreen = fullscreen, onFullscreen = { fullscreen = it })
+                }
             }
         }
     }
 }
 
 @Composable
-private fun App() {
+private fun App(fullscreen: Boolean, onFullscreen: (Boolean) -> Unit) {
     var showSettings by remember { mutableStateOf(Settings.aniListToken.isEmpty()) }
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var planning by remember { mutableStateOf<List<Anime>>(emptyList()) }
@@ -277,7 +305,9 @@ private fun App() {
     if (nowPlaying != null) {
         PlayerScreen(
             target = nowPlaying,
-            onBack = { playing = null; reload++ },
+            fullscreen = fullscreen,
+            onFullscreen = onFullscreen,
+            onBack = { onFullscreen(false); playing = null; reload++ },
             onSources = {
                 val show = playingShow
                 playing = null

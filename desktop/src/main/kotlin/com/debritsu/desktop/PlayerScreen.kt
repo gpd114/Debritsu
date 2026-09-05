@@ -51,6 +51,8 @@ private val Muted = Color(0xFF948CAB)
 @Composable
 fun PlayerScreen(
     target: Watch.Target,
+    fullscreen: Boolean,
+    onFullscreen: (Boolean) -> Unit,
     onBack: () -> Unit,
     onSources: () -> Unit,
     onState: (Watch.State) -> Unit
@@ -124,6 +126,11 @@ fun PlayerScreen(
         Box(Modifier.weight(1f).fillMaxWidth()) {
             VideoPanel(handle, Modifier.fillMaxSize())
         }
+
+        // Hidden in fullscreen, and mpv's own controller takes over — it is
+        // the only thing that can draw over the picture, because it owns those
+        // pixels. Escape comes back; so does the button below when windowed.
+        if (fullscreen) return@Column
 
         Column(
             Modifier.fillMaxWidth().background(Ink).padding(horizontal = 16.dp, vertical = 10.dp),
@@ -200,6 +207,9 @@ fun PlayerScreen(
                 }
                 TextButton(onClick = { session?.cycleAudio() }) {
                     Text("Audio", color = Muted, style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(onClick = { onFullscreen(true) }) {
+                    Text("Fullscreen", color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
                 TextButton(onClick = onSources) {
                     Text("Sources", color = Muted, style = MaterialTheme.typography.bodySmall)
