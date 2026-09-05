@@ -133,11 +133,17 @@ fun main() {
         Window(
             onCloseRequest = { ActivePlayer.release(); exitApplication() },
             title = "Debritsu",
-            // Borderless only while fullscreen. Java will only take a window
-            // truly full-screen if it was built without decoration, and that is
-            // fixed when the window is made — so this rebuilds the window, and
-            // the player is held outside the composition to survive it.
-            undecorated = fullscreen,
+            // Not toggled. AWT will not change a window's decoration once it is
+            // on screen — setting it throws — so making this depend on the
+            // fullscreen flag killed the application outright every time
+            // somebody pressed F, with no crash dump and no error, because the
+            // window simply went away.
+            //
+            // Which leaves fullscreen as a placement change, and a placement
+            // change on a decorated window keeps its title bar. Removing that
+            // means building the window undecorated from the start and drawing
+            // our own title bar, which is a real piece of work and costs the
+            // native resize border.
             // Preview, so a control button that has been clicked and kept focus
             // cannot swallow Space and press itself instead of pausing.
             onPreviewKeyEvent = { event -> playerKeys?.invoke(event) ?: false },
@@ -168,9 +174,11 @@ fun main() {
             ) {
                 Surface(Modifier.fillMaxSize(), color = Ink) {
                     App(
+                        appScope = this@application,
                         fullscreen = fullscreen,
                         onFullscreen = { fullscreen = it },
-                        onPlayerKeys = { playerKeys = it }
+                        onPlayerKeys = { playerKeys = it },
+                        playerKeys = { event -> playerKeys?.invoke(event) ?: false }
                     )
                 }
             }
@@ -180,9 +188,17 @@ fun main() {
 
 @Composable
 private fun App(
+    /**
+     * Needed to open the fullscreen window. A window can only be created from
+     * the application scope, and fullscreen has to be a second window rather
+     * than this one changed: AWT will not take decoration off a window that is
+     * already on screen.
+     */
+    appScope: androidx.compose.ui.window.ApplicationScope,
     fullscreen: Boolean,
     onFullscreen: (Boolean) -> Unit,
-    onPlayerKeys: (((androidx.compose.ui.input.key.KeyEvent) -> Boolean)?) -> Unit
+    onPlayerKeys: (((androidx.compose.ui.input.key.KeyEvent) -> Boolean)?) -> Unit,
+    playerKeys: (androidx.compose.ui.input.key.KeyEvent) -> Boolean
 ) {
     var showSettings by remember { mutableStateOf(Settings.aniListToken.isEmpty()) }
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
@@ -347,11 +363,14 @@ private fun App(
         }
     }
 
-    // Before every other screen: while something is playing, this window is the
-    // player.
+    // While something is playing, this window is the player — unless it is
+    // fullscreen, in which case a second window is, born undecorated so it can
+    // actually cover the screen. The player itself is held outside the
+    // composition, so moving between the two does not restart it.
     val nowPlaying = playing
     if (nowPlaying != null) {
-        PlayerScreen(
+        val player: @Composable () -> Unit = {
+            PlayerScreen(
             target = nowPlaying,
             fullscreen = fullscreen,
             onFullscreen = onFullscreen,
@@ -381,9 +400,32 @@ private fun App(
                     is Watch.State.Failed -> state.why
                     else -> status
                 }
+                }
+            )
+        }
+
+        if (fullscreen) {
+            // Created undecorated, which is legal; changing decoration on a
+            // live window is not, and doing that killed the application.
+            with(appScope) {
+                Window(
+                    onCloseRequest = { onFullscreen(false) },
+                    title = "Debritsu",
+                    undecorated = true,
+                    resizable = false,
+                    icon = painterResource("icon.png"),
+                    state = rememberWindowState(placement = WindowPlacement.Fullscreen),
+                    onPreviewKeyEvent = playerKeys
+                ) {
+                    Surface(Modifier.fillMaxSize(), color = Color.Black) { player() }
+                }
             }
-        )
-        return
+            // The main window keeps the shelves behind it rather than the
+            // player, so there is only ever one of these composed at a time.
+        } else {
+            player()
+            return
+        }
     }
 
     val pick = choosing

@@ -148,7 +148,14 @@ fun PlayerScreen(
     // every time somebody pressed F. Stopping is the Back button's job, which
     // knows the difference.
     DisposableEffect(target.url) {
+        // Frames stop being published the moment this screen goes, and start
+        // again when the next one composes. Between those two points the window
+        // is being rebuilt for fullscreen and there is a renderer disposing
+        // itself; drawing into it is an access violation inside Skia that takes
+        // the whole JVM down.
+        player.publishing = true
         onDispose {
+            player.publishing = false
             runCatching {
                 val pos = player.positionMs()
                 val dur = player.durationMs()

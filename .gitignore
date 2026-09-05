@@ -7,3 +7,5 @@ captures/
 .externalNativeBuild/
 .cxx/
 .kotlin/
+hs_err_pid*.log
+replay_pid*.log

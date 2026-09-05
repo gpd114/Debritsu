@@ -112,6 +112,17 @@ class VlcPlayer(vlcDirectory: java.io.File) {
     @Volatile
     private var reportedFailure = false
 
+    /**
+     * Whether frames should be turned into images at all.
+     *
+     * Off while the window is being rebuilt for fullscreen. Decoding carries on
+     * — the audio must not gap — but nothing new is published, because the
+     * renderer that would draw it is being disposed and drawing into one that
+     * is going away crashes Skia outright, taking the whole JVM with it.
+     */
+    @Volatile
+    var publishing: Boolean = true
+
     private val bufferFormatCallback = object : BufferFormatCallback {
         override fun getBufferFormat(width: Int, height: Int): BufferFormat {
             // Called more than once, and not only when the format changes —
@@ -132,6 +143,7 @@ class VlcPlayer(vlcDirectory: java.io.File) {
     }
 
     private val renderCallback = RenderCallback { _, buffers, format ->
+        if (!publishing) return@RenderCallback
         try {
             val width = format.width
             val bufferHeight = format.height
@@ -272,10 +284,29 @@ class VlcPlayer(vlcDirectory: java.io.File) {
         val real = tracks.filter { it.first != -1 }
         if (real.isEmpty()) return
 
-        val wanted = real.firstOrNull { (_, name) ->
+        // A forced track is not the dialogue. It carries signs and song lyrics
+        // for scenes the audio does not cover, shows text only now and then,
+        // and reads as broken subtitles rather than as the wrong track — which
+        // is exactly what this picked: "Inglese (force)" out of a file that
+        // also had "Inglese (Dialog)".
+        //
+        // The Android build has the same trap and the same note about it: anime
+        // releases ship two English subtitle tracks and the signs one is
+        // routinely flagged forced or default, so it wins unless that is
+        // ignored deliberately.
+        fun isForced(name: String): Boolean {
             val n = name.lowercase()
-            n.contains("eng") || n.contains("english") || n.contains(preferred.lowercase())
-        } ?: real.first()
+            return "force" in n || "forced" in n || "signs" in n || "songs" in n
+        }
+
+        fun isEnglish(name: String): Boolean {
+            val n = name.lowercase()
+            return "eng" in n || "english" in n || preferred.lowercase() in n
+        }
+
+        val wanted = real.firstOrNull { isEnglish(it.second) && !isForced(it.second) }
+            ?: real.firstOrNull { !isForced(it.second) }
+            ?: real.first()
 
         BuildInfo.log("DebritsuVlc", "selecting subtitles: ${wanted.second}")
         setSubtitleTrack(wanted.first)
