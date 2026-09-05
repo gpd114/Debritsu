@@ -187,7 +187,15 @@ object Mpv {
         if (BuildInfo.debug) BuildInfo.log("DebritsuMpv", args.joinToString(" "))
 
         val process = runCatching {
-            ProcessBuilder(args).redirectErrorStream(true).start()
+            ProcessBuilder(args)
+                // Anywhere but here. A child inherits the parent's working
+                // directory, and the packaged app's is its own install folder —
+                // so a running mpv held that folder open and the next build
+                // could not replace it, failing on a directory that was by then
+                // empty. mpv has no use for a working directory of its own.
+                .directory(File(System.getProperty("user.home")))
+                .redirectErrorStream(true)
+                .start()
         }.getOrNull() ?: return@withContext null
 
         // Drain mpv's output, or a full pipe buffer eventually blocks it.

@@ -147,6 +147,15 @@ private fun App() {
                                 status = when (state) {
                                     is Watch.State.Preparing -> state.what
                                     is Watch.State.Playing -> state.title
+                                    is Watch.State.Pushed -> {
+                                        // Refresh now rather than when mpv is
+                                        // closed: the list is the only place
+                                        // this is visible, and waiting for the
+                                        // player to be shut reads as nothing
+                                        // having happened.
+                                        reload++
+                                        "Episode ${state.episode} marked watched on AniList."
+                                    }
                                     is Watch.State.Finished ->
                                         if (state.pushed) "Marked watched on AniList." else "Playback ended."
                                     is Watch.State.Failed -> state.why

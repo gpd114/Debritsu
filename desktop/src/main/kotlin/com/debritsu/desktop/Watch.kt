@@ -20,6 +20,16 @@ object Watch {
     sealed interface State {
         data class Preparing(val what: String) : State
         data class Playing(val title: String) : State
+
+        /**
+         * Progress reached AniList, reported the moment it happens rather than
+         * when playback ends.
+         *
+         * The watch loop runs for as long as mpv does, so anything reported at
+         * the end waits for the window to be closed — which made a push that
+         * had already succeeded look like it had not happened.
+         */
+        data class Pushed(val episode: Int) : State
         data class Finished(val pushed: Boolean) : State
         data class Failed(val why: String) : State
     }
@@ -135,7 +145,7 @@ object Watch {
                     if (pushed) "pushed episode $episode for $anilistId"
                     else "push failed: ${result.exceptionOrNull()}"
                 )
-                if (pushed) onState(State.Playing("$title — episode $episode marked watched"))
+                if (pushed) onState(State.Pushed(episode))
             }
         }
 
