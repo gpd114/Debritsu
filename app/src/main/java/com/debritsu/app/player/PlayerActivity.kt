@@ -645,10 +645,39 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun installSkipButton() {
         val button = findViewById<TextView>(R.id.skip_segment)
-        button.background = GradientDrawable().apply {
+        val radius = 26 * resources.displayMetrics.density
+
+        // Violet normally, and near-white with dark text once the remote is on
+        // it. It had a single flat drawable before, so being focused looked
+        // exactly like not being focused — there was no faint highlight, there
+        // was none at all, and the only way to know the button was selected was
+        // to press OK and see what happened.
+        //
+        // Inverted rather than outlined on purpose. This is read from a sofa,
+        // where a ring a few pixels wide is a guess; the whole button changing
+        // colour is not. It follows the dialog rows, which already say where
+        // the remote is — this was simply missed when they were done.
+        val resting = GradientDrawable().apply {
             setColor(0xE68B5CF6.toInt())
-            cornerRadius = 26 * resources.displayMetrics.density
+            cornerRadius = radius
         }
+        val focused = GradientDrawable().apply {
+            setColor(0xFFF1EEF8.toInt())
+            cornerRadius = radius
+        }
+        button.background = android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), focused)
+            addState(intArrayOf(), resting)
+        }
+        button.setTextColor(
+            ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_focused), intArrayOf()),
+                intArrayOf(0xFF2A2140.toInt(), 0xFFF1EEF8.toInt())
+            )
+        )
+        // A click listener alone leaves this focusable only by inference, and
+        // the remote has to be able to reach it.
+        button.isFocusable = true
 
         lifecycleScope.launch {
             while (true) {
