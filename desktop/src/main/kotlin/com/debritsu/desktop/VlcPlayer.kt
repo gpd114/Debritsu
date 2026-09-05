@@ -1,10 +1,10 @@
 package com.debritsu.desktop
 
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asComposeImageBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import com.debritsu.app.data.BuildInfo
 import com.debritsu.app.data.Subtitle
-import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Image
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.ImageInfo
@@ -106,7 +106,6 @@ class VlcPlayer(vlcDirectory: java.io.File) {
 
     fun frame(): ImageBitmap? = current.get()
 
-    private var bitmap: Bitmap? = null
     private var pixels: ByteArray = ByteArray(0)
 
     /** Logged once rather than per frame, which would be thousands of lines. */
@@ -156,16 +155,7 @@ class VlcPlayer(vlcDirectory: java.io.File) {
             // Sized from the frame in hand rather than from whatever the format
             // callback last said. They disagree while VLC is settling, and the
             // frame is the one that has to fit.
-            var bmp = bitmap
-            if (bmp == null || pixels.size != needed || bmp.height != height) {
-                pixels = ByteArray(needed)
-                bmp = Bitmap().apply {
-                    allocPixels(
-                        ImageInfo(width, height, ColorType.BGRA_8888, ColorAlphaType.OPAQUE)
-                    )
-                }
-                bitmap = bmp
-            }
+            if (pixels.size != needed) pixels = ByteArray(needed)
 
             val buffer = buffers[0]
             buffer.rewind()
@@ -183,12 +173,22 @@ class VlcPlayer(vlcDirectory: java.io.File) {
 
             // RV32 is BGRA on a little-endian machine, which is what Skia wants
             // for BGRA_8888 — so the bytes go across without swizzling.
-            bmp.installPixels(
+            //
+            // An immutable raster image rather than a reused Bitmap.
+            // asComposeImageBitmap wraps a Bitmap lazily and calls
+            // makeFromBitmap when Compose draws it — by which time this thread
+            // is already writing the next frame into the same pixels. That
+            // raced, failed on the drawing thread rather than this one, and
+            // surfaced as an error dialog that no catch here could have caught.
+            //
+            // makeRaster takes its own copy, so what is published is finished
+            // and cannot be written underneath.
+            val image = Image.makeRaster(
                 ImageInfo(width, height, ColorType.BGRA_8888, ColorAlphaType.OPAQUE),
                 pixels,
                 width * 4
             )
-            current.set(bmp.asComposeImageBitmap())
+            current.set(image.toComposeImageBitmap())
             frames++
         } catch (t: Throwable) {
             // Never let this escape. An exception thrown out of a native
