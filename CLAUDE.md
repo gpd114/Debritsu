@@ -61,6 +61,30 @@ Both are wrapped in `BuildConfig.DEBUG` and cost nothing in release.
   It is guesswork; check the log before assuming the filter is wrong.
 - **Sizes are quoted as `493 MB / 53 GB`** for a pack — the file, then the whole
   torrent. Take the first.
+- **Some addons give no filename at all** — only size, bitrate and language. Any
+  rule that reads the release name silently does nothing against those, and will
+  look like it works because it does work against Torrentio.
+- **A creditless opening scores well and is not the episode.** NCOP/NCED files
+  ship inside season packs: playable, small, cached, correctly resolutioned, so
+  the filter ranks them highly and auto-play takes one. They are the theme song
+  with no titles over it, about ninety seconds. Size is the reliable tell where
+  the name is missing — 13.2 MB for a 24 minute episode is about 73 kbps, which
+  is not a poor encode but a clip. The floor is 1.5 MB a minute.
+- **A short file will mark an episode watched.** Progress goes at 85% of the
+  duration, and 85% of ninety seconds is a minute and a quarter. A season of
+  those marked a whole season complete on AniList that had never been played, so
+  anything pushing progress has to check the duration is plausible first.
+- **AniList has no concept of a season number.** A season is simply another show
+  to it, with its own id. IMDb and TVDB keep one entry per series — all four
+  seasons of Shield Hero are `tt9529546` — so an IMDb-shaped request must name
+  the season or it fetches the first. `api.ani.zip/mappings?anilist_id=N` is the
+  only source of that number, and of absolute numbering. It has no website: the
+  bare domain does not resolve and the API root 404s. The Fribb fallback covers
+  ids but not seasons.
+- **Episode counts disagree because of specials.** ani.zip lists 26 entries for
+  Shield Hero season 1: episodes 1..25 plus one keyed `S1`, a five minute recap
+  promo. Sites that fold specials into the count show 26. Following AniList's 25
+  is correct, and a report of "wrong numbering" is usually this.
 - **Never resolve a source the addon marks uncached** (`⏳`). It starts a download
   on the user's debrid account they did not ask for, then fails anyway.
 - **The source list must not travel in an Intent.** A few hundred sources, each
