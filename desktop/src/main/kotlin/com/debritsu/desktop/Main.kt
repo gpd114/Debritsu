@@ -351,6 +351,10 @@ private fun App() {
                 TextButton(onClick = { showSettings = !showSettings }) { Text("Settings") }
             }
 
+            // Above everything, because without mpv nothing on this screen can
+            // be played and finding that out by pressing play is worse.
+            MpvBanner(onInstalled = { reload++ })
+
             if (status.isNotEmpty()) {
                 Text(
                     status,
