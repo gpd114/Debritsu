@@ -30,10 +30,20 @@ dependencies {
 
 // Generated rather than hard-coded, so the id is not committed and survives an
 // update — the same arrangement the Android build has.
+// Prefers the desktop client, falling back to the phone's so a checkout with
+// only the old key still builds — it just cannot sign in, because that client
+// redirects to debritsu://auth.
+val anilistClientId: String = anilistProps.getProperty("desktopClientId")
+    ?: anilistProps.getProperty("clientId", "")
+
 val generateBuildInfo by tasks.registering {
     val out = layout.buildDirectory.dir("generated/buildinfo")
-    val clientId = anilistProps.getProperty("desktopClientId")
-        ?: anilistProps.getProperty("clientId", "")
+    val clientId = anilistClientId
+    // Declared as an input or Gradle has nothing to compare and calls the task
+    // up to date forever: the id was changed in anilist.properties and the
+    // generated file kept the old one, which fails as a silently stale build
+    // rather than as an error.
+    inputs.property("clientId", clientId)
     outputs.dir(out)
     doLast {
         val dir = out.get().asFile.resolve("com/debritsu/desktop")
