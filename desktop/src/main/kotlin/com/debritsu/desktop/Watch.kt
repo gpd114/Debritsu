@@ -3,6 +3,7 @@ package com.debritsu.desktop
 import com.debritsu.app.data.AniList
 import com.debritsu.app.data.AutoPlay
 import com.debritsu.app.data.BuildInfo
+import com.debritsu.app.data.Progress
 import com.debritsu.app.data.Settings
 import kotlinx.coroutines.delay
 import java.io.File
@@ -103,7 +104,17 @@ object Watch {
             return
         }
 
-        val session = Mpv.play(exe, url, "$title — episode $episode", outcome.subtitles)
+        // Where this episode was left, if it was. Progress clears itself once an
+        // episode is effectively finished, so this never offers to resume at the
+        // credits of something already watched.
+        val resumeFrom = Progress.position(anilistId, episode)
+        if (resumeFrom > 0) {
+            BuildInfo.log("DebritsuWatch", "resuming at ${resumeFrom}ms")
+        }
+
+        val session = Mpv.play(
+            exe, url, "$title — episode $episode", outcome.subtitles, startAtMs = resumeFrom
+        )
         if (session == null) {
             onState(State.Failed("mpv would not start, or its pipe never appeared."))
             return
@@ -119,13 +130,24 @@ object Watch {
         var ticks = 0
         while (session.alive) {
             delay(1000)
+            ticks++
             if (duration <= 0L) duration = session.durationMs() ?: 0L
             val position = session.positionMs() ?: continue
+
+            // Saved as it goes rather than at the end, because playback does not
+            // always end tidily — the window is closed, the machine sleeps, the
+            // stream dies — and a position written only on a clean exit is
+            // missing exactly when it was wanted.
+            //
+            // Every five seconds, not every one. The store rewrites its whole
+            // file per key, so a per-second save would be some thousands of
+            // rewrites across an episode to buy four seconds of accuracy.
+            if (ticks % 5 == 0) Progress.save(anilistId, episode, position, duration)
 
             // Every tenth tick, so a failure to push can be read back rather
             // than guessed at. This is the rule that once marked a season
             // watched wrongly, so it is worth being able to see it work.
-            if (BuildInfo.debug && ticks++ % 10 == 0) {
+            if (BuildInfo.debug && ticks % 10 == 0) {
                 val target = if (duration > 0) (duration * FINISHED_FRACTION).toLong() else -1
                 BuildInfo.log(
                     "DebritsuWatch",

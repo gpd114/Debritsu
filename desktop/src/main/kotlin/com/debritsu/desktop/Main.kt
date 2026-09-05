@@ -39,6 +39,7 @@ import com.debritsu.app.data.AniList
 import com.debritsu.app.data.Anime
 import com.debritsu.app.data.BuildInfo
 import com.debritsu.app.data.DebridProvider
+import com.debritsu.app.data.Progress
 import com.debritsu.app.data.Settings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,6 +55,7 @@ private val Muted = Color(0xFF948CAB)
 
 fun main() {
     Settings.store = FileStore.default()
+    Progress.store = FileStore.progress()
     BuildInfo.anilistClientId = ANILIST_CLIENT_ID
 
     // On by default, to a file. The standalone build has no console to print
@@ -188,13 +190,24 @@ private fun ShowRow(anime: Anime, onPlay: (Int) -> Unit) {
         ) {
             Column(Modifier.weight(1f)) {
                 Text(anime.title, style = MaterialTheme.typography.titleMedium)
+                val partWatched = Progress.fraction(anime.id, next)
                 Text(
-                    "Watched ${anime.progress}" + (anime.episodes?.let { " of $it" } ?: ""),
+                    buildString {
+                        append("Watched ${anime.progress}")
+                        anime.episodes?.let { append(" of $it") }
+                        // Only worth saying when there is something to come back
+                        // to; Progress clears itself once an episode is finished.
+                        if (partWatched > 0f) {
+                            append("  ·  episode $next ${(partWatched * 100).toInt()}% in")
+                        }
+                    },
                     color = Muted,
                     style = MaterialTheme.typography.bodySmall
                 )
             }
-            Button(onClick = { onPlay(next) }) { Text("Play episode $next") }
+            Button(onClick = { onPlay(next) }) {
+                Text(if (Progress.fraction(anime.id, next) > 0f) "Resume episode $next" else "Play episode $next")
+            }
         }
     }
 }

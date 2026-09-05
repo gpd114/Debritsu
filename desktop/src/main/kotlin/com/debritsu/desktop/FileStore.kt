@@ -65,10 +65,22 @@ class FileStore(private val file: File) : KeyValueStore {
 
     override fun putFloat(key: String, value: Float) = put(key, value.toString())
 
+    override fun getLong(key: String, fallback: Long): Long =
+        props.getProperty(key)?.toLongOrNull() ?: fallback
+
+    override fun putLong(key: String, value: Long) = put(key, value.toString())
+
     override fun getBoolean(key: String, fallback: Boolean): Boolean =
         props.getProperty(key)?.toBooleanStrictOrNull() ?: fallback
 
     override fun putBoolean(key: String, value: Boolean) = put(key, value.toString())
+
+    override fun remove(key: String) {
+        props.remove(key)
+        save()
+    }
+
+    override fun keys(): Set<String> = props.stringPropertyNames()
 
     companion object {
         /**
@@ -84,5 +96,14 @@ class FileStore(private val file: File) : KeyValueStore {
         }
 
         fun default(): FileStore = FileStore(File(directory(), "settings.properties"))
+
+        /**
+         * Resume positions, in their own file.
+         *
+         * A collection that grows with every episode started, rather than a
+         * fixed set of named settings — worth being able to read, and to delete,
+         * separately. The Android build keeps them apart for the same reason.
+         */
+        fun progress(): FileStore = FileStore(File(directory(), "progress.properties"))
     }
 }
