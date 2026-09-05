@@ -78,6 +78,24 @@ Both are wrapped in `BuildConfig.DEBUG` and cost nothing in release.
 - **Most televisions cannot fetch HTTPS**, and debrid links are always HTTPS, so
   DLNA casting fails on them. Not fixable from this side without proxying the
   stream through the phone.
+- **`PlayerView.isControllerFullyVisible` does not mean "the controls are up".**
+  It is `uxState == UX_STATE_ALL_VISIBLE && controlView.isVisible()`, so it reads
+  false for the whole ~250ms fade-in and in the progress-only state — both of
+  which are the controls on screen and holding focus. Read as "the controls are
+  hidden" it made the skip button take focus back off play/pause within 400ms of
+  the remote asking for the controls. Ask what actually holds focus instead:
+  `PlayerView` holds it whenever the controls are genuinely down, and it sets
+  `FOCUS_AFTER_DESCENDANTS`, so `requestFocus()` on it lands on a control when
+  they are up and on the player itself when they are not.
+- **Anything drawn over the video but outside `PlayerView` is a focus trap.**
+  The skip button is a *sibling* of it in `activity_player.xml`, so while that
+  holds focus a key aimed at it never passes through the player and cannot raise
+  the transport controls at all — for as long as an opening lasts. `PlayerActivity`
+  answers up and down itself in that state, and only swallows the key if focus
+  genuinely moved. Any future overlay there needs the same treatment.
+- **media3 ships no sources to the Gradle cache.** Unzip
+  `media3-ui-<version>.aar`, then `javap -c` the class. Both of the above came
+  out of doing that, and neither was guessable from the method names.
 
 ## Working notes
 
