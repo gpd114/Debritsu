@@ -1,5 +1,10 @@
 # Debritsu
 
+**This is the `windows` branch.** The desktop port is planned but not started —
+read [WINDOWS-PORT.md](WINDOWS-PORT.md) before touching anything here, including
+the four open questions at the end, which were deliberately not verified. No code
+has moved yet; this branch is currently `main` plus that document.
+
 Android anime player. Content comes from Stremio addons, links are resolved
 through a debrid provider, and progress syncs to AniList. The app ships no
 sources and no content of its own.
