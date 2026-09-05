@@ -318,8 +318,10 @@ class VlcPlayer(vlcDirectory: java.io.File) {
     fun setPaused(paused: Boolean) = player.controls().setPause(paused)
     fun seekTo(ms: Long) = player.controls().setTime(ms)
     fun seekBy(seconds: Int) = player.controls().skipTime(seconds * 1000L)
-    fun setVolume(percent: Int) { player.audio().setVolume(percent) }
-    fun volume(): Int = player.audio().volume()
+    fun setVolume(percent: Int) { runCatching { player.audio().setVolume(percent.coerceIn(0, 125)) } }
+    fun volume(): Int = runCatching { player.audio().volume() }.getOrDefault(100)
+    fun muted(): Boolean = runCatching { player.audio().isMute }.getOrDefault(false)
+    fun setMuted(muted: Boolean) { runCatching { player.audio().setMute(muted) } }
 
     /** Track lists, for pickers that name what they are choosing between. */
     fun subtitleTracks(): List<Pair<Int, String>> =
