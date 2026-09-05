@@ -1,7 +1,10 @@
 package com.debritsu.desktop
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -93,6 +96,8 @@ private fun App() {
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var status by remember { mutableStateOf("") }
     var reload by remember { mutableStateOf(0) }
+    /** Which show has its episode list open. One at a time, or the list becomes unreadable. */
+    var expandedId by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(reload) {
@@ -133,7 +138,11 @@ private fun App() {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(watching) { anime ->
-                    ShowRow(anime) { ep ->
+                    ShowRow(
+                        anime = anime,
+                        expanded = expandedId == anime.id,
+                        onToggle = { expandedId = if (expandedId == anime.id) null else anime.id }
+                    ) { ep ->
                         scope.launch {
                             Watch.episode(
                                 anilistId = anime.id,
@@ -177,10 +186,29 @@ private fun App() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ShowRow(anime: Anime, onPlay: (Int) -> Unit) {
-    val next = (anime.progress) + 1
-    Box(
+private fun ShowRow(
+    anime: Anime,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onPlay: (Int) -> Unit
+) {
+    val next = anime.progress + 1
+
+    /**
+     * How many episodes there are to offer.
+     *
+     * AniList leaves `episodes` null while a show is still airing, so the count
+     * comes from what has aired instead — the next airing episode minus one.
+     * Failing both, only the next one is offered, which is no worse than the
+     * button that was here before.
+     */
+    val total = (anime.episodes
+        ?: anime.nextEpisode?.let { it - 1 }
+        ?: next).coerceAtLeast(next)
+
+    Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Panel).padding(16.dp)
     ) {
         Row(
@@ -205,10 +233,70 @@ private fun ShowRow(anime: Anime, onPlay: (Int) -> Unit) {
                     style = MaterialTheme.typography.bodySmall
                 )
             }
+            TextButton(onClick = onToggle) {
+                Text(if (expanded) "Hide episodes" else "All episodes", color = Muted)
+            }
             Button(onClick = { onPlay(next) }) {
-                Text(if (Progress.fraction(anime.id, next) > 0f) "Resume episode $next" else "Play episode $next")
+                Text(
+                    if (Progress.fraction(anime.id, next) > 0f) "Resume $next" else "Play $next"
+                )
             }
         }
+
+        if (expanded) {
+            FlowRow(
+                Modifier.fillMaxWidth().padding(top = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                for (ep in 1..total) {
+                    EpisodeChip(
+                        episode = ep,
+                        watched = ep <= anime.progress,
+                        isNext = ep == next,
+                        partWatched = Progress.fraction(anime.id, ep)
+                    ) { onPlay(ep) }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One episode. Watched ones recede, the next one is picked out, and a
+ * part-watched one carries how far in it is — which is the only state where the
+ * number alone would not say enough.
+ */
+@Composable
+private fun EpisodeChip(
+    episode: Int,
+    watched: Boolean,
+    isNext: Boolean,
+    partWatched: Float,
+    onClick: () -> Unit
+) {
+    val background = when {
+        isNext -> Violet.copy(alpha = 0.25f)
+        watched -> Color.Transparent
+        else -> Muted.copy(alpha = 0.12f)
+    }
+    val ink = when {
+        isNext -> Paper
+        watched -> Muted
+        else -> Paper.copy(alpha = 0.85f)
+    }
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(background)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 7.dp)
+    ) {
+        Text(
+            if (partWatched > 0f) "$episode · ${(partWatched * 100).toInt()}%" else "$episode",
+            color = ink,
+            style = MaterialTheme.typography.bodySmall
+        )
     }
 }
 
