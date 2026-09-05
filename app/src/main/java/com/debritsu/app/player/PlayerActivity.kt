@@ -52,7 +52,9 @@ import com.debritsu.app.data.Downloads
 import com.debritsu.app.data.Mappings
 import com.debritsu.app.data.Progress
 import com.debritsu.app.data.SourceHandoff
+import com.debritsu.app.data.StreamMeta
 import com.debritsu.app.data.StreamOption
+import com.debritsu.app.data.minEpisodeSizeMb
 import com.debritsu.app.data.Subtitle
 import com.debritsu.app.data.SyncQueue
 import com.debritsu.app.data.json
@@ -946,7 +948,24 @@ class PlayerActivity : ComponentActivity() {
         // Whatever is playing goes to the top and says so. Auto-play picks
         // silently, and without this there is no way to tell which of forty
         // near-identical releases you ended up watching.
-        val ordered = sources.indices.sortedByDescending { it == currentSourceIndex }
+        //
+        // Then the ones that meet the filters, best first, and everything else
+        // after. This kept its addons' order before, so swapping source meant
+        // reading forty rows to find another that qualified — the same hunt the
+        // filters exist to avoid.
+        val filter = Settings.sourceFilter
+        val minSize = minEpisodeSizeMb(episodeMinutes)
+        val ordered = sources.indices.sortedWith(
+            compareByDescending<Int> { it == currentSourceIndex }
+                .thenByDescending {
+                    val s = sources[it]
+                    filter.accepts(s, StreamMeta.of(s), minSize)
+                }
+                .thenByDescending {
+                    val s = sources[it]
+                    filter.score(s, StreamMeta.of(s))
+                }
+        )
         val rows = ordered.map { i ->
             val s = sources[i]
             Row(
