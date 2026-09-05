@@ -2,6 +2,8 @@ package com.debritsu.desktop
 
 import com.debritsu.app.data.KeyValueStore
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.Properties
 
 /**
@@ -29,7 +31,18 @@ class FileStore(private val file: File) : KeyValueStore {
         // an old one, and a crash mid-write is exactly when it would happen.
         val tmp = File(file.parentFile, file.name + ".tmp")
         tmp.outputStream().use { props.store(it, "Debritsu") }
-        tmp.renameTo(file)
+
+        // Files.move, not File.renameTo. On Windows renameTo will not replace an
+        // existing file: it returns false and throws nothing, so the first
+        // setting saved and every one after it was silently discarded — the
+        // token was kept because there was no file yet, and the addon URL
+        // entered a minute later vanished without a word.
+        Files.move(
+            tmp.toPath(),
+            file.toPath(),
+            StandardCopyOption.REPLACE_EXISTING,
+            StandardCopyOption.ATOMIC_MOVE
+        )
     }
 
     private fun put(key: String, value: String) {

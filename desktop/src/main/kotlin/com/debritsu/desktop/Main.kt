@@ -38,6 +38,7 @@ import androidx.compose.ui.window.rememberWindowState
 import com.debritsu.app.data.AniList
 import com.debritsu.app.data.Anime
 import com.debritsu.app.data.BuildInfo
+import com.debritsu.app.data.DebridProvider
 import com.debritsu.app.data.Settings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -183,6 +184,7 @@ private fun ShowRow(anime: Anime, onPlay: (Int) -> Unit) {
 private fun SettingsPane(modifier: Modifier = Modifier, onChanged: () -> Unit) {
     var token by remember { mutableStateOf(Settings.aniListToken) }
     var addon by remember { mutableStateOf(Settings.addons.firstOrNull() ?: "") }
+    var provider by remember { mutableStateOf(Settings.debridProvider) }
     var debrid by remember { mutableStateOf(Settings.debridToken) }
     var mpvPath by remember { mutableStateOf(Settings.store.getString("mpv_path", "")) }
     val found = remember(mpvPath) { Mpv.locate(mpvPath) }
@@ -228,12 +230,42 @@ private fun SettingsPane(modifier: Modifier = Modifier, onChanged: () -> Unit) {
             modifier = Modifier.fillMaxWidth()
         )
 
+        // Tokens are stored per provider, so picking the wrong one does not
+        // merely mislabel the field — it files the key under another service's
+        // name and then calls that service's API with it.
+        Text("Debrid provider", color = Muted, style = MaterialTheme.typography.bodySmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            DebridProvider.entries.forEach { p ->
+                val selected = p == provider
+                TextButton(
+                    onClick = {
+                        provider = p
+                        Settings.debridProvider = p
+                        // Re-read: the getter is keyed by provider, so this is
+                        // whatever was last saved for the one just chosen.
+                        debrid = Settings.debridToken
+                    }
+                ) {
+                    Text(
+                        p.label,
+                        color = if (selected) Violet else Muted,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+
         OutlinedTextField(
             value = debrid,
             onValueChange = { debrid = it; Settings.debridToken = it.trim() },
-            label = { Text("${Settings.debridProvider.label} API token") },
+            label = { Text("${provider.label} API token") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            "Get it from ${provider.tokenHint}",
+            color = Muted,
+            style = MaterialTheme.typography.bodySmall
         )
 
         OutlinedTextField(
