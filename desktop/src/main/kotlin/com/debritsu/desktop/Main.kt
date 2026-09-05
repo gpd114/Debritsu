@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -48,6 +49,7 @@ import com.debritsu.app.data.Progress
 import com.debritsu.app.data.Settings
 import com.debritsu.app.data.SyncQueue
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -103,47 +105,72 @@ fun main() {
 private fun App() {
     var showSettings by remember { mutableStateOf(Settings.aniListToken.isEmpty()) }
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    var planning by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    var trending by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    var recommended by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    var listed by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var status by remember { mutableStateOf("") }
     var reload by remember { mutableStateOf(0) }
-    /** Which show has its episode list open. One at a time, or the list becomes unreadable. */
-    var expandedId by remember { mutableStateOf<Int?>(null) }
 
-    /** The show being looked at in full, or null for the list. */
+    var query by remember { mutableStateOf("") }
+    var found by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    val searching = query.trim().length >= 3
+
+    /** The show being looked at in full, or null for the shelves. */
     var detailOf by remember { mutableStateOf<Anime?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(reload) {
         if (Settings.aniListToken.isEmpty()) return@LaunchedEffect
 
-        // Anything watched offline goes first, so the list that loads below
-        // already reflects it rather than showing a stale position and
-        // correcting itself a moment later.
+        // Anything watched offline goes first, so the shelves below already
+        // reflect it rather than showing a stale position and correcting
+        // themselves a moment later.
         val queued = SyncQueue.count
         if (queued > 0) {
-            status = "Syncing $queued watched offline…"
+            status = "Syncing $queued watched offline..."
             withContext(Dispatchers.IO) { runCatching { SyncQueue.flush() } }
         }
 
-        status = "Loading your list…"
-        val list = withContext(Dispatchers.IO) {
-            runCatching { AniList.watching() }.getOrNull()
+        status = "Loading..."
+        // Each of these keeps what it had when a request fails rather than
+        // emptying, and an empty shelf is hidden — so on the phone a single
+        // failed request made Continue watching disappear at random. It was not
+        // random: this is five requests against AniList's thirty a minute, and
+        // a failure means "no answer", which is not "nothing there".
+        coroutineScope {
+            launch { runCatching { AniList.watching() }.onSuccess { watching = it } }
+            launch { runCatching { AniList.planning() }.onSuccess { planning = it } }
+            launch { runCatching { AniList.listedIds() }.onSuccess { listed = it } }
+            // These two do not change while you watch something, so they are
+            // asked for only while missing — which also gives a shelf that
+            // failed on the way in another go on the next reload.
+            if (trending.isEmpty()) {
+                launch { runCatching { AniList.trending().items }.onSuccess { trending = it } }
+            }
+            if (recommended.isEmpty()) {
+                launch { runCatching { AniList.recommended().items }.onSuccess { recommended = it } }
+            }
         }
-        watching = list ?: emptyList()
-        status = when {
-            list == null -> "AniList did not answer. It stalls on about one request in five; try again."
-            list.isEmpty() -> "Nothing on your Watching list."
-            else -> ""
+        status = ""
+    }
+
+    // Three characters before asking, and a pause after the last keystroke, so
+    // typing a title does not fire a query per letter.
+    LaunchedEffect(query) {
+        if (!searching) {
+            found = emptyList()
+            return@LaunchedEffect
+        }
+        delay(350)
+        found = withContext(Dispatchers.IO) {
+            runCatching { AniList.search(query.trim()).items }.getOrDefault(emptyList())
         }
     }
 
-    // Retries whatever was watched offline, without being asked.
-    //
-    // The flush above only runs when the list is (re)loaded, so coming back
-    // online did nothing until Refresh was pressed — the queue was right and
-    // simply had nothing to prompt it. Half a minute is well inside the time
-    // between closing a laptop lid on a plane and opening it somewhere with
-    // wifi, and costs one AniList request per attempt only while something is
-    // actually queued.
+    // Retries whatever was watched offline, without being asked. The flush
+    // above only runs when the shelves reload, so coming back online did
+    // nothing until Refresh was pressed.
     LaunchedEffect(Unit) {
         while (true) {
             delay(30_000)
@@ -159,8 +186,8 @@ private fun App() {
         }
     }
 
-    // Defined once and handed to both the list and the detail screen, so an
-    // episode started from either goes through exactly the same path.
+    // Defined once and handed to every screen, so an episode started from a
+    // shelf, a search result or the detail page goes through one path.
     val play: (Anime, Int) -> Unit = { anime, ep ->
         scope.launch {
             Watch.episode(
@@ -168,8 +195,7 @@ private fun App() {
                 title = anime.title,
                 episode = ep,
                 // AniList's own minutes-per-episode where it has it, which is
-                // what makes the plausible-size floor meaningful. Zero falls
-                // back to four minutes, which is far weaker.
+                // what makes the plausible-size floor meaningful.
                 episodeMinutes = anime.durationMins ?: 0,
                 isMovie = (anime.episodes ?: 0) == 1
             ) { state ->
@@ -177,9 +203,6 @@ private fun App() {
                     is Watch.State.Preparing -> state.what
                     is Watch.State.Playing -> state.title
                     is Watch.State.Pushed -> {
-                        // Refresh now rather than when mpv is closed: the list is
-                        // the only place this is visible, and waiting for the
-                        // player to be shut reads as nothing having happened.
                         reload++
                         "Episode ${state.episode} marked watched on AniList."
                     }
@@ -214,38 +237,71 @@ private fun App() {
         return
     }
 
+    // Anything already on a list is not a discovery, so recommendations drop
+    // it — and that means the whole list, not just the two shelves above.
+    // Filtering on those alone let through shows finished years ago, which is
+    // the one thing this shelf should never suggest.
+    val onMyList = listed + (watching + planning).map { it.id }
+
+    val shelves = buildList {
+        if (watching.isNotEmpty()) add("Continue watching" to watching)
+        if (planning.isNotEmpty()) add("Plan to watch" to planning)
+        if (trending.isNotEmpty()) add("Trending" to trending)
+        val fresh = recommended.filter { it.id !in onMyList }
+        if (fresh.isNotEmpty()) add("Recommended" to fresh)
+    }
+
     Row(Modifier.fillMaxSize()) {
-        Column(Modifier.weight(1f).padding(28.dp)) {
+        Column(Modifier.weight(1f)) {
             Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                Modifier.fillMaxWidth().padding(start = 28.dp, end = 28.dp, top = 20.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Continue watching", style = MaterialTheme.typography.headlineSmall)
-                Row {
-                    TextButton(onClick = { reload++ }) { Text("Refresh") }
-                    TextButton(onClick = { showSettings = !showSettings }) { Text("Settings") }
-                }
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text("Search") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { reload++ }) { Text("Refresh") }
+                TextButton(onClick = { showSettings = !showSettings }) { Text("Settings") }
             }
 
             if (status.isNotEmpty()) {
-                Text(status, color = Muted, style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 8.dp))
+                Text(
+                    status,
+                    color = Muted,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 4.dp)
+                )
             }
 
-            LazyColumn(
-                Modifier.fillMaxWidth().padding(top = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(watching) { anime ->
-                    ShowRow(
-                        anime = anime,
-                        expanded = expandedId == anime.id,
-                        onToggle = { expandedId = if (expandedId == anime.id) null else anime.id },
-                        onOpen = { detailOf = anime },
-                        onDownload = { ep -> download(anime, ep) },
-                        onPlay = { ep -> play(anime, ep) }
+            if (searching) {
+                Column(Modifier.padding(top = 12.dp)) {
+                    Shelf(
+                        title = if (found.isEmpty()) "Searching for \"${query.trim()}\"" else "Results",
+                        list = found,
+                        onOpen = { detailOf = it }
                     )
+                }
+            } else if (shelves.isEmpty()) {
+                Text(
+                    if (Settings.aniListToken.isEmpty()) "Sign in from Settings to see your list."
+                    else "Nothing to show yet.",
+                    color = Muted,
+                    modifier = Modifier.padding(28.dp)
+                )
+            } else {
+                LazyColumn(
+                    Modifier.fillMaxSize().padding(top = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                    contentPadding = PaddingValues(bottom = 28.dp)
+                ) {
+                    items(shelves) { shelf ->
+                        Shelf(shelf.first, shelf.second) { detailOf = it }
+                    }
                 }
             }
         }
@@ -257,106 +313,6 @@ private fun App() {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ShowRow(
-    anime: Anime,
-    expanded: Boolean,
-    onToggle: () -> Unit,
-    onOpen: () -> Unit,
-    onDownload: (Int) -> Unit,
-    onPlay: (Int) -> Unit
-) {
-    val next = anime.progress + 1
-
-    /**
-     * How many episodes there are to offer.
-     *
-     * AniList leaves `episodes` null while a show is still airing, so the count
-     * comes from what has aired instead — the next airing episode minus one.
-     * Failing both, only the next one is offered, which is no worse than the
-     * button that was here before.
-     */
-    val total = (anime.episodes
-        ?: anime.nextEpisode?.let { it - 1 }
-        ?: next).coerceAtLeast(next)
-
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Panel).padding(16.dp)
-    ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RemoteImage(
-                url = anime.cover,
-                modifier = Modifier.width(46.dp).height(64.dp).clickable(onClick = onOpen),
-                fallback = anime.title
-            )
-
-            Column(Modifier.weight(1f).padding(start = 14.dp)) {
-                // The title opens the show. A whole-row click would fight the
-                // buttons sitting in it.
-                Text(
-                    anime.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.clickable(onClick = onOpen)
-                )
-                val partWatched = Progress.fraction(anime.id, next)
-                Text(
-                    buildString {
-                        append("Watched ${anime.progress}")
-                        anime.episodes?.let { append(" of $it") }
-                        // Only worth saying when there is something to come back
-                        // to; Progress clears itself once an episode is finished.
-                        if (partWatched > 0f) {
-                            append("  ·  episode $next ${(partWatched * 100).toInt()}% in")
-                        }
-                    },
-                    color = Muted,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-            TextButton(onClick = onToggle) {
-                Text(if (expanded) "Hide episodes" else "All episodes", color = Muted)
-            }
-            Button(onClick = { onPlay(next) }) {
-                Text(
-                    if (Progress.fraction(anime.id, next) > 0f) "Resume $next" else "Play $next"
-                )
-            }
-        }
-
-        if (expanded) {
-            FlowRow(
-                Modifier.fillMaxWidth().padding(top = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                for (ep in 1..total) {
-                    val held = DownloadIndex.get(anime.id, ep)
-                    EpisodeChip(
-                        episode = ep,
-                        watched = ep <= anime.progress,
-                        isNext = ep == next,
-                        partWatched = Progress.fraction(anime.id, ep),
-                        downloaded = held != null && Downloader.isComplete(held),
-                        downloading = held != null && Downloader.isRunning(held),
-                        onPlay = { onPlay(ep) },
-                        onDownload = { onDownload(ep) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * One episode. Watched ones recede, the next one is picked out, and a
- * part-watched one carries how far in it is — which is the only state where the
- * number alone would not say enough.
- */
 /** Shared with the detail screen, which lays out the same grid. */
 @Composable
 internal fun EpisodeChip(
