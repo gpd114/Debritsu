@@ -21,11 +21,25 @@ interface KeyValueStore {
     fun getInt(key: String, fallback: Int): Int
     fun putInt(key: String, value: Int)
 
+    fun getLong(key: String, fallback: Long): Long
+    fun putLong(key: String, value: Long)
+
     fun getFloat(key: String, fallback: Float): Float
     fun putFloat(key: String, value: Float)
 
     fun getBoolean(key: String, fallback: Boolean): Boolean
     fun putBoolean(key: String, value: Boolean)
+
+    fun remove(key: String)
+
+    /**
+     * Every key currently held.
+     *
+     * For the stores that are a collection rather than a fixed set of settings:
+     * resume positions are keyed by show and episode, and the offline queue by
+     * media id, so neither can be read without asking what is in there.
+     */
+    fun keys(): Set<String>
 }
 
 /**
@@ -41,10 +55,14 @@ internal object NoStore : KeyValueStore {
     override fun putString(key: String, value: String) = Unit
     override fun getInt(key: String, fallback: Int) = fallback
     override fun putInt(key: String, value: Int) = Unit
+    override fun getLong(key: String, fallback: Long) = fallback
+    override fun putLong(key: String, value: Long) = Unit
     override fun getFloat(key: String, fallback: Float) = fallback
     override fun putFloat(key: String, value: Float) = Unit
     override fun getBoolean(key: String, fallback: Boolean) = fallback
     override fun putBoolean(key: String, value: Boolean) = Unit
+    override fun remove(key: String) = Unit
+    override fun keys(): Set<String> = emptySet()
 }
 
 /**

@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import com.debritsu.app.cast.GoogleCast
 import com.debritsu.app.data.BuildInfo
 import com.debritsu.app.data.KeyValueStore
+import com.debritsu.app.data.Progress
 import com.debritsu.app.data.Settings
 
 class DebritsuApp : Application() {
@@ -19,6 +20,11 @@ class DebritsuApp : Application() {
         // addons rather than fail in any way that pointed here.
         Settings.store = SharedPrefsStore(
             getSharedPreferences("debritsu", Context.MODE_PRIVATE)
+        )
+        // Its own file, as it has always been: a growing collection of resume
+        // positions rather than a fixed set of settings.
+        Progress.store = SharedPrefsStore(
+            getSharedPreferences("progress", Context.MODE_PRIVATE)
         )
         BuildInfo.debug = BuildConfig.DEBUG
         BuildInfo.anilistClientId = BuildConfig.ANILIST_CLIENT_ID
@@ -53,6 +59,12 @@ private class SharedPrefsStore(private val sp: SharedPreferences) : KeyValueStor
     override fun getFloat(key: String, fallback: Float) = sp.getFloat(key, fallback)
     override fun putFloat(key: String, value: Float) = sp.edit().putFloat(key, value).apply()
 
+    override fun getLong(key: String, fallback: Long) = sp.getLong(key, fallback)
+    override fun putLong(key: String, value: Long) = sp.edit().putLong(key, value).apply()
+
     override fun getBoolean(key: String, fallback: Boolean) = sp.getBoolean(key, fallback)
     override fun putBoolean(key: String, value: Boolean) = sp.edit().putBoolean(key, value).apply()
+
+    override fun remove(key: String) = sp.edit().remove(key).apply()
+    override fun keys(): Set<String> = sp.all.keys
 }
