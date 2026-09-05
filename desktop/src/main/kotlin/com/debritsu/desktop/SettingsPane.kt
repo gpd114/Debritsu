@@ -331,6 +331,54 @@ private fun PlaybackSection() {
             style = MaterialTheme.typography.bodyMedium)
         Switch(checked = english, onCheckedChange = { english = it; Settings.preferEnglish = it })
     }
+
+    LanguageSection()
+}
+
+/**
+ * Which track mpv should start on.
+ *
+ * Left to itself mpv follows the system language, which on an English machine
+ * quietly picks the dub — the same fault ExoPlayer has on an English phone, and
+ * for the same reason. Both spellings of each code are sent, because releases
+ * tag tracks jpn or ja inconsistently.
+ */
+@Composable
+private fun LanguageSection() {
+    var audio by remember { mutableStateOf(Settings.preferredAudioLanguage) }
+    var subs by remember { mutableStateOf(Settings.store.getString("sub_lang", "eng")) }
+
+    Text("Audio track", style = MaterialTheme.typography.bodySmall, color = SetMuted)
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        listOf("ja" to "Japanese", "en" to "English", "" to "File default").forEach { (code, label) ->
+            TextButton(onClick = { audio = code; Settings.preferredAudioLanguage = code }) {
+                Text(
+                    label,
+                    color = if (code == audio) SetViolet else SetMuted,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    }
+
+    Text("Subtitles", style = MaterialTheme.typography.bodySmall, color = SetMuted)
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        listOf("eng" to "English", "" to "File default").forEach { (code, label) ->
+            TextButton(onClick = { subs = code; Settings.store.putString("sub_lang", code) }) {
+                Text(
+                    label,
+                    color = if (code == subs) SetViolet else SetMuted,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    }
+    Text(
+        "mpv still lists every track, so a release that labels them oddly can " +
+            "be corrected while it plays.",
+        color = SetMuted,
+        style = MaterialTheme.typography.bodySmall
+    )
 }
 
 @Composable

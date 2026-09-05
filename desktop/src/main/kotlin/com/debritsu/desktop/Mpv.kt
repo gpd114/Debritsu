@@ -43,6 +43,20 @@ object Mpv {
         "C:\\mpv\\mpv.exe"
     )
 
+    /**
+     * Both ISO spellings of a language, in preference order.
+     *
+     * Releases are inconsistent: some tag tracks `jpn` and `eng`, others `ja`
+     * and `en`, and a list that names only one form misses half of them. Any
+     * other value is passed through as given, so an unusual language can still
+     * be asked for by hand.
+     */
+    private fun languageList(code: String): String = when (code.lowercase()) {
+        "ja", "jpn" -> "jpn,ja,japanese"
+        "en", "eng" -> "eng,en,english"
+        else -> code
+    }
+
     fun locate(configured: String): File? {
         if (configured.isNotBlank()) {
             val f = File(configured)
@@ -170,7 +184,9 @@ object Mpv {
         url: String,
         title: String,
         subtitles: List<Subtitle>,
-        startAtMs: Long = 0
+        startAtMs: Long = 0,
+        audioLanguage: String = "",
+        subtitleLanguage: String = ""
     ): Session? = withContext(Dispatchers.IO) {
         val pipeName = "debritsu-" + System.nanoTime()
         val args = buildList {
@@ -180,6 +196,24 @@ object Mpv {
             // Otherwise a fresh mpv opens small and behind whatever is in front.
             add("--force-window=immediate")
             if (startAtMs > 0) add("--start=${startAtMs / 1000}")
+
+            // Which track to start on, rather than letting mpv follow the
+            // system language — which on an English machine quietly picks the
+            // dub, the same way ExoPlayer does on an English phone.
+            //
+            // Both spellings of each language are passed because releases are
+            // inconsistent about it: some tag tracks jpn and eng, others ja and
+            // en, and mpv takes the list in order of preference.
+            if (audioLanguage.isNotBlank()) add("--alang=${languageList(audioLanguage)}")
+            if (subtitleLanguage.isNotBlank()) add("--slang=${languageList(subtitleLanguage)}")
+            // Subtitles on unless the audio is already in the subtitle
+            // language: a Japanese track with English subtitles is the point,
+            // and mpv will otherwise leave them off if the file says so.
+            if (subtitleLanguage.isNotBlank() && audioLanguage != subtitleLanguage) {
+                add("--sid=auto")
+                add("--sub-visibility=yes")
+            }
+
             subtitles.forEach { add("--sub-file=${it.url}") }
             add(url)
         }

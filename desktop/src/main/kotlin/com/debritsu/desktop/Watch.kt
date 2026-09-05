@@ -3,12 +3,16 @@ package com.debritsu.desktop
 import com.debritsu.app.data.AniList
 import com.debritsu.app.data.AutoPlay
 import com.debritsu.app.data.BuildInfo
+import com.debritsu.app.data.Debrid
 import com.debritsu.app.data.DownloadIndex
+import com.debritsu.app.data.StreamOption
 import com.debritsu.app.data.Progress
 import com.debritsu.app.data.Settings
 import com.debritsu.app.data.Subtitle
 import com.debritsu.app.data.SyncQueue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -36,6 +40,20 @@ object Watch {
         data class Pushed(val episode: Int) : State
         data class Finished(val pushed: Boolean) : State
         data class Failed(val why: String) : State
+
+        /**
+         * Automatic selection is off, and these are the sources found.
+         *
+         * Everything needed to play one is carried along, because the choosing
+         * happens in the interface and the playing happens back here.
+         */
+        data class Choose(
+            val outcome: AutoPlay.Outcome,
+            val anilistId: Int,
+            val title: String,
+            val episode: Int,
+            val episodeMinutes: Int
+        ) : State
     }
 
     /**
@@ -95,13 +113,45 @@ object Watch {
         }
 
         onState(State.Preparing("Locating"))
-        val outcome = AutoPlay.run(
+        val outcome = find(anilistId, title, episode, episodeMinutes, isMovie, Settings.autoPlay, onState)
+
+        // Automatic selection switched off: hand the list back and let the
+        // caller choose. Both routes go through the same finding, so a manual
+        // pick sees exactly the sources the automatic one considered.
+        if (!Settings.autoPlay && outcome.url == null && outcome.message == null) {
+            onState(State.Choose(outcome, anilistId, title, episode, episodeMinutes))
+            return
+        }
+
+        val url = outcome.url
+        if (url == null) {
+            onState(State.Failed(outcome.message ?: "Nothing playable was found."))
+            return
+        }
+
+        playFile(
+            exe, url, title, episode, episodeMinutes, anilistId, outcome.subtitles, onState
+        )
+    }
+
+    /** The finding half, shared by playing and by listing sources. */
+    private suspend fun find(
+        anilistId: Int,
+        title: String,
+        episode: Int,
+        episodeMinutes: Int,
+        isMovie: Boolean,
+        autoSelect: Boolean,
+        onState: (State) -> Unit
+    ): AutoPlay.Outcome {
+        return AutoPlay.run(
             anilistId = anilistId,
             title = title,
             episode = episode,
             isMovie = isMovie,
             filter = Settings.sourceFilter,
-            episodeMinutes = episodeMinutes
+            episodeMinutes = episodeMinutes,
+            autoSelect = autoSelect
         ) { step ->
             onState(
                 State.Preparing(
@@ -115,16 +165,45 @@ object Watch {
                 )
             )
         }
+    }
 
-        val url = outcome.url
-        if (url == null) {
-            onState(State.Failed(outcome.message ?: "Nothing playable was found."))
+    /**
+     * Plays a source the viewer chose themselves.
+     *
+     * Resolved here rather than when the list was built: resolving every source
+     * to show a list would add each one to the debrid account, which is a
+     * download nobody asked for — the same reason auto-play never touches an
+     * uncached source.
+     */
+    suspend fun chosen(
+        stream: StreamOption,
+        subtitles: List<Subtitle>,
+        anilistId: Int,
+        title: String,
+        episode: Int,
+        episodeMinutes: Int,
+        onState: (State) -> Unit
+    ) {
+        val exe = Mpv.locate(Settings.store.getString("mpv_path", ""))
+        if (exe == null) {
+            onState(State.Failed("mpv was not found. Set its path in Settings."))
             return
         }
 
-        playFile(
-            exe, url, title, episode, episodeMinutes, anilistId, outcome.subtitles, onState
-        )
+        onState(State.Preparing("Resolving ${stream.name.lineSequence().first().take(60)}"))
+        val url = withContext(Dispatchers.IO) { runCatching { Debrid.resolve(stream) }.getOrNull() }
+        if (url == null) {
+            onState(
+                State.Failed(
+                    "That source would not resolve — most likely it is not cached with " +
+                        "${Settings.debridProvider.label}."
+                )
+            )
+            return
+        }
+
+        val subs = (stream.subtitles + subtitles).distinctBy { it.url }
+        playFile(exe, url, title, episode, episodeMinutes, anilistId, subs, onState)
     }
 
     /**
@@ -153,7 +232,10 @@ object Watch {
         }
 
         val session = Mpv.play(
-            exe, url, "$title — episode $episode", subtitles, startAtMs = resumeFrom
+            exe, url, "$title — episode $episode", subtitles,
+            startAtMs = resumeFrom,
+            audioLanguage = Settings.preferredAudioLanguage,
+            subtitleLanguage = Settings.store.getString("sub_lang", "eng")
         )
         if (session == null) {
             onState(State.Failed("mpv would not start, or its pipe never appeared."))

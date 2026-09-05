@@ -119,6 +119,8 @@ private fun App() {
     /** The show being looked at in full, or null for the shelves. */
     var detailOf by remember { mutableStateOf<Anime?>(null) }
     var showDownloads by remember { mutableStateOf(false) }
+    /** Sources to choose from, when automatic selection is off. */
+    var choosing by remember { mutableStateOf<Watch.State.Choose?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(reload) {
@@ -210,6 +212,10 @@ private fun App() {
                     is Watch.State.Finished ->
                         if (state.pushed) "Marked watched on AniList." else "Playback ended."
                     is Watch.State.Failed -> state.why
+                    is Watch.State.Choose -> {
+                        choosing = state
+                        "${state.outcome.results.sumOf { r -> r.streams.size }} sources found."
+                    }
                 }
             }
             reload++
@@ -225,6 +231,41 @@ private fun App() {
             }
             reload++
         }
+    }
+
+    val pick = choosing
+    if (pick != null) {
+        SourcesScreen(
+            state = pick,
+            onBack = { choosing = null },
+            onPick = { stream ->
+                choosing = null
+                scope.launch {
+                    Watch.chosen(
+                        stream = stream,
+                        subtitles = pick.outcome.subtitles,
+                        anilistId = pick.anilistId,
+                        title = pick.title,
+                        episode = pick.episode,
+                        episodeMinutes = pick.episodeMinutes
+                    ) { state ->
+                        status = when (state) {
+                            is Watch.State.Preparing -> state.what
+                            is Watch.State.Playing -> state.title
+                            is Watch.State.Pushed -> {
+                                reload++
+                                "Episode ${state.episode} marked watched on AniList."
+                            }
+                            is Watch.State.Finished -> "Playback ended."
+                            is Watch.State.Failed -> state.why
+                            is Watch.State.Choose -> ""
+                        }
+                    }
+                    reload++
+                }
+            }
+        )
+        return
     }
 
     // Before the detail page and before the shelves, because this is the one
@@ -250,6 +291,9 @@ private fun App() {
                             is Watch.State.Pushed -> "Episode ${state.episode} marked watched."
                             is Watch.State.Finished -> "Playback ended."
                             is Watch.State.Failed -> state.why
+                            // Cannot happen here: a downloaded episode is
+                            // played from disk and never looks for sources.
+                            is Watch.State.Choose -> ""
                         }
                     }
                 }
