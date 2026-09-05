@@ -1,8 +1,5 @@
 package com.debritsu.app.data
 
-import android.content.Context
-import com.debritsu.app.DebritsuApp
-
 /**
  * Watch progress that couldn't reach AniList.
  *
@@ -10,25 +7,24 @@ import com.debritsu.app.DebritsuApp
  * replayed on the next successful connection. Only the highest episode per
  * title is kept — AniList progress is a single number, so replaying every
  * intermediate value would be pointless traffic.
+ *
+ * Its own store: a queue that empties itself, rather than settings that persist.
  */
 object SyncQueue {
 
-    private val sp by lazy {
-        DebritsuApp.ctx.getSharedPreferences("sync_queue", Context.MODE_PRIVATE)
-    }
+    /** Installed by the host at startup, like [Settings.store]. */
+    var store: KeyValueStore = NoStore
 
     fun queue(mediaId: Int, episode: Int) {
-        val existing = sp.getInt(mediaId.toString(), 0)
-        if (episode > existing) {
-            sp.edit().putInt(mediaId.toString(), episode).apply()
-        }
+        val existing = store.getInt(mediaId.toString(), 0)
+        if (episode > existing) store.putInt(mediaId.toString(), episode)
     }
 
     fun pending(): Map<Int, Int> =
-        sp.all.mapNotNull { (k, v) ->
+        store.keys().mapNotNull { k ->
             val id = k.toIntOrNull() ?: return@mapNotNull null
-            val ep = (v as? Int) ?: return@mapNotNull null
-            id to ep
+            val ep = store.getInt(k, 0)
+            if (ep > 0) id to ep else null
         }.toMap()
 
     val count: Int get() = pending().size
@@ -38,7 +34,7 @@ object SyncQueue {
         if (Settings.aniListToken.isEmpty()) return
         pending().forEach { (mediaId, episode) ->
             val ok = runCatching { AniList.setProgress(mediaId, episode) }.isSuccess
-            if (ok) sp.edit().remove(mediaId.toString()).apply()
+            if (ok) store.remove(mediaId.toString())
         }
     }
 }

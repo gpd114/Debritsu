@@ -5,9 +5,11 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.debritsu.app.cast.GoogleCast
 import com.debritsu.app.data.BuildInfo
+import com.debritsu.app.data.DownloadIndex
 import com.debritsu.app.data.KeyValueStore
 import com.debritsu.app.data.Progress
 import com.debritsu.app.data.Settings
+import com.debritsu.app.data.SyncQueue
 
 class DebritsuApp : Application() {
     override fun onCreate() {
@@ -25,6 +27,14 @@ class DebritsuApp : Application() {
         // positions rather than a fixed set of settings.
         Progress.store = SharedPrefsStore(
             getSharedPreferences("progress", Context.MODE_PRIVATE)
+        )
+        // Same preference files and same keys these have always used, so an
+        // existing library and an existing queue are read back unchanged.
+        DownloadIndex.store = SharedPrefsStore(
+            getSharedPreferences("downloads", Context.MODE_PRIVATE)
+        )
+        SyncQueue.store = SharedPrefsStore(
+            getSharedPreferences("sync_queue", Context.MODE_PRIVATE)
         )
         BuildInfo.debug = BuildConfig.DEBUG
         BuildInfo.anilistClientId = BuildConfig.ANILIST_CLIENT_ID
