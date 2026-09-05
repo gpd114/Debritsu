@@ -47,6 +47,7 @@ import com.debritsu.app.data.Progress
 import com.debritsu.app.data.Settings
 import com.debritsu.app.data.SyncQueue
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.Desktop
@@ -128,6 +129,29 @@ private fun App() {
             list == null -> "AniList did not answer. It stalls on about one request in five; try again."
             list.isEmpty() -> "Nothing on your Watching list."
             else -> ""
+        }
+    }
+
+    // Retries whatever was watched offline, without being asked.
+    //
+    // The flush above only runs when the list is (re)loaded, so coming back
+    // online did nothing until Refresh was pressed — the queue was right and
+    // simply had nothing to prompt it. Half a minute is well inside the time
+    // between closing a laptop lid on a plane and opening it somewhere with
+    // wifi, and costs one AniList request per attempt only while something is
+    // actually queued.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000)
+            if (Settings.aniListToken.isEmpty()) continue
+            val before = SyncQueue.count
+            if (before == 0) continue
+            withContext(Dispatchers.IO) { runCatching { SyncQueue.flush() } }
+            val after = SyncQueue.count
+            if (after < before) {
+                BuildInfo.log("DebritsuSync", "flushed ${before - after} of $before queued")
+                reload++
+            }
         }
     }
 
