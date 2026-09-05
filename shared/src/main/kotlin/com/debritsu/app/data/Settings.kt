@@ -1,43 +1,47 @@
 package com.debritsu.app.data
 
-import android.content.Context
-import com.debritsu.app.DebritsuApp
-
 /**
  * Simple persisted settings. Addons are stored as a newline-separated list of
  * Stremio addon base URLs (the manifest.json URL, minus the filename).
+ *
+ * Backed by whatever [KeyValueStore] the host installs at startup — the only
+ * Android in here was ever the SharedPreferences handle, so the properties
+ * below are unchanged apart from where they read and write.
  */
 object Settings {
-    private val sp by lazy {
-        DebritsuApp.ctx.getSharedPreferences("debritsu", Context.MODE_PRIVATE)
-    }
+    /**
+     * Installed once by the host before anything reads a setting. Until then
+     * every read returns its default and every write is dropped, which is a
+     * better failure than throwing out of an unrelated screen.
+     */
+    var store: KeyValueStore = NoStore
 
     /** Falls back to the shared client baked into the build. */
     var aniListClientId: String
-        get() = (sp.getString("anilist_client_id", "") ?: "")
+        get() = store.getString("anilist_client_id", "")
             .ifEmpty { DEFAULT_ANILIST_CLIENT_ID }
-        set(v) = sp.edit().putString("anilist_client_id", v).apply()
+        set(v) = store.putString("anilist_client_id", v)
 
     var aniListToken: String
-        get() = sp.getString("anilist_token", "") ?: ""
-        set(v) = sp.edit().putString("anilist_token", v).apply()
+        get() = store.getString("anilist_token", "")
+        set(v) = store.putString("anilist_token", v)
 
     /** Which debrid service the fallback resolver talks to. */
     var debridProvider: DebridProvider
         get() = runCatching {
-            DebridProvider.valueOf(sp.getString("debrid_provider", "") ?: "")
+            DebridProvider.valueOf(store.getString("debrid_provider", ""))
         }.getOrDefault(DebridProvider.REAL_DEBRID)
-        set(v) = sp.edit().putString("debrid_provider", v.name).apply()
+        set(v) = store.putString("debrid_provider", v.name)
 
     /** API key / token for the selected provider. Stored per provider. */
     var debridToken: String
-        get() = sp.getString("debrid_token_${debridProvider.name}", "") ?: ""
-        set(v) = sp.edit().putString("debrid_token_${debridProvider.name}", v).apply()
+        get() = store.getString("debrid_token_${debridProvider.name}", "")
+        set(v) = store.putString("debrid_token_${debridProvider.name}", v)
 
     var addons: List<String>
-        get() = (sp.getString("addons", "") ?: "")
+        get() = store.getString("addons", "")
             .split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-        set(v) = sp.edit().putString("addons", v.joinToString("\n")).apply()
+        set(v) = store.putString("addons", v.joinToString("\n"))
 
     /**
      * The AniList account id, kept alongside the token it belongs to.
@@ -48,13 +52,13 @@ object Settings {
      * It never changes for a given token, so it is stored rather than fetched.
      */
     var aniListViewerId: Int
-        get() = sp.getInt("anilist_viewer_id", 0)
-        set(v) = sp.edit().putInt("anilist_viewer_id", v).apply()
+        get() = store.getInt("anilist_viewer_id", 0)
+        set(v) = store.putInt("anilist_viewer_id", v)
 
     /** The token that id belongs to, so switching accounts discards it. */
     var aniListViewerToken: String
-        get() = sp.getString("anilist_viewer_token", "") ?: ""
-        set(v) = sp.edit().putString("anilist_viewer_token", v).apply()
+        get() = store.getString("anilist_viewer_token", "")
+        set(v) = store.putString("anilist_viewer_token", v)
 
     // ----- audio -----
 
@@ -64,50 +68,50 @@ object Settings {
      * unasked — and on an English phone that quietly picks the dub.
      */
     var preferredAudioLanguage: String
-        get() = sp.getString("audio_lang", "ja") ?: "ja"
-        set(v) = sp.edit().putString("audio_lang", v).apply()
+        get() = store.getString("audio_lang", "ja")
+        set(v) = store.putString("audio_lang", v)
 
     // ----- subtitle appearance -----
 
     var subtitleSizeSp: Float
-        get() = sp.getFloat("sub_size", 20f)
-        set(v) = sp.edit().putFloat("sub_size", v).apply()
+        get() = store.getFloat("sub_size", 20f)
+        set(v) = store.putFloat("sub_size", v)
 
     /** 0 = none, 1 = translucent, 2 = solid black. */
     var subtitleBackground: Int
-        get() = sp.getInt("sub_bg", 1)
-        set(v) = sp.edit().putInt("sub_bg", v).apply()
+        get() = store.getInt("sub_bg", 1)
+        set(v) = store.putInt("sub_bg", v)
 
     /** 0 = white, 1 = pale yellow, 2 = cyan. */
     var subtitleColour: Int
-        get() = sp.getInt("sub_colour", 0)
-        set(v) = sp.edit().putInt("sub_colour", v).apply()
+        get() = store.getInt("sub_colour", 0)
+        set(v) = store.putInt("sub_colour", v)
 
     var subtitleOutline: Boolean
-        get() = sp.getBoolean("sub_outline", true)
-        set(v) = sp.edit().putBoolean("sub_outline", v).apply()
+        get() = store.getBoolean("sub_outline", true)
+        set(v) = store.putBoolean("sub_outline", v)
 
     // ----- automatic source selection -----
 
     /** Play the best match straight away instead of opening the source list. */
     var autoPlay: Boolean
-        get() = sp.getBoolean("auto_play", true)
-        set(v) = sp.edit().putBoolean("auto_play", v).apply()
+        get() = store.getBoolean("auto_play", true)
+        set(v) = store.putBoolean("auto_play", v)
 
     /** Ceiling rather than a target, so a 4K remux never lands on a phone. 0 = any. */
     var maxResolution: Int
-        get() = sp.getInt("filter_max_res", SourceFilter.Default.maxResolution)
-        set(v) = sp.edit().putInt("filter_max_res", v).apply()
+        get() = store.getInt("filter_max_res", SourceFilter.Default.maxResolution)
+        set(v) = store.putInt("filter_max_res", v)
 
     /** Hard cap in megabytes. 0 = no cap. */
     var maxSizeMb: Int
-        get() = sp.getInt("filter_max_size", SourceFilter.Default.maxSizeMb)
-        set(v) = sp.edit().putInt("filter_max_size", v).apply()
+        get() = store.getInt("filter_max_size", SourceFilter.Default.maxSizeMb)
+        set(v) = store.putInt("filter_max_size", v)
 
     /** Skip releases that name another language and never mention English. */
     var preferEnglish: Boolean
-        get() = sp.getBoolean("filter_english", SourceFilter.Default.preferEnglish)
-        set(v) = sp.edit().putBoolean("filter_english", v).apply()
+        get() = store.getBoolean("filter_english", SourceFilter.Default.preferEnglish)
+        set(v) = store.putBoolean("filter_english", v)
 
     val sourceFilter: SourceFilter
         get() = SourceFilter(maxResolution, maxSizeMb, preferEnglish)

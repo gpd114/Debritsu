@@ -1,0 +1,46 @@
+package com.debritsu.app
+
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
+
+object Http {
+    /**
+     * For addons, debrid and downloads: things that are genuinely big or
+     * genuinely slow, and worth waiting on.
+     */
+    val client: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .callTimeout(150, TimeUnit.SECONDS)
+        .build()
+
+    /**
+     * For metadata: AniList, Jikan, the id mappers. Small requests that either
+     * answer in about a second or are not going to.
+     *
+     * These used to share the client above, and inherited its 150 second call
+     * timeout. That is right for a debrid link and badly wrong here. Measured
+     * against AniList on 2026-08-30, one request in five simply hung — the
+     * other four answered in 1 to 2 seconds — so a shelf that drew one of the
+     * bad ones sat there for two and a half minutes rather than failing and
+     * being asked again.
+     *
+     * Ten seconds. Measured against AniList the same day, the app's own media
+     * query answered in 0.9 to 3.1 seconds, so this is about three times the
+     * worst healthy case — and with one retry behind it, a stall costs twenty
+     * seconds in total rather than two and a half minutes.
+     *
+     * Twenty was tried first, on the belief that a shorter limit was killing
+     * requests that would otherwise have worked. It was not: those failures
+     * were rate limiting, which returns immediately and is not a timeout at
+     * all. Nothing in the measurements justified the extra room.
+     *
+     * The connection and thread pools are shared, so this costs nothing to
+     * keep around.
+     */
+    val meta: OkHttpClient = client.newBuilder()
+        .connectTimeout(6, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .callTimeout(10, TimeUnit.SECONDS)
+        .build()
+}
