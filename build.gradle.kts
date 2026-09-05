@@ -14,4 +14,9 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.1.21" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.1.21" apply false
     id("org.jetbrains.kotlin.plugin.serialization") version "2.1.21" apply false
+
+    // Compose Multiplatform, for the desktop build only — the Android apps use
+    // Google's Compose through the Android plugin. 1.8.x is the first line that
+    // requires Kotlin 2.1, which is why the Kotlin bump above had to come first.
+    id("org.jetbrains.compose") version "1.8.2" apply false
 }

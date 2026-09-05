@@ -21,3 +21,7 @@ include(":app")
 // Android and the planned Windows build are both JVM, so the extra machinery
 // would buy nothing. See WINDOWS-PORT.md on the `windows` branch.
 include(":shared")
+
+// The Windows build. Compose Desktop over the same :shared module the phone and
+// television apps use, with mpv doing the playing.
+include(":desktop")
