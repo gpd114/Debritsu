@@ -104,10 +104,10 @@ landing.
   flushes in seconds and swallows tombstones, no debug-versus-release signing
   trap that costs the user their settings on every install.
 
-## Open questions — checked 5 September 2026
+## Open questions — all four settled, 5 September 2026
 
-Three settled, one blocked. Kept with their answers rather than deleted, because
-the answers are why the phases are shaped the way they are.
+Kept with their answers rather than deleted, because the answers are why the
+phases are shaped the way they are. Two of them changed the plan.
 
 ### Sign-in without a WebView — settled, and easier than feared
 
@@ -132,19 +132,40 @@ register exactly that. Desktop needs the pin URL instead, and AniList documents
 "use my own API client" field, so the interface for it exists. Worth 30 seconds
 confirming at anilist.co/settings/developer, which only the account holder sees.
 
-### mpv IPC on Windows — blocked, needs mpv installed
+### mpv IPC on Windows — settled, tested against a running player
 
-**mpv is not on this machine.** VLC 3.x is, at `C:\Program Files\VideoLAN\VLC`.
+mpv 0.41.0 installed via `winget install shinchiro.mpv`, the build mpv.io points
+Windows users to. Everything phase 2 needs was exercised over the pipe:
+`get_property`, `observe_property`, `seek`, and position advancing in real time.
 
-The manual confirms `--input-ipc-server` uses named pipes on Windows rather than
-Unix sockets, and that `--sub-file` is an append alias, so several subtitle
-tracks can be passed. The shape is right. The position-polling loop is still the
-one piece of phase 2 with no equivalent in this codebase, and it cannot be
-exercised until mpv is installed.
+**mpv does not go on PATH.** It installs to `C:\Program Files\MPV Player\mpv.exe`
+and the shell knows nothing about it, so the app has to locate the binary — a
+configured path, or a search of the usual install directories — rather than
+shelling out to `mpv`.
 
-VLC is worth remembering as a fallback — already present, and its interfaces can
-report position — but mpv is the better fit for the subtitle handling that makes
-this port attractive in the first place.
+**Events and replies share the pipe.** A reply carries the `request_id` it was
+asked with; property changes and playback events arrive on the same stream
+uninvited. The client loop has to read lines, match on `request_id`, and hand
+anything else to an event handler. This is the one real implementation detail,
+and it is the thing a naive "write a command, read one line" client gets wrong.
+
+Connect from JVM code the same way this was tested: a named pipe client against
+`\\.\pipe\<name>`, matching `--input-ipc-server=\\.\pipe\<name>`. The pipe was
+ready on the first connection attempt.
+
+**`observe_property` works, but it is far too chatty to use directly** — four
+pushes inside about 130ms of playback. Progress only needs checking against the
+85% mark, so poll `time-pos` about once a second instead, or throttle the
+observer hard.
+
+**`duration` is reliable on a real container and not on a synthetic one.** A
+lavfi test source reported 3.17 seconds while playing well past 30; a real MP4
+encoded at 25 seconds reported 24.96. That matters because `looksLikeTheEpisode`
+gates the 85% progress push on duration — the check is sound, but it must be
+tested against real media, never a generated stream.
+
+VLC 3.x is also present at `C:\Program Files\VideoLAN\VLC` if a fallback is ever
+wanted, but nothing here suggests one is needed.
 
 ### Compose Multiplatform against Kotlin 2.0.20 — settled, and it moves work into phase 1
 
