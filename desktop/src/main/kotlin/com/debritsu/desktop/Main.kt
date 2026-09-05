@@ -231,6 +231,7 @@ private fun App() {
         DetailScreen(
             initial = showing,
             onBack = { detailOf = null; reload++ },
+            onOpenOther = { detailOf = it },
             onDownload = download,
             onPlay = play
         )

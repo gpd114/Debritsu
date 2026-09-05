@@ -50,6 +50,8 @@ import kotlinx.coroutines.withContext
 fun DetailScreen(
     initial: Anime,
     onBack: () -> Unit,
+    /** Opening a related or recommended show, which replaces this page. */
+    onOpenOther: (Anime) -> Unit,
     onDownload: (Anime, Int) -> Unit,
     onPlay: (Anime, Int) -> Unit
 ) {
@@ -57,6 +59,7 @@ fun DetailScreen(
     // fills in rather than showing a spinner over nothing.
     var anime by remember(initial.id) { mutableStateOf(initial) }
     var loadFailed by remember(initial.id) { mutableStateOf(false) }
+    var extras by remember(initial.id) { mutableStateOf<AniList.Extras?>(null) }
 
     LaunchedEffect(initial.id) {
         val full = withContext(Dispatchers.IO) { runCatching { AniList.media(initial.id) }.getOrNull() }
@@ -67,6 +70,11 @@ fun DetailScreen(
         } else {
             loadFailed = true
         }
+        // After the record rather than beside it. These two rows are what you
+        // read once you have decided this is the right show, and asking for
+        // them together with the record would make the page wait on the slower
+        // of two requests before drawing either.
+        extras = withContext(Dispatchers.IO) { runCatching { AniList.extras(initial.id) }.getOrNull() }
     }
 
     val next = anime.progress + 1
@@ -164,6 +172,28 @@ fun DetailScreen(
                         onDownload = { onDownload(anime, ep) }
                     )
                 }
+            }
+        }
+
+        val side = extras
+        if (side != null) {
+            // Grouped by how they relate — a sequel and a side story are
+            // different answers to "what next", and one undifferentiated row
+            // would make you open each to find out which is which.
+            side.relations
+                .groupBy { it.type }
+                .forEach { (type, group) ->
+                    Shelf(
+                        title = type.replaceFirstChar { it.uppercase() },
+                        list = group.map { it.anime },
+                        onOpen = onOpenOther
+                    )
+                    Box(Modifier.height(18.dp))
+                }
+
+            if (side.recommended.isNotEmpty()) {
+                Shelf("People who liked this", side.recommended, onOpenOther)
+                Box(Modifier.height(28.dp))
             }
         }
     }
