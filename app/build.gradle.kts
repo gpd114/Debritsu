@@ -34,7 +34,7 @@ android {
         // working out which one was on a phone meant unzipping it.
         // Versioned independently of the phone app: this is a different
         // application id, so its numbering answers to nobody but itself.
-        versionCode = 13
+        versionCode = 14
         // Taken from the tag being built where there is one, so a release can
         // never report a name that disagrees with its own tag. Falls back to
         // the literal for local builds, which have no tag. Television releases
