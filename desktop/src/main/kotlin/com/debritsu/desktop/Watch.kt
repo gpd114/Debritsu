@@ -3,8 +3,11 @@ package com.debritsu.desktop
 import com.debritsu.app.data.AniList
 import com.debritsu.app.data.AutoPlay
 import com.debritsu.app.data.BuildInfo
+import com.debritsu.app.data.DownloadIndex
 import com.debritsu.app.data.Progress
 import com.debritsu.app.data.Settings
+import com.debritsu.app.data.Subtitle
+import com.debritsu.app.data.SyncQueue
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -76,6 +79,21 @@ object Watch {
             return
         }
 
+        // A downloaded copy wins outright. It plays instantly, costs no debrid
+        // call, and is the only thing that works with no network — which is the
+        // entire reason downloads exist.
+        val downloaded = DownloadIndex.get(anilistId, episode)
+            ?.takeIf { Downloader.isComplete(it) }
+        if (downloaded != null) {
+            val file = Downloader.fileFor(downloaded)
+            BuildInfo.log("DebritsuWatch", "playing local file ${file.absolutePath}")
+            playFile(
+                exe, file.absolutePath, title, episode, episodeMinutes,
+                anilistId, emptyList(), onState
+            )
+            return
+        }
+
         onState(State.Preparing("Locating"))
         val outcome = AutoPlay.run(
             anilistId = anilistId,
@@ -104,6 +122,28 @@ object Watch {
             return
         }
 
+        playFile(
+            exe, url, title, episode, episodeMinutes, anilistId, outcome.subtitles, onState
+        )
+    }
+
+    /**
+     * Plays whatever it is handed and watches it to the end.
+     *
+     * The same for a debrid URL and a file on disk: mpv takes either through one
+     * argument, which is the reason downloading and streaming are one feature
+     * here rather than two.
+     */
+    private suspend fun playFile(
+        exe: File,
+        url: String,
+        title: String,
+        episode: Int,
+        episodeMinutes: Int,
+        anilistId: Int,
+        subtitles: List<Subtitle>,
+        onState: (State) -> Unit
+    ) {
         // Where this episode was left, if it was. Progress clears itself once an
         // episode is effectively finished, so this never offers to resume at the
         // credits of something already watched.
@@ -113,7 +153,7 @@ object Watch {
         }
 
         val session = Mpv.play(
-            exe, url, "$title — episode $episode", outcome.subtitles, startAtMs = resumeFrom
+            exe, url, "$title — episode $episode", subtitles, startAtMs = resumeFrom
         )
         if (session == null) {
             onState(State.Failed("mpv would not start, or its pipe never appeared."))
@@ -165,9 +205,20 @@ object Watch {
                 BuildInfo.log(
                     "DebritsuWatch",
                     if (pushed) "pushed episode $episode for $anilistId"
-                    else "push failed: ${result.exceptionOrNull()}"
+                    else "push failed, queued: ${result.exceptionOrNull()}"
                 )
-                if (pushed) onState(State.Pushed(episode))
+                if (pushed) {
+                    onState(State.Pushed(episode))
+                } else {
+                    // Watching a downloaded episode on a plane still counts. It
+                    // is parked and replayed on the next connection, which is
+                    // what SyncQueue has always been for — it simply had no
+                    // caller here until downloads existed.
+                    SyncQueue.queue(anilistId, episode)
+                    onState(State.Playing("$title — episode $episode will sync when online"))
+                    // Not retried every second for the rest of the episode.
+                    pushed = true
+                }
             }
         }
 

@@ -105,5 +105,8 @@ class FileStore(private val file: File) : KeyValueStore {
          * separately. The Android build keeps them apart for the same reason.
          */
         fun progress(): FileStore = FileStore(File(directory(), "progress.properties"))
+
+        /** Any other collection that wants a file of its own. */
+        fun named(name: String): FileStore = FileStore(File(directory(), "$name.properties"))
     }
 }
