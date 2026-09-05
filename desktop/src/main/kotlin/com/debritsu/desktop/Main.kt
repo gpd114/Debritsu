@@ -408,15 +408,25 @@ private fun App(
             // Created undecorated, which is legal; changing decoration on a
             // live window is not, and doing that killed the application.
             with(appScope) {
+                val fullscreenState = rememberWindowState()
                 Window(
                     onCloseRequest = { onFullscreen(false) },
                     title = "Debritsu",
                     undecorated = true,
                     resizable = false,
                     icon = painterResource("icon.png"),
-                    state = rememberWindowState(placement = WindowPlacement.Fullscreen),
+                    state = fullscreenState,
                     onPreviewKeyEvent = playerKeys
                 ) {
+                    // Set here rather than passed to rememberWindowState.
+                    // Asking for fullscreen at construction is asking a window
+                    // that is not on screen yet, and it does not take — which
+                    // showed as an ordinary window on the first press and a
+                    // proper fullscreen on the second, once something was
+                    // already warm.
+                    LaunchedEffect(Unit) {
+                        fullscreenState.placement = WindowPlacement.Fullscreen
+                    }
                     Surface(Modifier.fillMaxSize(), color = Color.Black) { player() }
                 }
             }
