@@ -41,9 +41,11 @@ API token the user pastes in. There is no OAuth flow to rebuild.
 
 Each phase depends on the one above it, and each is usable on its own.
 
-### 1. Extract `data/` into a shared module
+### 1. Extract `data/` into a shared module, and move the toolchain
 
-About a day, and the only step that is awkward to unpick later.
+About a day for the extraction, plus a Kotlin upgrade — see the Compose
+Multiplatform answer below. This is the only step that is awkward to unpick
+later, and the only one that touches `main` and `tv` as well as this branch.
 
 Move the Android-free files first and keep building the existing app on top of
 them, so `main` and `tv` stay green throughout. Then put the five coupled files
@@ -102,29 +104,63 @@ landing.
   flushes in seconds and swallows tombstones, no debug-versus-release signing
   trap that costs the user their settings on every install.
 
-## Open questions — none of these were verified
+## Open questions — checked 5 September 2026
 
-Settle them before writing code. This project's record on reasoning instead of
-measuring is poor, and all four are cheap.
+Three settled, one blocked. Kept with their answers rather than deleted, because
+the answers are why the phases are shaped the way they are.
 
-- **How sign-in works without a WebView.** The app uses AniList's implicit grant
-  (`response_type=token`), which returns the token in the URL *fragment* — and a
-  fragment is never sent to a server, so a plain loopback redirect will not see
-  it. Either serve a one-line local page that reads `location.hash` and posts it
-  back, or use AniList's pin redirect and paste the token, which is how debrid
-  already works. **It is not established that the pin flow accepts the implicit
-  grant.** Open the authorize URL in a browser with each redirect and look.
-- **Whether the registered client needs a second redirect URI.** The client id
-  comes from `anilist.properties` and is registered for the Android app. One more
-  URI or a second client — both trivial, but it decides whether one id serves all
-  three builds.
-- **mpv's IPC on Windows.** `--input-ipc-server` uses a named pipe rather than a
-  Unix socket. Well established, but the position-polling loop is the one piece
-  of phase 2 with no equivalent already in this codebase. Play any file and poll
-  `time-pos` from a scratch script first.
-- **Compose Multiplatform against Kotlin 2.0.20.** The 1.7.x line targets it, but
-  confirm against the compatibility table before phase 2 — it may pull the whole
-  toolchain forward. One throwaway module that renders a `Text` settles it.
+### Sign-in without a WebView — settled, and easier than feared
+
+AniList's **pin redirect works with the implicit grant**, and shows the user an
+**access token** to copy and paste — not an authorization code needing a secret.
+Set the client's Redirect URL to `https://anilist.co/api/v2/oauth/pin` and
+desktop sign-in becomes: open the browser, paste the token. Exactly how debrid
+already works here.
+
+So there is **no local HTTP server, no JavaScript bounce page reading
+`location.hash`, and no Windows protocol handler**. The fragment problem
+disappears entirely.
+
+### A second AniList client id — needed, and cheap
+
+The Android client is registered with the custom scheme `debritsu://auth`: the
+manifest carries the intent filter and `SettingsScreen` tells the user to
+register exactly that. Desktop needs the pin URL instead, and AniList documents
+"the Redirect URL" in the singular with no way to register several.
+
+**Plan on a separate client id for the desktop build.** The app already has a
+"use my own API client" field, so the interface for it exists. Worth 30 seconds
+confirming at anilist.co/settings/developer, which only the account holder sees.
+
+### mpv IPC on Windows — blocked, needs mpv installed
+
+**mpv is not on this machine.** VLC 3.x is, at `C:\Program Files\VideoLAN\VLC`.
+
+The manual confirms `--input-ipc-server` uses named pipes on Windows rather than
+Unix sockets, and that `--sub-file` is an append alias, so several subtitle
+tracks can be passed. The shape is right. The position-polling loop is still the
+one piece of phase 2 with no equivalent in this codebase, and it cannot be
+exercised until mpv is installed.
+
+VLC is worth remembering as a fallback — already present, and its interfaces can
+report position — but mpv is the better fit for the subtitle handling that makes
+this port attractive in the first place.
+
+### Compose Multiplatform against Kotlin 2.0.20 — settled, and it moves work into phase 1
+
+**Compose Multiplatform 1.8.0 and later require Kotlin 2.1.0 or newer.** This
+project is on Kotlin 2.0.20, and the current release is 1.12.0. So the choice is
+pinning to the 1.7.x line, five releases behind and off the supported path, or
+moving the toolchain.
+
+Move the toolchain, and **do it in phase 1**. Kotlin and the Compose Compiler
+plugin have to move in lockstep — Multiplatform wants the compiler plugin at the
+same version as the Kotlin plugin — so the Compose BOM and both Android apps need
+re-verifying. That lands on `main` and `tv`, not only here, which is why it
+belongs with the module extraction that already touches them rather than being
+discovered halfway through phase 2.
+
+JDK 17 is sufficient: desktop needs 11+, `jpackage` needs 17+.
 
 ## What this is not
 
