@@ -44,8 +44,8 @@ private val BannerMuted = Color(0xFF948CAB)
  * strip about a solved problem is noise.
  */
 @Composable
-fun MpvBanner(onInstalled: () -> Unit) {
-    var exe by remember { mutableStateOf(Mpv.locate(Settings.store.getString("mpv_path", ""))) }
+fun VlcBanner(onInstalled: () -> Unit) {
+    var found by remember { mutableStateOf(Vlc.directory(Settings.store.getString("vlc_path", ""))) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
@@ -54,25 +54,25 @@ fun MpvBanner(onInstalled: () -> Unit) {
     // Rechecked when the window regains attention, so installing mpv by hand in
     // another window makes this go away without restarting anything.
     LaunchedEffect(Unit) {
-        while (exe == null) {
+        while (found == null) {
             kotlinx.coroutines.delay(3000)
             if (busy) continue
-            exe = Mpv.locate(Settings.store.getString("mpv_path", ""))
-            if (exe != null) onInstalled()
+            found = Vlc.directory(Settings.store.getString("vlc_path", ""))
+            if (found != null) onInstalled()
         }
     }
 
-    if (exe != null) return
+    if (found != null) return
 
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 8.dp)
             .clip(RoundedCornerShape(10.dp)).background(WarnPlate).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("mpv is not installed", style = MaterialTheme.typography.titleSmall, color = WarnInk)
+        Text("VLC is not installed", style = MaterialTheme.typography.titleSmall, color = WarnInk)
         Text(
-            "Debritsu plays through mpv rather than carrying a player of its own. " +
-                "It is a separate program, about 120 MB, fetched from its own project.",
+            "Debritsu decodes through libVLC, which ships with VLC. " +
+                "It is fetched from the VideoLAN project rather than shipped here.",
             style = MaterialTheme.typography.bodySmall,
             color = BannerMuted
         )
@@ -83,20 +83,20 @@ fun MpvBanner(onInstalled: () -> Unit) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(
-                enabled = !busy && MpvInstall.available(),
+                enabled = !busy && VlcInstall.available(),
                 onClick = {
                     busy = true
                     message = ""
                     scope.launch {
-                        val result = MpvInstall.install { message = it }
+                        val result = VlcInstall.install { message = it }
                         busy = false
                         when (result) {
-                            is MpvInstall.Result.Installed -> {
-                                exe = result.exe
+                            is VlcInstall.Result.Installed -> {
+                                found = result.dir
                                 message = ""
                                 onInstalled()
                             }
-                            is MpvInstall.Result.Failed -> message = result.why
+                            is VlcInstall.Result.Failed -> message = result.why
                         }
                     }
                 }
@@ -104,8 +104,8 @@ fun MpvBanner(onInstalled: () -> Unit) {
                 Text(
                     when {
                         busy -> "Installing…"
-                        !MpvInstall.available() -> "winget not available"
-                        else -> "Install mpv"
+                        !VlcInstall.available() -> "winget not available"
+                        else -> "Install VLC"
                     }
                 )
             }
@@ -113,7 +113,7 @@ fun MpvBanner(onInstalled: () -> Unit) {
             // The command itself, for anyone who would rather run it themselves
             // or is on a machine where winget needs coaxing.
             TextButton(onClick = {
-                clipboard.setText(AnnotatedString(MpvInstall.command))
+                clipboard.setText(AnnotatedString(VlcInstall.command))
                 message = "Command copied. Run it in a terminal, then come back."
             }) {
                 Text("Copy the command", color = BannerMuted, style = MaterialTheme.typography.bodySmall)
@@ -121,7 +121,7 @@ fun MpvBanner(onInstalled: () -> Unit) {
         }
 
         Text(
-            MpvInstall.command,
+            VlcInstall.command,
             style = MaterialTheme.typography.bodySmall,
             color = BannerMuted
         )

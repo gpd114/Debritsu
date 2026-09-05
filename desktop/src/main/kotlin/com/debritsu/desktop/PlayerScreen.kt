@@ -1,5 +1,9 @@
 package com.debritsu.desktop
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
@@ -23,31 +26,35 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.debritsu.app.data.BuildInfo
 import com.debritsu.app.data.Progress
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 private val Violet = Color(0xFF8B5CF6)
-private val Ink = Color(0xFF16121F)
 private val Paper = Color(0xFFF1EEF8)
-private val Muted = Color(0xFF948CAB)
+private val Muted = Color(0xFFC4BCD8)
 
 /**
- * Playback, inside this window.
+ * Playback, with the controls over the picture.
  *
- * mpv draws into a surface we own rather than opening beside us, and the
- * transport controls below are ours. They sit under the video rather than over
- * it because the surface is a native one: Compose cannot draw on top of it at
- * any price, which is the trade this approach makes. Overlaid controls would
- * mean decoding frames ourselves and painting them, which is a different and
- * far larger job.
+ * libVLC decodes into a buffer this paints as an ordinary image, so everything
+ * else is ordinary Compose drawn on top. That is the whole reason for the move
+ * from mpv: mpv drew into a window it did not own, which meant nothing could be
+ * laid over it and every control had to sit beside the video.
+ *
+ * The controls fade out while the pointer is still and come back when it moves,
+ * which is what every other player does and is only possible now.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun PlayerScreen(
     target: Watch.Target,
@@ -57,182 +64,218 @@ fun PlayerScreen(
     onSources: () -> Unit,
     onState: (Watch.State) -> Unit
 ) {
-    val handle = remember(target.url) { VideoSurface.makeCanvas() }
-    var session by remember(target.url) { mutableStateOf<Mpv.Session?>(null) }
+    val player = remember(target.url) { VlcPlayer(target.vlcDir) }
+    var frames by remember(target.url) { mutableStateOf(0L) }
     var paused by remember(target.url) { mutableStateOf(false) }
     var positionMs by remember(target.url) { mutableStateOf(0L) }
     var durationMs by remember(target.url) { mutableStateOf(0L) }
     var scrubbing by remember(target.url) { mutableStateOf<Float?>(null) }
-    var failure by remember(target.url) { mutableStateOf<String?>(null) }
+    var controlsShown by remember(target.url) { mutableStateOf(true) }
+    var lastMoved by remember(target.url) { mutableStateOf(0L) }
 
-    // Started once the canvas is on screen: the native handle does not exist
-    // before it is displayable, and mpv is given that handle at launch.
     LaunchedEffect(target.url) {
-        var wid: Long? = null
-        repeat(50) {
-            wid = handle.wid()
-            if (wid != null) return@repeat
-            delay(50)
-        }
-        if (wid == null) {
-            BuildInfo.log("DebritsuMpv", "no window handle; falling back to mpv's own window")
-        }
-
-        val started = Watch.start(target, wid)
-        if (started == null) {
-            failure = "mpv would not start, or its pipe never appeared."
-            onState(Watch.State.Failed(failure!!))
-            return@LaunchedEffect
-        }
-        session = started
+        Watch.start(player, target)
         onState(Watch.State.Playing(target.title))
 
-        // Attached once mpv is up, so the keys have something to act on.
-        VideoSurface.onKeys(
-            handle,
-            onEscape = { if (fullscreen) onFullscreen(false) },
-            onSpace = {
-                val next = !paused
-                started.setPaused(next)
-                paused = next
-            },
-            onSeek = { started.seekBy(it) }
-        )
-
-        // The progress rule runs in its own coroutine so the controls below
-        // stay responsive while it polls.
-        launch { Watch.follow(started, target, onState) }
-
-        while (started.alive) {
-            delay(500)
-            if (scrubbing == null) {
-                positionMs = started.positionMs() ?: positionMs
-            }
-            if (durationMs <= 0L) durationMs = started.durationMs() ?: 0L
-            paused = started.paused() ?: paused
+        val watched = object : Watch.Playing {
+            override val alive: Boolean get() = !player.ended
+            override fun positionMs() = player.positionMs().takeIf { it >= 0 }
+            override fun durationMs() = player.durationMs().takeIf { it > 0 }
         }
+        launch { Watch.follow(watched, target, onState) }
+
+        // Redrawn from the frame counter rather than from the bitmap: the
+        // bitmap is reused between frames, so its identity never changes and
+        // Compose would have no reason to draw it again.
+        while (!player.ended) {
+            delay(16)
+            frames = player.frames
+            if (scrubbing == null) positionMs = player.positionMs()
+            if (durationMs <= 0L) durationMs = player.durationMs()
+            paused = !player.playing
+        }
+        onState(Watch.State.Finished(false))
     }
 
-    // Leaving the screen stops playback. Without this mpv keeps running with no
-    // window to draw into, which is a process nobody can see or stop.
+    // Hides itself while nothing moves. Not while paused: a paused picture with
+    // no controls looks like a frozen program rather than a deliberate stop.
+    LaunchedEffect(lastMoved, paused) {
+        if (paused) {
+            controlsShown = true
+            return@LaunchedEffect
+        }
+        controlsShown = true
+        delay(2500)
+        controlsShown = false
+    }
+
     DisposableEffect(target.url) {
         onDispose {
-            val s = session
-            if (s != null) {
-                // The position is saved on the way out as well as every five
-                // seconds, so closing mid-episode keeps the exact spot rather
-                // than the last multiple of five.
-                runCatching {
-                    val pos = s.positionMs()
-                    val dur = s.durationMs()
-                    if (pos != null && dur != null && dur > 0) {
-                        Progress.save(target.anilistId, target.episode, pos, dur)
-                    }
+            runCatching {
+                val pos = player.positionMs()
+                val dur = player.durationMs()
+                if (pos > 0 && dur > 0) {
+                    // Written on the way out as well as every five seconds, so
+                    // closing mid-episode keeps the exact spot.
+                    Progress.save(target.anilistId, target.episode, pos, dur)
                 }
-                s.stop()
             }
+            player.release()
         }
     }
 
-    Column(Modifier.fillMaxSize().background(Color.Black)) {
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            VideoPanel(handle, Modifier.fillMaxSize())
+    Box(
+        Modifier.fillMaxSize().background(Color.Black)
+            .onPointerEvent(PointerEventType.Move) { lastMoved = System.currentTimeMillis() }
+    ) {
+        // Read so the frame counter is an input to this composition; without it
+        // nothing here depends on it and the picture never updates.
+        @Suppress("UNUSED_EXPRESSION") frames
+
+        player.frame()?.let { bitmap ->
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                // Fit, not crop: a 4:3 episode in a 16:9 window should be
+                // letterboxed rather than have its sides cut off.
+                contentScale = ContentScale.Fit
+            )
+        } ?: Text(
+            "Opening…",
+            color = Muted,
+            modifier = Modifier.align(Alignment.Center)
+        )
+
+        AnimatedVisibility(
+            visible = controlsShown,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Controls(
+                target = target,
+                paused = paused,
+                positionMs = scrubbing?.let { (it * durationMs).toLong() } ?: positionMs,
+                durationMs = durationMs,
+                fraction = scrubbing ?: fraction(positionMs, durationMs),
+                fullscreen = fullscreen,
+                onScrub = { scrubbing = it },
+                onScrubbed = {
+                    val to = ((scrubbing ?: 0f) * durationMs).toLong()
+                    player.seekTo(to)
+                    positionMs = to
+                    scrubbing = null
+                },
+                onPlayPause = {
+                    val next = !paused
+                    player.setPaused(next)
+                    paused = next
+                },
+                onSeek = { player.seekBy(it) },
+                onSubtitles = { cycle(player.subtitleTracks(), player.subtitleTrack()) { id -> player.setSubtitleTrack(id) } },
+                onAudio = { cycle(player.audioTracks(), player.audioTrack()) { id -> player.setAudioTrack(id) } },
+                onFullscreen = { onFullscreen(!fullscreen) },
+                onSources = onSources,
+                onBack = onBack
+            )
+        }
+    }
+}
+
+/** Steps to the next track in a list, wrapping. */
+private fun cycle(tracks: List<Pair<Int, String>>, current: Int, set: (Int) -> Unit) {
+    if (tracks.isEmpty()) return
+    val index = tracks.indexOfFirst { it.first == current }
+    val next = tracks[(index + 1).mod(tracks.size)]
+    BuildInfo.log("DebritsuVlc", "track -> ${next.second}")
+    set(next.first)
+}
+
+@Composable
+private fun Controls(
+    target: Watch.Target,
+    paused: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    fraction: Float,
+    fullscreen: Boolean,
+    onScrub: (Float) -> Unit,
+    onScrubbed: () -> Unit,
+    onPlayPause: () -> Unit,
+    onSeek: (Int) -> Unit,
+    onSubtitles: () -> Unit,
+    onAudio: () -> Unit,
+    onFullscreen: () -> Unit,
+    onSources: () -> Unit,
+    onBack: () -> Unit
+) {
+    Column(
+        Modifier.fillMaxWidth()
+            // A gradient rather than a panel: white text over a bright scene
+            // needs something behind it, and a hard edge across the picture is
+            // the thing the phone build spent four releases removing.
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color.Transparent, Color(0xCC120E1C))
+                )
+            )
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(clock(positionMs), color = Paper, style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.width(56.dp))
+            Slider(
+                value = fraction,
+                onValueChange = onScrub,
+                onValueChangeFinished = onScrubbed,
+                enabled = durationMs > 0,
+                colors = SliderDefaults.colors(
+                    thumbColor = Violet,
+                    activeTrackColor = Violet,
+                    inactiveTrackColor = Color(0x66FFFFFF)
+                ),
+                modifier = Modifier.weight(1f)
+            )
+            Text(clock(durationMs), color = Paper, style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(start = 8.dp).width(56.dp))
         }
 
-        // Kept in fullscreen rather than hidden. mpv receives no input when it
-        // draws into somebody else's window, so its own controller can never
-        // appear and this strip is the only transport there is — hiding it
-        // left fullscreen with no controls and no way back out.
-        //
-        // So fullscreen here means the window filling the screen with the video
-        // taking all of it bar this strip, rather than the video covering
-        // everything. That is the honest limit of embedding a native surface.
-        Column(
-            Modifier.fillMaxWidth().background(Ink).padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            failure?.let {
-                Text(it, color = Color(0xFFE29075), style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = onBack) { Text("← Back", color = Muted) }
+            TextButton(onClick = { onSeek(-10) }) { Text("−10s", color = Paper) }
+            TextButton(onClick = onPlayPause) { Text(if (paused) "Play" else "Pause", color = Paper) }
+            TextButton(onClick = { onSeek(30) }) { Text("+30s", color = Paper) }
+
+            Box(Modifier.weight(1f))
+
+            Text(
+                "${target.title} · ep ${target.episode}",
+                color = Muted,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Box(Modifier.width(12.dp))
+
+            TextButton(onClick = onSubtitles) {
+                Text("Subtitles", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
-
-            val shown = scrubbing?.let { (it * durationMs).toLong() } ?: positionMs
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    clock(shown),
-                    color = Muted,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.width(56.dp)
-                )
-                Slider(
-                    value = scrubbing ?: fraction(positionMs, durationMs),
-                    onValueChange = { scrubbing = it },
-                    onValueChangeFinished = {
-                        val to = ((scrubbing ?: 0f) * durationMs).toLong()
-                        session?.seekTo(to)
-                        positionMs = to
-                        scrubbing = null
-                    },
-                    enabled = durationMs > 0,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Violet,
-                        activeTrackColor = Violet,
-                        inactiveTrackColor = Color(0x552A2140)
-                    ),
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    clock(durationMs),
-                    color = Muted,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(start = 8.dp).width(56.dp)
-                )
+            TextButton(onClick = onAudio) {
+                Text("Audio", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
-
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(onClick = { onBack() }) { Text("← Back", color = Muted) }
-
-                TextButton(onClick = { session?.seekBy(-10) }) { Text("−10s", color = Paper) }
-                TextButton(onClick = {
-                    val s = session ?: return@TextButton
-                    val next = !paused
-                    s.setPaused(next)
-                    paused = next
-                }) { Text(if (paused) "Play" else "Pause", color = Paper) }
-                TextButton(onClick = { session?.seekBy(30) }) { Text("+30s", color = Paper) }
-
-                Box(Modifier.weight(1f))
-
+            TextButton(onClick = onSources) {
+                Text("Sources", color = Muted, style = MaterialTheme.typography.bodySmall)
+            }
+            TextButton(onClick = onFullscreen) {
                 Text(
-                    "${target.title} · ep ${target.episode}",
+                    if (fullscreen) "Windowed" else "Fullscreen",
                     color = Muted,
                     style = MaterialTheme.typography.bodySmall
                 )
-
-                Box(Modifier.width(12.dp))
-
-                // mpv cycles through every track it loaded, subtitles off
-                // included. Naming which one is now selected would mean reading
-                // the track list back on each press; the picture says it faster.
-                TextButton(onClick = { session?.cycleSubtitles() }) {
-                    Text("Subtitles", color = Muted, style = MaterialTheme.typography.bodySmall)
-                }
-                TextButton(onClick = { session?.cycleAudio() }) {
-                    Text("Audio", color = Muted, style = MaterialTheme.typography.bodySmall)
-                }
-                TextButton(onClick = { onFullscreen(!fullscreen) }) {
-                    Text(
-                        if (fullscreen) "Exit fullscreen" else "Fullscreen",
-                        color = Muted,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                TextButton(onClick = onSources) {
-                    Text("Sources", color = Muted, style = MaterialTheme.typography.bodySmall)
-                }
             }
         }
     }

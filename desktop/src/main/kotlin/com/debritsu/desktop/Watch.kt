@@ -40,8 +40,23 @@ object Watch {
         val anilistId: Int,
         val subtitles: List<Subtitle>,
         val resumeFromMs: Long,
-        val exe: File
+        /** Where libVLC lives. Held here so the screen need not look again. */
+        val vlcDir: File
     )
+
+    /**
+     * The little a running player has to expose for progress to be followed.
+     *
+     * Deliberately small: what is watched is a position, a duration and whether
+     * it is still going. Nothing about how it decodes belongs here, which is
+     * what let the player be replaced without touching the rule that pushes
+     * progress.
+     */
+    interface Playing {
+        val alive: Boolean
+        fun positionMs(): Long?
+        fun durationMs(): Long?
+    }
 
     sealed interface State {
         data class Preparing(val what: String) : State
@@ -107,12 +122,12 @@ object Watch {
         isMovie: Boolean,
         onState: (State) -> Unit
     ) {
-        val exe = Mpv.locate(Settings.store.getString("mpv_path", ""))
-        if (exe == null) {
+        val vlcDir = Vlc.directory(Settings.store.getString("vlc_path", ""))
+        if (vlcDir == null) {
             onState(
                 State.Failed(
-                    "mpv was not found. Install it (winget install shinchiro.mpv) " +
-                        "or set its path in Settings — it does not go on PATH."
+                    "VLC was not found. Debritsu decodes through libVLC, which " +
+                        "comes with VLC — install it, or set its folder in Settings."
                 )
             )
             return
@@ -126,7 +141,7 @@ object Watch {
         if (downloaded != null) {
             val file = Downloader.fileFor(downloaded)
             BuildInfo.log("DebritsuWatch", "playing local file ${file.absolutePath}")
-            onState(State.Ready(target(exe, file.absolutePath, title, episode, episodeMinutes, anilistId, emptyList())))
+            onState(State.Ready(target(vlcDir, file.absolutePath, title, episode, episodeMinutes, anilistId, emptyList())))
             return
         }
 
@@ -149,7 +164,7 @@ object Watch {
 
         onState(
             State.Ready(
-                target(exe, url, title, episode, episodeMinutes, anilistId, outcome.subtitles)
+                target(vlcDir, url, title, episode, episodeMinutes, anilistId, outcome.subtitles)
             )
         )
     }
@@ -161,7 +176,7 @@ object Watch {
      * never offers to resume at the credits of something already watched.
      */
     private fun target(
-        exe: File,
+        vlcDir: File,
         url: String,
         title: String,
         episode: Int,
@@ -171,7 +186,7 @@ object Watch {
     ): Target {
         val resume = Progress.position(anilistId, episode)
         if (resume > 0) BuildInfo.log("DebritsuWatch", "resuming at ${resume}ms")
-        return Target(url, title, episode, episodeMinutes, anilistId, subtitles, resume, exe)
+        return Target(url, title, episode, episodeMinutes, anilistId, subtitles, resume, vlcDir)
     }
 
     /**
@@ -250,8 +265,8 @@ object Watch {
         episodeMinutes: Int,
         onState: (State) -> Unit
     ) {
-        val exe = Mpv.locate(Settings.store.getString("mpv_path", ""))
-        if (exe == null) {
+        val vlcDir = Vlc.directory(Settings.store.getString("vlc_path", ""))
+        if (vlcDir == null) {
             onState(State.Failed("mpv was not found. Set its path in Settings."))
             return
         }
@@ -269,37 +284,35 @@ object Watch {
         }
 
         val subs = (stream.subtitles + subtitles).distinctBy { it.url }
-        onState(State.Ready(target(exe, url, title, episode, episodeMinutes, anilistId, subs)))
+        onState(State.Ready(target(vlcDir, url, title, episode, episodeMinutes, anilistId, subs)))
     }
 
     /**
      * Plays whatever it is handed and watches it to the end.
      *
-     * The same for a debrid URL and a file on disk: mpv takes either through one
-     * argument, which is the reason downloading and streaming are one feature
-     * here rather than two.
+     * The same for a debrid URL and a file on disk: libVLC opens either from one
+     * string, which is why downloading and streaming are one feature here
+     * rather than two.
      */
-    suspend fun start(target: Target, wid: Long?): Mpv.Session? = Mpv.play(
-        target.exe,
-        target.url,
-        "${target.title} — episode ${target.episode}",
-        target.subtitles,
+    fun start(player: VlcPlayer, target: Target) = player.play(
+        url = target.url,
+        subtitles = target.subtitles,
         startAtMs = target.resumeFromMs,
         audioLanguage = Settings.preferredAudioLanguage,
-        subtitleLanguage = Settings.store.getString("sub_lang", "eng"),
-        wid = wid
+        subtitleLanguage = Settings.store.getString("sub_lang", "eng")
     )
 
     /**
-     * Watches a running session to the end: saving position, and pushing
+     * Watches a running player to the end: saving position, and pushing
      * progress once far enough in.
      *
-     * Separate from starting it, because the player screen owns the session —
-     * it has the window mpv draws into, and it has to be able to pause and seek
-     * the same session this is reading.
+     * Separate from starting it, because the player screen owns the player — it
+     * draws the frames and has to be able to pause and seek the same thing this
+     * is reading. Takes [Playing] rather than a concrete player, which is what
+     * let mpv be swapped for libVLC without touching the progress rule.
      */
     suspend fun follow(
-        session: Mpv.Session,
+        session: Playing,
         target: Target,
         onState: (State) -> Unit
     ) {

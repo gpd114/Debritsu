@@ -47,7 +47,7 @@ private val SetMuted = Color(0xFF948CAB)
  * Settings, in the sections the phone uses: AniList, addons, debrid, playback.
  *
  * Subtitle and audio appearance are absent on purpose. On Android those exist
- * because ExoPlayer has to be told; here mpv owns rendering and has far better
+ * because ExoPlayer has to be told; here libVLC renders and its own controls are
  * controls for it than this panel could offer, so duplicating them would only
  * create two places to set one thing.
  */
@@ -341,9 +341,9 @@ private fun PlaybackSection() {
 }
 
 /**
- * Which track mpv should start on.
+ * Which track to start on.
  *
- * Left to itself mpv follows the system language, which on an English machine
+ * Left to itself VLC follows the system language, which on an English machine
  * quietly picks the dub — the same fault ExoPlayer has on an English phone, and
  * for the same reason. Both spellings of each code are sent, because releases
  * tag tracks jpn or ja inconsistently.
@@ -380,7 +380,7 @@ private fun LanguageSection() {
         }
     }
     Text(
-        "mpv still lists every track, so a release that labels them oddly can " +
+        "Every track is still listed in the player, so a release that labels them oddly can " +
             "be corrected while it plays.",
         color = SetMuted,
         style = MaterialTheme.typography.bodySmall
@@ -389,20 +389,20 @@ private fun LanguageSection() {
 
 @Composable
 private fun FilesSection() {
-    var mpvPath by remember { mutableStateOf(Settings.store.getString("mpv_path", "")) }
+    var vlcPath by remember { mutableStateOf(Settings.store.getString("vlc_path", "")) }
     var downloadDir by remember { mutableStateOf(Settings.store.getString("download_dir", "")) }
-    val found = remember(mpvPath) { Mpv.locate(mpvPath) }
+    val found = remember(vlcPath) { Vlc.directory(vlcPath) }
 
     OutlinedTextField(
-        value = mpvPath,
-        onValueChange = { mpvPath = it; Settings.store.putString("mpv_path", it.trim()) },
-        label = { Text("mpv.exe (blank to search)") },
+        value = vlcPath,
+        onValueChange = { vlcPath = it; Settings.store.putString("vlc_path", it.trim()) },
+        label = { Text("VLC folder (blank to search)") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth()
     )
     Text(
         found?.let { "Found: ${it.absolutePath}" }
-            ?: "Not found — winget install shinchiro.mpv",
+            ?: "Not found — winget install VideoLAN.VLC",
         color = if (found == null) Color(0xFFE29075) else SetMuted,
         style = MaterialTheme.typography.bodySmall
     )

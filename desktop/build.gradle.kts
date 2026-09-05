@@ -30,6 +30,11 @@ dependencies {
     // way of its own to hand out an HWND, and mpv's --wid needs one.
     implementation("net.java.dev.jna:jna:5.14.0")
     implementation("net.java.dev.jna:jna-platform:5.14.0")
+    // libVLC, which decodes into a buffer we paint ourselves — the only way to
+    // get our own controls over the picture. mpv could not: with --wid it draws
+    // into a window it does not own and receives no input, so nothing could be
+    // laid over it and every control had to sit beside it.
+    implementation("uk.co.caprica:vlcj:4.8.3")
 }
 
 // Generated rather than hard-coded, so the id is not committed and survives an

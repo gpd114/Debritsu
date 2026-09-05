@@ -86,6 +86,17 @@ fun main() {
     BuildInfo.debug = System.getenv("DEBRITSU_QUIET") == null
     BuildInfo.log = Logging.install()
 
+    // Said at startup rather than discovered when something is played. libVLC
+    // is loaded as a native library, so a missing or mismatched one is a link
+    // error rather than a program that fails to start — worth knowing before it
+    // matters.
+    BuildInfo.log(
+        "DebritsuVlc",
+        Vlc.directory()?.let { dir ->
+            "found at $dir; libvlc reports ${Vlc.version() ?: "nothing — it did not load"}"
+        } ?: "not found"
+    )
+
     application {
         // Held here rather than inside the player, because the window is what
         // goes fullscreen and Escape has to reach it wherever focus happens to
@@ -456,9 +467,9 @@ private fun App(fullscreen: Boolean, onFullscreen: (Boolean) -> Unit) {
                 TextButton(onClick = { showSettings = !showSettings }) { Text("Settings") }
             }
 
-            // Above everything, because without mpv nothing on this screen can
+            // Above everything, because without VLC nothing on this screen can
             // be played and finding that out by pressing play is worse.
-            MpvBanner(onInstalled = { reload++ })
+            VlcBanner(onInstalled = { reload++ })
 
             if (status.isNotEmpty()) {
                 Text(
