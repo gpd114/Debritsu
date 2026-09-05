@@ -741,13 +741,23 @@ class PlayerActivity : ComponentActivity() {
                     // up out of the icon row — by which point skipping the
                     // opening has cost more than watching it.
                     //
-                    // Only while the controls are down, so this never takes
-                    // focus off a control someone is using. Rechecked each pass
-                    // rather than only on the change: if the controls happened
-                    // to be up when the segment began, the button gets focus
-                    // when they fade instead of being left unreachable.
-                    val view = playerView
-                    if (view != null && !view.isControllerFullyVisible && !button.hasFocus()) {
+                    // Taken only from the player itself, never from a control.
+                    // PlayerView holds focus whenever the controls are down, so
+                    // that — or nothing at all — is the one state where no one
+                    // is part way through anything.
+                    //
+                    // The obvious test, "are the controls hidden", is wrong:
+                    // isControllerFullyVisible is uxState == ALL_VISIBLE, so it
+                    // reads false through the whole fade-in and in the
+                    // progress-only state. Both are the controls up and holding
+                    // focus, and either would have had this snatch focus back
+                    // within 400ms of the controls being asked for.
+                    //
+                    // Rechecked every pass rather than once on appearing: if the
+                    // controls were up when the segment began, the button takes
+                    // focus when they fade rather than staying unreachable.
+                    val holder = currentFocus
+                    if (!button.hasFocus() && (holder == null || holder === playerView)) {
                         button.requestFocus()
                     }
                 }
