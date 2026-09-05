@@ -47,11 +47,19 @@ fun SourcesScreen(
     val filter = com.debritsu.app.data.Settings.sourceFilter
     val minSize = com.debritsu.app.data.minEpisodeSizeMb(state.episodeMinutes)
 
-    // Ranked as auto-play would rank them, so the order carries the same
-    // judgement even though the choice is being made by hand.
+    // Everything that meets the filters first, best of them at the top, then
+    // the rest — also ranked, so near misses come before hopeless ones.
+    //
+    // Score alone was not enough and was actively wrong: a 4K source scores
+    // well and is rejected by a 1080p ceiling, so rejected sources floated
+    // above accepted ones and the list had to be read rather than glanced at.
     val ranked = streams
         .map { it to StreamMeta.of(it) }
-        .sortedByDescending { (s, m) -> filter.score(s, m) }
+        .sortedWith(
+            compareByDescending<Pair<StreamOption, StreamMeta>> { (s, m) ->
+                filter.accepts(s, m, minSize)
+            }.thenByDescending { (s, m) -> filter.score(s, m) }
+        )
 
     Column(Modifier.fillMaxSize().padding(28.dp)) {
         Row(
