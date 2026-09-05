@@ -5,36 +5,17 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import com.debritsu.app.DebritsuApp
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
 import java.io.File
 
 /**
- * A downloaded episode.
+ * Downloading on Android, which is DownloadManager's job.
  *
- * Everything needed to browse and play it is stored here, deliberately: the
- * library has to work with no network at all, so nothing may depend on an
- * AniList lookup at read time.
+ * The list of what has been downloaded lives in [DownloadIndex], shared with
+ * the desktop build; what is here is the transferring, which is not shared —
+ * DownloadManager does the queueing, the retrying and the notification, and has
+ * no equivalent off Android.
  */
-@Serializable
-data class Downloaded(
-    val anilistId: Int,
-    val episode: Int,
-    val title: String,
-    val coverPath: String?,
-    val fileName: String,
-    val sourceName: String,
-    val downloadId: Long,
-    val totalEpisodes: Int? = null
-) {
-    val key: String get() = "$anilistId:$episode"
-}
-
 object Downloads {
-
-    private val sp by lazy {
-        DebritsuApp.ctx.getSharedPreferences("downloads", Context.MODE_PRIVATE)
-    }
 
     private val dm by lazy {
         DebritsuApp.ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
@@ -44,22 +25,9 @@ object Downloads {
         DebritsuApp.ctx.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
             ?: DebritsuApp.ctx.filesDir
 
-    fun all(): List<Downloaded> = runCatching {
-        json.decodeFromString(
-            ListSerializer(Downloaded.serializer()),
-            sp.getString("items", "[]") ?: "[]"
-        )
-    }.getOrDefault(emptyList())
+    fun all(): List<Downloaded> = DownloadIndex.all()
 
-    private fun save(items: List<Downloaded>) {
-        sp.edit().putString(
-            "items",
-            json.encodeToString(ListSerializer(Downloaded.serializer()), items)
-        ).apply()
-    }
-
-    fun get(anilistId: Int, episode: Int): Downloaded? =
-        all().firstOrNull { it.anilistId == anilistId && it.episode == episode }
+    fun get(anilistId: Int, episode: Int): Downloaded? = DownloadIndex.get(anilistId, episode)
 
     fun fileFor(d: Downloaded): File = File(dir(), d.fileName)
 
@@ -97,21 +65,20 @@ object Downloads {
         sourceName: String,
         coverPath: String?
     ): Downloaded {
-        val safeTitle = anime.title.replace(Regex("[^A-Za-z0-9 ._-]"), "").take(60).trim()
-        val fileName = "$safeTitle - E${episode.toString().padStart(2, '0')}.mp4"
+        val fileName = DownloadIndex.fileNameFor(anime.title, episode)
 
         // Starting this episode again while it is already downloading would put
         // two DownloadManager jobs on one destination file, and saving below
         // replaces the list entry — discarding the first job's id along with it.
         // That job would carry on writing to the same file, untracked, and
         // remove() could never reach it. Cancel it, and clear whatever it left.
-        val key = "${anime.id}:$episode"
-        all().firstOrNull { it.key == key }?.let { previous ->
+        DownloadIndex.get(anime.id, episode)?.let { previous ->
             runCatching { dm.remove(previous.downloadId) }
             runCatching { File(dir(), previous.fileName).delete() }
         }
         runCatching { File(dir(), fileName).delete() }
 
+        val safeTitle = fileName.substringBefore(" - E")
         val req = DownloadManager.Request(Uri.parse(url))
             .setTitle("$safeTitle · Episode $episode")
             .setDescription("Debritsu")
@@ -130,7 +97,7 @@ object Downloads {
             downloadId = id,
             totalEpisodes = anime.episodes
         )
-        save(all().filterNot { it.key == item.key } + item)
+        DownloadIndex.put(item)
         return item
     }
 
@@ -138,7 +105,7 @@ object Downloads {
         runCatching { dm.remove(d.downloadId) }
         runCatching { fileFor(d).delete() }
         d.coverPath?.let { runCatching { File(it).delete() } }
-        save(all().filterNot { it.key == d.key })
+        DownloadIndex.forget(d)
     }
 
     /** Stores the poster next to the video so the library renders offline. */
