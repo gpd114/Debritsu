@@ -118,6 +118,7 @@ private fun App() {
 
     /** The show being looked at in full, or null for the shelves. */
     var detailOf by remember { mutableStateOf<Anime?>(null) }
+    var showDownloads by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(reload) {
@@ -226,6 +227,38 @@ private fun App() {
         }
     }
 
+    // Before the detail page and before the shelves, because this is the one
+    // screen that works with no network — and on a plane the shelves will be
+    // empty, which is exactly when the downloads have to be reachable.
+    if (showDownloads) {
+        DownloadsScreen(
+            onBack = { showDownloads = false },
+            onPlay = { item ->
+                // Everything needed is in the index; nothing is looked up. The
+                // watch path finds the local file and never touches debrid.
+                scope.launch {
+                    Watch.episode(
+                        anilistId = item.anilistId,
+                        title = item.title,
+                        episode = item.episode,
+                        episodeMinutes = 0,
+                        isMovie = false
+                    ) { state ->
+                        status = when (state) {
+                            is Watch.State.Preparing -> state.what
+                            is Watch.State.Playing -> state.title
+                            is Watch.State.Pushed -> "Episode ${state.episode} marked watched."
+                            is Watch.State.Finished -> "Playback ended."
+                            is Watch.State.Failed -> state.why
+                        }
+                    }
+                }
+            },
+            onChanged = { reload++ }
+        )
+        return
+    }
+
     val showing = detailOf
     if (showing != null) {
         DetailScreen(
@@ -266,6 +299,10 @@ private fun App() {
                     singleLine = true,
                     modifier = Modifier.weight(1f)
                 )
+                TextButton(onClick = { showDownloads = true }) {
+                    val kept = DownloadIndex.all().size
+                    Text(if (kept > 0) "Downloads ($kept)" else "Downloads")
+                }
                 TextButton(onClick = { reload++ }) { Text("Refresh") }
                 TextButton(onClick = { showSettings = !showSettings }) { Text("Settings") }
             }
@@ -370,109 +407,5 @@ internal fun EpisodeChip(
                 modifier = Modifier.padding(end = 9.dp)
             )
         }
-    }
-}
-
-@Composable
-private fun SettingsPane(modifier: Modifier = Modifier, onChanged: () -> Unit) {
-    var token by remember { mutableStateOf(Settings.aniListToken) }
-    var addon by remember { mutableStateOf(Settings.addons.firstOrNull() ?: "") }
-    var provider by remember { mutableStateOf(Settings.debridProvider) }
-    var debrid by remember { mutableStateOf(Settings.debridToken) }
-    var mpvPath by remember { mutableStateOf(Settings.store.getString("mpv_path", "")) }
-    val found = remember(mpvPath) { Mpv.locate(mpvPath) }
-
-    Column(
-        modifier.fillMaxSize().background(Panel).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Text("Settings", style = MaterialTheme.typography.titleLarge)
-
-        Text(
-            "Sign in opens AniList in your browser. It shows a token — paste it here. " +
-                "This build needs its own AniList client, with the redirect URL set to " +
-                "https://anilist.co/api/v2/oauth/pin",
-            color = Muted,
-            style = MaterialTheme.typography.bodySmall
-        )
-        Button(
-            enabled = BuildInfo.anilistClientId.isNotBlank(),
-            onClick = {
-                runCatching {
-                    Desktop.getDesktop().browse(URI(AniList.authUrl(Settings.aniListClientId)))
-                }
-            }
-        ) { Text(if (BuildInfo.anilistClientId.isBlank()) "No client id configured" else "Sign in") }
-
-        OutlinedTextField(
-            value = token,
-            onValueChange = { token = it; Settings.aniListToken = it.trim(); onChanged() },
-            label = { Text("AniList token") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        OutlinedTextField(
-            value = addon,
-            onValueChange = {
-                addon = it
-                Settings.addons = listOfNotNull(Settings.normaliseAddon(it).ifBlank { null })
-            },
-            label = { Text("Stremio addon URL") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        // Tokens are stored per provider, so picking the wrong one does not
-        // merely mislabel the field — it files the key under another service's
-        // name and then calls that service's API with it.
-        Text("Debrid provider", color = Muted, style = MaterialTheme.typography.bodySmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            DebridProvider.entries.forEach { p ->
-                val selected = p == provider
-                TextButton(
-                    onClick = {
-                        provider = p
-                        Settings.debridProvider = p
-                        // Re-read: the getter is keyed by provider, so this is
-                        // whatever was last saved for the one just chosen.
-                        debrid = Settings.debridToken
-                    }
-                ) {
-                    Text(
-                        p.label,
-                        color = if (selected) Violet else Muted,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-        }
-
-        OutlinedTextField(
-            value = debrid,
-            onValueChange = { debrid = it; Settings.debridToken = it.trim() },
-            label = { Text("${provider.label} API token") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Text(
-            "Get it from ${provider.tokenHint}",
-            color = Muted,
-            style = MaterialTheme.typography.bodySmall
-        )
-
-        OutlinedTextField(
-            value = mpvPath,
-            onValueChange = { mpvPath = it; Settings.store.putString("mpv_path", it.trim()) },
-            label = { Text("mpv.exe (blank to search)") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Text(
-            found?.let { "Found mpv: ${it.absolutePath}" }
-                ?: "mpv not found — winget install shinchiro.mpv",
-            color = Muted,
-            style = MaterialTheme.typography.bodySmall
-        )
     }
 }

@@ -103,11 +103,17 @@ object Downloader {
         val url = outcome.url
             ?: return@withContext Result.Failed(outcome.message ?: "Nothing downloadable was found.")
 
+        // Fetched now so the downloads screen has a picture on a plane. Posters
+        // caches to disk by URL, so storing the URL is enough — but only if it
+        // has been fetched at least once, and the moment of downloading is the
+        // last moment there is certainly a network.
+        runCatching { Posters.load(anime.cover) }
+
         val item = Downloaded(
             anilistId = anime.id,
             episode = episode,
             title = anime.title,
-            coverPath = null,
+            coverPath = anime.cover,
             fileName = DownloadIndex.fileNameFor(anime.title, episode),
             sourceName = outcome.chosen?.name.orEmpty(),
             totalEpisodes = anime.episodes
