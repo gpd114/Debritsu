@@ -131,8 +131,13 @@ fun main() {
         }
 
         Window(
-            onCloseRequest = ::exitApplication,
+            onCloseRequest = { ActivePlayer.release(); exitApplication() },
             title = "Debritsu",
+            // Borderless only while fullscreen. Java will only take a window
+            // truly full-screen if it was built without decoration, and that is
+            // fixed when the window is made — so this rebuilds the window, and
+            // the player is held outside the composition to survive it.
+            undecorated = fullscreen,
             // Preview, so a control button that has been clicked and kept focus
             // cannot swallow Space and press itself instead of pausing.
             onPreviewKeyEvent = { event -> playerKeys?.invoke(event) ?: false },
@@ -351,7 +356,15 @@ private fun App(
             fullscreen = fullscreen,
             onFullscreen = onFullscreen,
             onKeys = onPlayerKeys,
-            onBack = { onFullscreen(false); playing = null; reload++ },
+            // The only thing that stops playback. Leaving the screen no longer
+            // does, because going fullscreen rebuilds the window and looks
+            // identical to leaving from inside the composition.
+            onBack = {
+                ActivePlayer.release()
+                onFullscreen(false)
+                playing = null
+                reload++
+            },
             onSources = {
                 val show = playingShow
                 playing = null

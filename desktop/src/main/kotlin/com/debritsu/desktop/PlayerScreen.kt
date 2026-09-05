@@ -74,7 +74,11 @@ fun PlayerScreen(
     onSources: () -> Unit,
     onState: (Watch.State) -> Unit
 ) {
-    val player = remember(target.url) { VlcPlayer(target.vlcDir) }
+    // Was it already playing before the window was rebuilt? Going fullscreen
+    // recreates the window, and everything below has to pick up where it was
+    // rather than start again.
+    val alreadyPlaying = remember(target.url) { ActivePlayer.holds(target.url) }
+    val player = remember(target.url) { ActivePlayer.of(target.url, target.vlcDir) }
     var frames by remember(target.url) { mutableStateOf(0L) }
     var paused by remember(target.url) { mutableStateOf(false) }
     var positionMs by remember(target.url) { mutableStateOf(0L) }
@@ -84,8 +88,11 @@ fun PlayerScreen(
     var lastMoved by remember(target.url) { mutableStateOf(0L) }
 
     LaunchedEffect(target.url) {
-        Watch.start(player, target)
-        onState(Watch.State.Playing(target.title))
+        // Only if this is not the same playback carried across a window rebuild.
+        if (!alreadyPlaying) {
+            Watch.start(player, target)
+            onState(Watch.State.Playing(target.title))
+        }
 
         val watched = object : Watch.Playing {
             override val alive: Boolean get() = !player.ended
@@ -123,18 +130,23 @@ fun PlayerScreen(
         onState(Watch.State.Finished(false))
     }
 
-    // Hides itself while nothing moves. Not while paused: a paused picture with
-    // no controls looks like a frozen program rather than a deliberate stop.
-    LaunchedEffect(lastMoved, paused) {
-        if (paused) {
-            controlsShown = true
-            return@LaunchedEffect
-        }
+    // Hides itself while nothing moves, paused or not.
+    //
+    // Pausing used to hold them open, on the reasoning that a still picture
+    // with no controls reads as a frozen program. It does not: pausing is
+    // usually done to look at the picture, and the controls are then covering
+    // the thing they were pressed to see.
+    LaunchedEffect(lastMoved) {
         controlsShown = true
         delay(2500)
         controlsShown = false
     }
 
+    // Note what is deliberately absent: this does not stop the player. Leaving
+    // the screen and the window being rebuilt for fullscreen are the same event
+    // as far as composition is concerned, and stopping here would end playback
+    // every time somebody pressed F. Stopping is the Back button's job, which
+    // knows the difference.
     DisposableEffect(target.url) {
         onDispose {
             runCatching {
@@ -146,7 +158,6 @@ fun PlayerScreen(
                     Progress.save(target.anilistId, target.episode, pos, dur)
                 }
             }
-            player.release()
         }
     }
 
