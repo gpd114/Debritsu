@@ -249,21 +249,18 @@ object Mpv {
             if (wid != null) {
                 // Draw inside the window we own rather than opening one.
                 add("--wid=$wid")
-                // mpv's own on-screen controller is left on, and this was a
-                // mistake to switch off. Our controls sit below the video and
-                // cannot be drawn over it — the surface is native and Compose
-                // cannot paint on top. mpv owns those pixels, so its controller
-                // is the only thing that can overlay the picture, and in
-                // fullscreen it is the only transport there is.
+                // No on-screen controller, because it could never appear: with
+                // --wid the window belongs to Java, and mouse and keyboard go
+                // to AWT rather than to mpv. mpv never sees the pointer move
+                // that would summon its controller.
                 //
-                // It appears on mouse movement over the video and fades again,
-                // so windowed it is not competing with the strip below for
-                // attention; it is there when the pointer is.
-                add("--osc=yes")
-                // Fades after a second rather than the default half-minute,
-                // which otherwise sits over the picture long after it was
-                // wanted.
-                add("--script-opts=osc-hidetimeout=1000")
+                // It was briefly switched on in the hope of getting overlaid
+                // controls in fullscreen. That was wrong for the same reason
+                // the embedding works at all: mpv is drawing into somebody
+                // else's window and receives none of its input. Our controls
+                // are the only controls there can be.
+                add("--no-osc")
+                add("--no-input-default-bindings")
                 // Nothing to keep open — the surface belongs to the window, and
                 // an idle mpv holding it would sit as a black rectangle.
                 add("--idle=no")

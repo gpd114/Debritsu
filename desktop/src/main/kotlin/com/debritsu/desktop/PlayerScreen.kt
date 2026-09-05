@@ -87,6 +87,18 @@ fun PlayerScreen(
         session = started
         onState(Watch.State.Playing(target.title))
 
+        // Attached once mpv is up, so the keys have something to act on.
+        VideoSurface.onKeys(
+            handle,
+            onEscape = { if (fullscreen) onFullscreen(false) },
+            onSpace = {
+                val next = !paused
+                started.setPaused(next)
+                paused = next
+            },
+            onSeek = { started.seekBy(it) }
+        )
+
         // The progress rule runs in its own coroutine so the controls below
         // stay responsive while it polls.
         launch { Watch.follow(started, target, onState) }
@@ -127,11 +139,14 @@ fun PlayerScreen(
             VideoPanel(handle, Modifier.fillMaxSize())
         }
 
-        // Hidden in fullscreen, and mpv's own controller takes over — it is
-        // the only thing that can draw over the picture, because it owns those
-        // pixels. Escape comes back; so does the button below when windowed.
-        if (fullscreen) return@Column
-
+        // Kept in fullscreen rather than hidden. mpv receives no input when it
+        // draws into somebody else's window, so its own controller can never
+        // appear and this strip is the only transport there is — hiding it
+        // left fullscreen with no controls and no way back out.
+        //
+        // So fullscreen here means the window filling the screen with the video
+        // taking all of it bar this strip, rather than the video covering
+        // everything. That is the honest limit of embedding a native surface.
         Column(
             Modifier.fillMaxWidth().background(Ink).padding(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -208,8 +223,12 @@ fun PlayerScreen(
                 TextButton(onClick = { session?.cycleAudio() }) {
                     Text("Audio", color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
-                TextButton(onClick = { onFullscreen(true) }) {
-                    Text("Fullscreen", color = Muted, style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { onFullscreen(!fullscreen) }) {
+                    Text(
+                        if (fullscreen) "Exit fullscreen" else "Fullscreen",
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
                 TextButton(onClick = onSources) {
                     Text("Sources", color = Muted, style = MaterialTheme.typography.bodySmall)

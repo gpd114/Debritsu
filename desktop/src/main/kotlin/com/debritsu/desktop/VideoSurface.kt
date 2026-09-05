@@ -49,7 +49,41 @@ object VideoSurface {
         }
         canvas.background = java.awt.Color.BLACK
         canvas.ignoreRepaint = true
+        canvas.isFocusable = true
         return Handle(canvas)
+    }
+
+    /**
+     * Keyboard handling for the video area, through AWT rather than Compose.
+     *
+     * Compose's own key handling never fires here: the canvas is a heavyweight
+     * component and takes the keys before Compose sees them, which is why
+     * Escape did nothing. AWT is where they actually arrive, so this is where
+     * they have to be caught.
+     *
+     * mpv's default bindings are switched off, so nothing else is competing for
+     * these — the player has exactly the keys given to it here.
+     */
+    fun onKeys(
+        handle: Handle,
+        onEscape: () -> Unit,
+        onSpace: () -> Unit,
+        onSeek: (Int) -> Unit
+    ) {
+        val listener = object : java.awt.event.KeyAdapter() {
+            override fun keyPressed(e: java.awt.event.KeyEvent) {
+                when (e.keyCode) {
+                    java.awt.event.KeyEvent.VK_ESCAPE -> onEscape()
+                    java.awt.event.KeyEvent.VK_SPACE -> onSpace()
+                    java.awt.event.KeyEvent.VK_LEFT -> onSeek(-10)
+                    java.awt.event.KeyEvent.VK_RIGHT -> onSeek(30)
+                    else -> return
+                }
+                e.consume()
+            }
+        }
+        handle.canvas.addKeyListener(listener)
+        handle.canvas.requestFocusInWindow()
     }
 }
 
