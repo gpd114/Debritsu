@@ -13,6 +13,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.debritsu.app.data.AniList
@@ -28,6 +30,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     var clientId by remember { mutableStateOf(Settings.aniListClientId) }
     var provider by remember { mutableStateOf(Settings.debridProvider) }
     var debridToken by remember { mutableStateOf(Settings.debridToken) }
+    var showDebridToken by remember { mutableStateOf(false) }
     var providerMenu by remember { mutableStateOf(false) }
     var autoPlay by remember { mutableStateOf(Settings.autoPlay) }
     var maxRes by remember { mutableStateOf(Settings.maxResolution) }
@@ -191,15 +194,30 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
 
+            // Hidden by default. It is a key to a paid account, it is long
+            // enough that nobody reads it back to check it, and a settings
+            // screen is exactly the sort of thing that gets shown to somebody
+            // else while asking why something will not play.
             OutlinedTextField(
                 value = debridToken,
                 onValueChange = { debridToken = it; Settings.debridToken = it },
                 label = { Text("${provider.label} API key") },
                 singleLine = true,
+                visualTransformation =
+                    if (showDebridToken) VisualTransformation.None
+                    else PasswordVisualTransformation(),
+                trailingIcon = {
+                    TextButton(onClick = { showDebridToken = !showDebridToken }) {
+                        Text(if (showDebridToken) "Hide" else "Show", fontSize = 12.sp)
+                    }
+                },
                 modifier = Modifier.fillMaxWidth()
             )
             Text(
-                "Get it from ${provider.tokenHint}",
+                // Says whether it is set without showing it, which is the
+                // question being asked when this screen is opened.
+                if (debridToken.isEmpty()) "Not set. Get it from ${provider.tokenHint}"
+                else "Set — ${debridToken.length} characters. From ${provider.tokenHint}",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
