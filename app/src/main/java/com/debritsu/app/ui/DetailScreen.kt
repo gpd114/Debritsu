@@ -78,12 +78,26 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
             .maxByOrNull { (s, m) -> filter.score(s, m) }
             ?.first
     }
-    // That source floated to the top; everything else keeps the order its addon
-    // returned it in, so the list is not reshuffled beyond the one promotion.
-    val streams = remember(results, bestStream) {
-        val flat = results.flatMap { it.streams }
-        if (bestStream == null) flat
-        else listOf(bestStream) + flat.filterNot { it === bestStream }
+    // Everything that meets the filters first, best of them at the top, then
+    // everything else — also ranked, so the nearest misses come before the
+    // hopeless ones.
+    //
+    // Only the single best was promoted before, and the rest kept the order
+    // their addon returned them in. That reads as one good source followed by
+    // noise: the second and third that also qualify are somewhere down the
+    // list, and finding them means reading every row. Ordering the whole list
+    // costs nothing and puts the choices worth making together.
+    val streams = remember(results, anime) {
+        val filter = Settings.sourceFilter
+        val minSize = minEpisodeSizeMb(anime?.durationMins ?: 0)
+        results.flatMap { it.streams }
+            .map { it to StreamMeta.of(it) }
+            .sortedWith(
+                compareByDescending<Pair<StreamOption, StreamMeta>> { (s, m) ->
+                    filter.accepts(s, m, minSize)
+                }.thenByDescending { (s, m) -> filter.score(s, m) }
+            )
+            .map { it.first }
     }
     var searching by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
