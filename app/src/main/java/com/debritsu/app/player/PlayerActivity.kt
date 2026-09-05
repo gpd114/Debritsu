@@ -73,9 +73,15 @@ class PlayerActivity : ComponentActivity() {
 
     private var player: ExoPlayer? = null
 
-    /** The centred readout, shared by the touch gestures and the remote. */
     private var playerView: PlayerView? = null
 
+    /**
+     * Held so the key handling can tell whether the remote is sitting on it.
+     * It takes focus while it is up, and that changes what OK, up and down mean.
+     */
+    private var skipButton: TextView? = null
+
+    /** The centred readout, shared by the touch gestures and the remote. */
     private var hud: TextView? = null
     private val hideHud = Runnable { hud?.visibility = View.GONE }
 
@@ -492,6 +498,23 @@ class PlayerActivity : ComponentActivity() {
             return super.dispatchKeyEvent(event)
         }
 
+        // The skip button takes focus while it is showing, which is what makes
+        // OK skip without hunting for it. The cost is that it is a sibling of
+        // PlayerView rather than a child, so a key aimed at the focused view
+        // never passes through the player and cannot raise the controls. Up and
+        // down have to do that here, or the transport controls are unreachable
+        // for as long as an opening lasts.
+        if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP ||
+            event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+        ) {
+            val skip = skipButton
+            if (skip != null && skip.visibility == View.VISIBLE && skip.hasFocus() &&
+                raiseControls()
+            ) {
+                return true
+            }
+        }
+
         when (event.keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT,
             KeyEvent.KEYCODE_MEDIA_REWIND -> {
@@ -524,6 +547,22 @@ class PlayerActivity : ComponentActivity() {
         // which raises the controls. That is the right answer to a stray press,
         // and it is what puts focus somewhere to navigate from.
         return super.dispatchKeyEvent(event)
+    }
+
+    /**
+     * Brings the transport controls up and puts the remote on play/pause.
+     *
+     * Returns false when focus could not be moved — the controller has never
+     * been laid out, so it has no size to be focused at — and the caller must
+     * then not swallow the key. Letting it reach PlayerView raises the controls
+     * anyway, which is what happened before any of this existed. A focus
+     * redirect that consumes a key and then fails to move focus is how this
+     * player was once shipped unusable.
+     */
+    private fun raiseControls(): Boolean {
+        val view = playerView ?: return false
+        view.showController()
+        return findViewById<View>(R.id.exo_play_pause)?.requestFocus() == true
     }
 
     /**
@@ -645,6 +684,7 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun installSkipButton() {
         val button = findViewById<TextView>(R.id.skip_segment)
+        skipButton = button
         val radius = 26 * resources.displayMetrics.density
 
         // Violet normally, and near-white with dark text once the remote is on
@@ -686,18 +726,51 @@ class PlayerActivity : ComponentActivity() {
                 else segments.firstOrNull { exo.currentPosition in it.startMs..it.endMs }
 
                 if (active == null) {
-                    button.visibility = View.GONE
+                    hideSkipButton()
                 } else {
                     button.text = active.label
                     button.visibility = View.VISIBLE
                     button.setOnClickListener {
                         exo?.seekTo(active.endMs)
-                        button.visibility = View.GONE
+                        hideSkipButton()
+                    }
+
+                    // Put the remote on it as soon as it appears. An opening
+                    // runs about ninety seconds, and reaching this from the
+                    // hidden state was a press to raise the controls and then
+                    // up out of the icon row — by which point skipping the
+                    // opening has cost more than watching it.
+                    //
+                    // Only while the controls are down, so this never takes
+                    // focus off a control someone is using. Rechecked each pass
+                    // rather than only on the change: if the controls happened
+                    // to be up when the segment began, the button gets focus
+                    // when they fade instead of being left unreachable.
+                    val view = playerView
+                    if (view != null && !view.isControllerFullyVisible && !button.hasFocus()) {
+                        button.requestFocus()
                     }
                 }
                 delay(400)
             }
         }
+    }
+
+    /**
+     * Takes the button away, handing focus back to the player first.
+     *
+     * Focus does not go anywhere by itself when the view holding it disappears,
+     * and with the controls down there is nothing else on screen to catch it.
+     * Skipping an opening would leave the remote dead until the controls were
+     * raised — except that raising them is one of the things focus is needed
+     * for.
+     */
+    private fun hideSkipButton() {
+        val button = skipButton ?: return
+        if (button.visibility != View.VISIBLE) return
+        val hadFocus = button.hasFocus()
+        button.visibility = View.GONE
+        if (hadFocus) playerView?.requestFocus()
     }
 
     /** Looks up opening and ending times for whatever is playing now. */
