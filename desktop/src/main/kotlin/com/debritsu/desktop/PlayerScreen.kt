@@ -68,6 +68,8 @@ fun PlayerScreen(
     target: Watch.Target,
     fullscreen: Boolean,
     onFullscreen: (Boolean) -> Unit,
+    /** Registers this screen's key handling with the window. */
+    onKeys: (((androidx.compose.ui.input.key.KeyEvent) -> Boolean)?) -> Unit,
     onBack: () -> Unit,
     onSources: () -> Unit,
     onState: (Watch.State) -> Unit
@@ -107,6 +109,12 @@ fun PlayerScreen(
             if (!chosenSubtitles && frames > 0) {
                 chosenSubtitles = true
                 player.chooseSubtitles()
+                // The picture's real height, so the alignment padding VLC adds
+                // to the buffer is not drawn as a strip under the video.
+                player.sourceSize()?.let { (w, h) ->
+                    BuildInfo.log("DebritsuVlc", "source is ${w}x$h")
+                    player.cropHeight = h
+                }
             }
             if (scrubbing == null) positionMs = player.positionMs()
             if (durationMs <= 0L) durationMs = player.durationMs()
@@ -142,43 +150,40 @@ fun PlayerScreen(
         }
     }
 
-    val focus = remember(target.url) { FocusRequester() }
-    LaunchedEffect(target.url) { runCatching { focus.requestFocus() } }
+    // Registered with the window while this screen is up, and taken away when
+    // it goes. Keys are handled there rather than here because focus inside
+    // this screen moves — when the controls fade, whichever button held it
+    // leaves the composition and the keys stop arriving, which is exactly what
+    // "they work then stop" was.
+    //
+    // Deliberately does not wake the controls. These exist so playback can be
+    // driven without anything appearing over the picture.
+    DisposableEffect(target.url, fullscreen, paused) {
+        onKeys { event ->
+            if (event.type != KeyEventType.KeyDown) return@onKeys false
+            when (event.key) {
+                Key.Spacebar, Key.K -> {
+                    val next = !paused
+                    player.setPaused(next)
+                    paused = next
+                    true
+                }
+                Key.DirectionLeft -> { player.seekBy(-10); true }
+                Key.DirectionRight -> { player.seekBy(30); true }
+                Key.DirectionUp -> { player.setVolume(player.volume() + 5); true }
+                Key.DirectionDown -> { player.setVolume(player.volume() - 5); true }
+                Key.M -> { player.setMuted(!player.muted()); true }
+                Key.F -> { onFullscreen(!fullscreen); true }
+                Key.Escape -> if (fullscreen) { onFullscreen(false); true } else false
+                else -> false
+            }
+        }
+        onDispose { onKeys(null) }
+    }
 
     Box(
         Modifier.fillMaxSize().background(Color.Black)
             .onPointerEvent(PointerEventType.Move) { lastMoved = System.currentTimeMillis() }
-            .focusRequester(focus)
-            .focusable()
-            // Preview rather than ordinary key handling: a control button that
-            // has been clicked holds focus, and Space would otherwise press it
-            // again instead of pausing. Taking the keys before the children see
-            // them means the player answers to them wherever focus has landed.
-            //
-            // Deliberately does not wake the controls. These exist so playback
-            // can be driven without anything appearing over the picture; a key
-            // that summoned the controls would defeat the point of using it.
-            .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                when (event.key) {
-                    Key.Spacebar, Key.K -> {
-                        val next = !paused
-                        player.setPaused(next)
-                        paused = next
-                        true
-                    }
-                    Key.DirectionLeft -> { player.seekBy(-10); true }
-                    Key.DirectionRight -> { player.seekBy(30); true }
-                    Key.DirectionUp -> { player.setVolume(player.volume() + 5); true }
-                    Key.DirectionDown -> { player.setVolume(player.volume() - 5); true }
-                    Key.M -> { player.setMuted(!player.muted()); true }
-                    Key.F -> { onFullscreen(!fullscreen); true }
-                    Key.Escape -> {
-                        if (fullscreen) { onFullscreen(false); true } else false
-                    }
-                    else -> false
-                }
-            }
     ) {
         // Read so the frame counter is an input to this composition; without it
         // nothing here depends on it and the picture never updates.

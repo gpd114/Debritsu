@@ -85,6 +85,25 @@ class VlcPlayer(vlcDirectory: java.io.File) {
     var videoHeight: Int = 0
         private set
 
+    /**
+     * The picture's real height, as against the buffer's.
+     *
+     * VLC aligns the buffer it asks for — 1080 becomes 1088 — and those extra
+     * rows are padding, not picture. Drawing them puts a strip of rubbish under
+     * the video, which in fullscreen reads as a border round the image.
+     *
+     * Zero until asked for, because it is only knowable once playback has
+     * started and the video size is published.
+     */
+    @Volatile
+    var cropHeight: Int = 0
+
+    /** The size VLC says the video actually is, once it is playing. */
+    fun sourceSize(): Pair<Int, Int>? = runCatching {
+        val d = player.video().videoDimension() ?: return null
+        d.width to d.height
+    }.getOrNull()
+
     fun frame(): ImageBitmap? = current.get()
 
     private var bitmap: Bitmap? = null
@@ -116,8 +135,12 @@ class VlcPlayer(vlcDirectory: java.io.File) {
     private val renderCallback = RenderCallback { _, buffers, format ->
         try {
             val width = format.width
-            val height = format.height
-            val needed = width * height * 4
+            val bufferHeight = format.height
+            val needed = width * bufferHeight * 4
+
+            // Only the rows that are picture. The rest is alignment padding and
+            // drawing it shows as a strip below the image.
+            val height = cropHeight.takeIf { it in 1..bufferHeight } ?: bufferHeight
 
             // Once, on the first frame. Whether this fires at all is the
             // difference between "the picture is wrong" and "there is no
@@ -134,7 +157,7 @@ class VlcPlayer(vlcDirectory: java.io.File) {
             // callback last said. They disagree while VLC is settling, and the
             // frame is the one that has to fit.
             var bmp = bitmap
-            if (bmp == null || pixels.size != needed) {
+            if (bmp == null || pixels.size != needed || bmp.height != height) {
                 pixels = ByteArray(needed)
                 bmp = Bitmap().apply {
                     allocPixels(

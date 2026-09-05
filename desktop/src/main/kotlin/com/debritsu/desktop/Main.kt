@@ -114,6 +114,17 @@ fun main() {
         val windowState = rememberWindowState(width = 1100.dp, height = 760.dp)
         var fullscreen by remember { mutableStateOf(false) }
 
+        /**
+         * The player's key handling, registered while something is playing.
+         *
+         * Held at the window rather than on a focusable box inside it. Focus
+         * was the problem: when the controls faded, the button holding focus
+         * left the composition and focus went nowhere, so the keys stopped
+         * working a few seconds after they started. A window sees them however
+         * that goes.
+         */
+        var playerKeys by remember { mutableStateOf<((androidx.compose.ui.input.key.KeyEvent) -> Boolean)?>(null) }
+
         LaunchedEffect(fullscreen) {
             windowState.placement =
                 if (fullscreen) WindowPlacement.Fullscreen else WindowPlacement.Floating
@@ -122,6 +133,9 @@ fun main() {
         Window(
             onCloseRequest = ::exitApplication,
             title = "Debritsu",
+            // Preview, so a control button that has been clicked and kept focus
+            // cannot swallow Space and press itself instead of pausing.
+            onPreviewKeyEvent = { event -> playerKeys?.invoke(event) ?: false },
             onKeyEvent = { event ->
                 if (fullscreen && event.type == KeyEventType.KeyDown &&
                     event.key == Key.Escape
@@ -148,7 +162,11 @@ fun main() {
                 )
             ) {
                 Surface(Modifier.fillMaxSize(), color = Ink) {
-                    App(fullscreen = fullscreen, onFullscreen = { fullscreen = it })
+                    App(
+                        fullscreen = fullscreen,
+                        onFullscreen = { fullscreen = it },
+                        onPlayerKeys = { playerKeys = it }
+                    )
                 }
             }
         }
@@ -156,7 +174,11 @@ fun main() {
 }
 
 @Composable
-private fun App(fullscreen: Boolean, onFullscreen: (Boolean) -> Unit) {
+private fun App(
+    fullscreen: Boolean,
+    onFullscreen: (Boolean) -> Unit,
+    onPlayerKeys: (((androidx.compose.ui.input.key.KeyEvent) -> Boolean)?) -> Unit
+) {
     var showSettings by remember { mutableStateOf(Settings.aniListToken.isEmpty()) }
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var planning by remember { mutableStateOf<List<Anime>>(emptyList()) }
@@ -328,6 +350,7 @@ private fun App(fullscreen: Boolean, onFullscreen: (Boolean) -> Unit) {
             target = nowPlaying,
             fullscreen = fullscreen,
             onFullscreen = onFullscreen,
+            onKeys = onPlayerKeys,
             onBack = { onFullscreen(false); playing = null; reload++ },
             onSources = {
                 val show = playingShow
