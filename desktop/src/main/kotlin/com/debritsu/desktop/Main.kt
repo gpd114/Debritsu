@@ -126,6 +126,10 @@ private fun App() {
     var showDownloads by remember { mutableStateOf(false) }
     /** Sources to choose from, when automatic selection is off. */
     var choosing by remember { mutableStateOf<Watch.State.Choose?>(null) }
+    /** What is playing, in this window. Null when nothing is. */
+    var playing by remember { mutableStateOf<Watch.Target?>(null) }
+    /** Remembered so the Sources button inside the player knows what to list. */
+    var playingShow by remember { mutableStateOf<Anime?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(reload) {
@@ -197,6 +201,7 @@ private fun App() {
     // Defined once and handed to every screen, so an episode started from a
     // shelf, a search result or the detail page goes through one path.
     val play: (Anime, Int) -> Unit = { anime, ep ->
+        playingShow = anime
         scope.launch {
             Watch.episode(
                 anilistId = anime.id,
@@ -220,6 +225,12 @@ private fun App() {
                     is Watch.State.Choose -> {
                         choosing = state
                         "${state.outcome.results.sumOf { r -> r.streams.size }} sources found."
+                    }
+                    // Hands over to the player screen, which owns the surface
+                    // mpv draws into and so has to be what starts it.
+                    is Watch.State.Ready -> {
+                        playing = state.target
+                        ""
                     }
                 }
             }
@@ -260,6 +271,34 @@ private fun App() {
         }
     }
 
+    // Before every other screen: while something is playing, this window is the
+    // player.
+    val nowPlaying = playing
+    if (nowPlaying != null) {
+        PlayerScreen(
+            target = nowPlaying,
+            onBack = { playing = null; reload++ },
+            onSources = {
+                val show = playingShow
+                playing = null
+                if (show != null) sources(show, nowPlaying.episode)
+            },
+            onState = { state ->
+                status = when (state) {
+                    is Watch.State.Playing -> state.title
+                    is Watch.State.Pushed -> {
+                        reload++
+                        "Episode ${state.episode} marked watched on AniList."
+                    }
+                    is Watch.State.Finished -> "Playback ended."
+                    is Watch.State.Failed -> state.why
+                    else -> status
+                }
+            }
+        )
+        return
+    }
+
     val pick = choosing
     if (pick != null) {
         SourcesScreen(
@@ -286,6 +325,10 @@ private fun App() {
                             is Watch.State.Finished -> "Playback ended."
                             is Watch.State.Failed -> state.why
                             is Watch.State.Choose -> ""
+                            is Watch.State.Ready -> {
+                                playing = state.target
+                                ""
+                            }
                         }
                     }
                     reload++
@@ -321,6 +364,10 @@ private fun App() {
                             // Cannot happen here: a downloaded episode is
                             // played from disk and never looks for sources.
                             is Watch.State.Choose -> ""
+                            is Watch.State.Ready -> {
+                                playing = state.target
+                                ""
+                            }
                         }
                     }
                 }

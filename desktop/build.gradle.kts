@@ -26,6 +26,10 @@ dependencies {
     // look alike.
     implementation(compose.material3)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.8.1")
+    // For the native window handle of the canvas mpv draws into. Java has no
+    // way of its own to hand out an HWND, and mpv's --wid needs one.
+    implementation("net.java.dev.jna:jna:5.14.0")
+    implementation("net.java.dev.jna:jna-platform:5.14.0")
 }
 
 // Generated rather than hard-coded, so the id is not committed and survives an

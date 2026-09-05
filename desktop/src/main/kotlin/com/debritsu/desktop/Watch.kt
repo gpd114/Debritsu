@@ -25,6 +25,24 @@ import java.io.File
  */
 object Watch {
 
+    /**
+     * Everything needed to play something, once the finding is done.
+     *
+     * Handed to the player screen, which owns the window mpv draws into and so
+     * has to be the thing that starts it — the resolving cannot also start
+     * playback without knowing where to put it.
+     */
+    data class Target(
+        val url: String,
+        val title: String,
+        val episode: Int,
+        val episodeMinutes: Int,
+        val anilistId: Int,
+        val subtitles: List<Subtitle>,
+        val resumeFromMs: Long,
+        val exe: File
+    )
+
     sealed interface State {
         data class Preparing(val what: String) : State
         data class Playing(val title: String) : State
@@ -40,6 +58,9 @@ object Watch {
         data class Pushed(val episode: Int) : State
         data class Finished(val pushed: Boolean) : State
         data class Failed(val why: String) : State
+
+        /** Found something playable. The player screen takes it from here. */
+        data class Ready(val target: Target) : State
 
         /**
          * Automatic selection is off, and these are the sources found.
@@ -105,10 +126,7 @@ object Watch {
         if (downloaded != null) {
             val file = Downloader.fileFor(downloaded)
             BuildInfo.log("DebritsuWatch", "playing local file ${file.absolutePath}")
-            playFile(
-                exe, file.absolutePath, title, episode, episodeMinutes,
-                anilistId, emptyList(), onState
-            )
+            onState(State.Ready(target(exe, file.absolutePath, title, episode, episodeMinutes, anilistId, emptyList())))
             return
         }
 
@@ -129,9 +147,31 @@ object Watch {
             return
         }
 
-        playFile(
-            exe, url, title, episode, episodeMinutes, anilistId, outcome.subtitles, onState
+        onState(
+            State.Ready(
+                target(exe, url, title, episode, episodeMinutes, anilistId, outcome.subtitles)
+            )
         )
+    }
+
+    /**
+     * Assembles what the player screen needs, including where to resume.
+     *
+     * Progress clears itself once an episode is effectively finished, so this
+     * never offers to resume at the credits of something already watched.
+     */
+    private fun target(
+        exe: File,
+        url: String,
+        title: String,
+        episode: Int,
+        episodeMinutes: Int,
+        anilistId: Int,
+        subtitles: List<Subtitle>
+    ): Target {
+        val resume = Progress.position(anilistId, episode)
+        if (resume > 0) BuildInfo.log("DebritsuWatch", "resuming at ${resume}ms")
+        return Target(url, title, episode, episodeMinutes, anilistId, subtitles, resume, exe)
     }
 
     /**
@@ -229,7 +269,7 @@ object Watch {
         }
 
         val subs = (stream.subtitles + subtitles).distinctBy { it.url }
-        playFile(exe, url, title, episode, episodeMinutes, anilistId, subs, onState)
+        onState(State.Ready(target(exe, url, title, episode, episodeMinutes, anilistId, subs)))
     }
 
     /**
@@ -239,36 +279,33 @@ object Watch {
      * argument, which is the reason downloading and streaming are one feature
      * here rather than two.
      */
-    private suspend fun playFile(
-        exe: File,
-        url: String,
-        title: String,
-        episode: Int,
-        episodeMinutes: Int,
-        anilistId: Int,
-        subtitles: List<Subtitle>,
+    suspend fun start(target: Target, wid: Long?): Mpv.Session? = Mpv.play(
+        target.exe,
+        target.url,
+        "${target.title} — episode ${target.episode}",
+        target.subtitles,
+        startAtMs = target.resumeFromMs,
+        audioLanguage = Settings.preferredAudioLanguage,
+        subtitleLanguage = Settings.store.getString("sub_lang", "eng"),
+        wid = wid
+    )
+
+    /**
+     * Watches a running session to the end: saving position, and pushing
+     * progress once far enough in.
+     *
+     * Separate from starting it, because the player screen owns the session —
+     * it has the window mpv draws into, and it has to be able to pause and seek
+     * the same session this is reading.
+     */
+    suspend fun follow(
+        session: Mpv.Session,
+        target: Target,
         onState: (State) -> Unit
     ) {
-        // Where this episode was left, if it was. Progress clears itself once an
-        // episode is effectively finished, so this never offers to resume at the
-        // credits of something already watched.
-        val resumeFrom = Progress.position(anilistId, episode)
-        if (resumeFrom > 0) {
-            BuildInfo.log("DebritsuWatch", "resuming at ${resumeFrom}ms")
-        }
-
-        val session = Mpv.play(
-            exe, url, "$title — episode $episode", subtitles,
-            startAtMs = resumeFrom,
-            audioLanguage = Settings.preferredAudioLanguage,
-            subtitleLanguage = Settings.store.getString("sub_lang", "eng")
-        )
-        if (session == null) {
-            onState(State.Failed("mpv would not start, or its pipe never appeared."))
-            return
-        }
-
-        onState(State.Playing(title))
+        val episode = target.episode
+        val anilistId = target.anilistId
+        val episodeMinutes = target.episodeMinutes
 
         // Polled about once a second rather than observed. observe_property
         // works, but pushes roughly thirty times a second, and the only
@@ -323,14 +360,13 @@ object Watch {
                     // what SyncQueue has always been for — it simply had no
                     // caller here until downloads existed.
                     SyncQueue.queue(anilistId, episode)
-                    onState(State.Playing("$title — episode $episode will sync when online"))
+                    onState(State.Playing("Episode $episode will sync when online"))
                     // Not retried every second for the rest of the episode.
                     pushed = true
                 }
             }
         }
 
-        session.close()
         onState(State.Finished(pushed))
     }
 }

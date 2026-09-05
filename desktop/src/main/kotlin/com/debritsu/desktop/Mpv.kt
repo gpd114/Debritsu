@@ -110,8 +110,21 @@ object Mpv {
         var ended = false
             private set
 
+        fun getDouble(property: String, onEvent: (String) -> Unit = {}): Double? =
+            getRaw(property, onEvent)?.doubleOrNull
+
+        /**
+         * A yes-or-no property, such as `pause`.
+         *
+         * Separate from [getDouble] because mpv answers these with a JSON
+         * boolean, which is not a number and comes back null through the
+         * numeric path — a paused player would have read as "unknown".
+         */
+        fun getFlag(property: String): Boolean? =
+            getRaw(property)?.content?.toBooleanStrictOrNull()
+
         @Synchronized
-        fun getDouble(property: String, onEvent: (String) -> Unit = {}): Double? {
+        private fun getRaw(property: String, onEvent: (String) -> Unit = {}): JsonPrimitive? {
             if (ended) return null
             val id = nextId++
             try {
@@ -130,7 +143,7 @@ object Mpv {
                             if (BuildInfo.debug) BuildInfo.log("DebritsuMpv", "$property -> $error")
                             return null
                         }
-                        return obj["data"]?.jsonPrimitive?.doubleOrNull
+                        return obj["data"]?.jsonPrimitive
                     }
                     (obj["event"] as? JsonPrimitive)?.content?.let(onEvent)
                 }
@@ -160,6 +173,43 @@ object Mpv {
          */
         fun durationMs(): Long? = getDouble("duration")?.let { (it * 1000).toLong() }
 
+        /**
+         * Sends a command and does not wait for its reply.
+         *
+         * The reply still arrives and is skipped by the next [getDouble], which
+         * reads until it sees its own request_id. Nothing here needs to know
+         * whether a seek succeeded — the position asked for a moment later says
+         * so more usefully than an acknowledgement would.
+         */
+        @Synchronized
+        fun command(json: String) {
+            if (ended) return
+            runCatching {
+                writer.write(json + "\n")
+                writer.flush()
+            }.onFailure { ended = true }
+        }
+
+        fun setPaused(paused: Boolean) =
+            command("""{"command":["set_property","pause",$paused]}""")
+
+        fun seekTo(ms: Long) =
+            command("""{"command":["seek",${ms / 1000.0},"absolute"]}""")
+
+        fun seekBy(seconds: Int) =
+            command("""{"command":["seek",$seconds,"relative"]}""")
+
+        /** Next subtitle track, including off — mpv cycles through them all. */
+        fun cycleSubtitles() = command("""{"command":["cycle","sid"]}""")
+
+        fun cycleAudio() = command("""{"command":["cycle","aid"]}""")
+
+        fun setVolume(percent: Int) =
+            command("""{"command":["set_property","volume",$percent]}""")
+
+        /** True when paused. Read rather than tracked, so mpv's own keys agree. */
+        fun paused(): Boolean? = getFlag("pause")
+
         fun close() {
             runCatching { pipe.close() }
         }
@@ -186,15 +236,30 @@ object Mpv {
         subtitles: List<Subtitle>,
         startAtMs: Long = 0,
         audioLanguage: String = "",
-        subtitleLanguage: String = ""
+        subtitleLanguage: String = "",
+        /** Native window handle to draw into, or null for mpv's own window. */
+        wid: Long? = null
     ): Session? = withContext(Dispatchers.IO) {
         val pipeName = "debritsu-" + System.nanoTime()
         val args = buildList {
             add(exe.absolutePath)
             add("--input-ipc-server=\\\\.\\pipe\\$pipeName")
             add("--force-media-title=$title")
-            // Otherwise a fresh mpv opens small and behind whatever is in front.
-            add("--force-window=immediate")
+
+            if (wid != null) {
+                // Draw inside the window we own rather than opening one.
+                add("--wid=$wid")
+                // mpv's own on-screen controller is switched off: the controls
+                // are ours, below the video, and two sets of transport buttons
+                // for one player is worse than either alone.
+                add("--no-osc")
+                // Nothing to keep open — the surface belongs to the window, and
+                // an idle mpv holding it would sit as a black rectangle.
+                add("--idle=no")
+            } else {
+                // Otherwise a fresh mpv opens small and behind whatever is in front.
+                add("--force-window=immediate")
+            }
             if (startAtMs > 0) add("--start=${startAtMs / 1000}")
 
             // Which track to start on, rather than letting mpv follow the
