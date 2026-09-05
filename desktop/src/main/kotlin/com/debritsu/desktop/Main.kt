@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -106,6 +107,9 @@ private fun App() {
     var reload by remember { mutableStateOf(0) }
     /** Which show has its episode list open. One at a time, or the list becomes unreadable. */
     var expandedId by remember { mutableStateOf<Int?>(null) }
+
+    /** The show being looked at in full, or null for the list. */
+    var detailOf by remember { mutableStateOf<Anime?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(reload) {
@@ -155,6 +159,61 @@ private fun App() {
         }
     }
 
+    // Defined once and handed to both the list and the detail screen, so an
+    // episode started from either goes through exactly the same path.
+    val play: (Anime, Int) -> Unit = { anime, ep ->
+        scope.launch {
+            Watch.episode(
+                anilistId = anime.id,
+                title = anime.title,
+                episode = ep,
+                // AniList's own minutes-per-episode where it has it, which is
+                // what makes the plausible-size floor meaningful. Zero falls
+                // back to four minutes, which is far weaker.
+                episodeMinutes = anime.durationMins ?: 0,
+                isMovie = (anime.episodes ?: 0) == 1
+            ) { state ->
+                status = when (state) {
+                    is Watch.State.Preparing -> state.what
+                    is Watch.State.Playing -> state.title
+                    is Watch.State.Pushed -> {
+                        // Refresh now rather than when mpv is closed: the list is
+                        // the only place this is visible, and waiting for the
+                        // player to be shut reads as nothing having happened.
+                        reload++
+                        "Episode ${state.episode} marked watched on AniList."
+                    }
+                    is Watch.State.Finished ->
+                        if (state.pushed) "Marked watched on AniList." else "Playback ended."
+                    is Watch.State.Failed -> state.why
+                }
+            }
+            reload++
+        }
+    }
+
+    val download: (Anime, Int) -> Unit = { anime, ep ->
+        scope.launch {
+            val result = Downloader.episode(anime, ep) { step -> status = "Episode $ep — $step" }
+            status = when (result) {
+                is Downloader.Result.Done -> "Episode $ep downloaded. It will play from disk."
+                is Downloader.Result.Failed -> result.why
+            }
+            reload++
+        }
+    }
+
+    val showing = detailOf
+    if (showing != null) {
+        DetailScreen(
+            initial = showing,
+            onBack = { detailOf = null; reload++ },
+            onDownload = download,
+            onPlay = play
+        )
+        return
+    }
+
     Row(Modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).padding(28.dp)) {
             Row(
@@ -183,53 +242,10 @@ private fun App() {
                         anime = anime,
                         expanded = expandedId == anime.id,
                         onToggle = { expandedId = if (expandedId == anime.id) null else anime.id },
-                        onDownload = { ep ->
-                            scope.launch {
-                                val result = Downloader.episode(anime, ep) { step ->
-                                    status = "Episode $ep — $step"
-                                }
-                                status = when (result) {
-                                    is Downloader.Result.Done ->
-                                        "Episode $ep downloaded. It will play from disk."
-                                    is Downloader.Result.Failed -> result.why
-                                }
-                                // Redraw so the chip shows as kept.
-                                reload++
-                            }
-                        }
-                    ) { ep ->
-                        scope.launch {
-                            Watch.episode(
-                                anilistId = anime.id,
-                                title = anime.title,
-                                episode = ep,
-                                // AniList's own minutes-per-episode where it has
-                                // it, which is what makes the plausible-size
-                                // floor meaningful. Zero falls back to four
-                                // minutes, which is far weaker.
-                                episodeMinutes = anime.durationMins ?: 0,
-                                isMovie = (anime.episodes ?: 0) == 1
-                            ) { state ->
-                                status = when (state) {
-                                    is Watch.State.Preparing -> state.what
-                                    is Watch.State.Playing -> state.title
-                                    is Watch.State.Pushed -> {
-                                        // Refresh now rather than when mpv is
-                                        // closed: the list is the only place
-                                        // this is visible, and waiting for the
-                                        // player to be shut reads as nothing
-                                        // having happened.
-                                        reload++
-                                        "Episode ${state.episode} marked watched on AniList."
-                                    }
-                                    is Watch.State.Finished ->
-                                        if (state.pushed) "Marked watched on AniList." else "Playback ended."
-                                    is Watch.State.Failed -> state.why
-                                }
-                            }
-                            reload++
-                        }
-                    }
+                        onOpen = { detailOf = anime },
+                        onDownload = { ep -> download(anime, ep) },
+                        onPlay = { ep -> play(anime, ep) }
+                    )
                 }
             }
         }
@@ -247,6 +263,7 @@ private fun ShowRow(
     anime: Anime,
     expanded: Boolean,
     onToggle: () -> Unit,
+    onOpen: () -> Unit,
     onDownload: (Int) -> Unit,
     onPlay: (Int) -> Unit
 ) {
@@ -272,8 +289,20 @@ private fun ShowRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(anime.title, style = MaterialTheme.typography.titleMedium)
+            RemoteImage(
+                url = anime.cover,
+                modifier = Modifier.width(46.dp).height(64.dp).clickable(onClick = onOpen),
+                fallback = anime.title
+            )
+
+            Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                // The title opens the show. A whole-row click would fight the
+                // buttons sitting in it.
+                Text(
+                    anime.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.clickable(onClick = onOpen)
+                )
                 val partWatched = Progress.fraction(anime.id, next)
                 Text(
                     buildString {
@@ -328,8 +357,9 @@ private fun ShowRow(
  * part-watched one carries how far in it is — which is the only state where the
  * number alone would not say enough.
  */
+/** Shared with the detail screen, which lays out the same grid. */
 @Composable
-private fun EpisodeChip(
+internal fun EpisodeChip(
     episode: Int,
     watched: Boolean,
     isNext: Boolean,
