@@ -86,6 +86,16 @@ fun main() {
     BuildInfo.debug = System.getenv("DEBRITSU_QUIET") == null
     BuildInfo.log = Logging.install()
 
+    // An exception thrown inside a JNA callback cannot propagate: the native
+    // caller gets a zero and the exception vanishes. That is exactly how the
+    // video output failed — libVLC read the zero as "no pictures" and rebuilt
+    // its output forever, while nothing anywhere named a cause. This makes
+    // those visible.
+    com.sun.jna.Native.setCallbackExceptionHandler { callback, e ->
+        BuildInfo.log("DebritsuJna", "callback ${callback.javaClass.simpleName} threw: $e")
+        e.stackTrace.take(6).forEach { BuildInfo.log("DebritsuJna", "  at $it") }
+    }
+
     // Said at startup rather than discovered when something is played. libVLC
     // is loaded as a native library, so a missing or mismatched one is a link
     // error rather than a program that fails to start — worth knowing before it

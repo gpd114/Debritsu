@@ -87,9 +87,19 @@ fun PlayerScreen(
         // Redrawn from the frame counter rather than from the bitmap: the
         // bitmap is reused between frames, so its identity never changes and
         // Compose would have no reason to draw it again.
+        var chosenSubtitles = false
         while (!player.ended) {
             delay(16)
             frames = player.frames
+
+            // Once the picture is up, which is when VLC knows its tracks. The
+            // mediaPlayerReady event was supposed to do this and never fired,
+            // so the track list was never read and nothing was ever chosen
+            // beyond the one attached file.
+            if (!chosenSubtitles && frames > 0) {
+                chosenSubtitles = true
+                player.chooseSubtitles()
+            }
             if (scrubbing == null) positionMs = player.positionMs()
             if (durationMs <= 0L) durationMs = player.durationMs()
             paused = !player.playing

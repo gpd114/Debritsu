@@ -75,7 +75,34 @@ kotlin.sourceSets.named("main") {
 compose.desktop {
     application {
         mainClass = "com.debritsu.desktop.MainKt"
+
+        // vlcj allocates the video buffers through sun.misc.Unsafe, reflecting
+        // into java.nio.Buffer for its address field. On JDK 17 that is closed
+        // by default, so the allocation throws inside a JNA callback — which
+        // cannot propagate an exception and returns zero instead. libVLC reads
+        // that as "no pictures", fails to build a video output, and retries
+        // forever: audio plays and the screen stays black, with nothing in any
+        // log that names the cause.
+        //
+        // Opening the module is the whole fix. It took four wrong guesses to
+        // find because the failure is three layers from its cause.
+        jvmArgs += listOf(
+            "--add-opens", "java.base/java.nio=ALL-UNNAMED",
+            "--add-opens", "java.base/sun.nio.ch=ALL-UNNAMED"
+        )
         nativeDistributions {
+            // jpackage builds a runtime out of the modules it can detect, and
+            // it cannot detect a reflective one. vlcj allocates its video
+            // buffers through sun.misc.Unsafe, which lives in jdk.unsupported;
+            // without this the class is simply absent, the allocation throws
+            // inside a JNA callback that cannot report it, and libVLC sees a
+            // zero it reads as "no pictures".
+            //
+            // The symptom was a black screen with audio playing, and nothing in
+            // libVLC's log, vlcj's behaviour or our own said the word "module".
+            // It took a JNA callback exception handler to see it at all.
+            modules("jdk.unsupported")
+
             targetFormats(TargetFormat.Msi)
             packageName = "Debritsu"
             packageVersion = "0.1.0"
