@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -49,6 +51,7 @@ private val SetMuted = Color(0xFF948CAB)
  * controls for it than this panel could offer, so duplicating them would only
  * create two places to set one thing.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsPane(modifier: Modifier = Modifier, onChanged: () -> Unit) {
     Column(
@@ -247,6 +250,7 @@ private fun AddonsSection() {
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DebridSection() {
     var provider by remember { mutableStateOf(Settings.debridProvider) }
@@ -255,7 +259,7 @@ private fun DebridSection() {
     // Tokens are stored per provider, so picking the wrong one does not merely
     // mislabel the field — it files the key under another service's name and
     // then calls that service's API with it.
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         DebridProvider.entries.forEach { p ->
             TextButton(onClick = {
                 provider = p
@@ -279,6 +283,7 @@ private fun DebridSection() {
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PlaybackSection() {
     var autoPlay by remember { mutableStateOf(Settings.autoPlay) }
@@ -296,7 +301,7 @@ private fun PlaybackSection() {
         "Highest quality — ${if (maxRes == 0) "any" else "${maxRes}p"}",
         style = MaterialTheme.typography.bodySmall
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         listOf(0, 480, 720, 1080, 2160).forEach { r ->
             TextButton(onClick = { maxRes = r; Settings.maxResolution = r }) {
                 Text(
@@ -343,13 +348,14 @@ private fun PlaybackSection() {
  * for the same reason. Both spellings of each code are sent, because releases
  * tag tracks jpn or ja inconsistently.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LanguageSection() {
     var audio by remember { mutableStateOf(Settings.preferredAudioLanguage) }
     var subs by remember { mutableStateOf(Settings.store.getString("sub_lang", "eng")) }
 
     Text("Audio track", style = MaterialTheme.typography.bodySmall, color = SetMuted)
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         listOf("ja" to "Japanese", "en" to "English", "" to "File default").forEach { (code, label) ->
             TextButton(onClick = { audio = code; Settings.preferredAudioLanguage = code }) {
                 Text(
@@ -362,7 +368,7 @@ private fun LanguageSection() {
     }
 
     Text("Subtitles", style = MaterialTheme.typography.bodySmall, color = SetMuted)
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         listOf("eng" to "English", "" to "File default").forEach { (code, label) ->
             TextButton(onClick = { subs = code; Settings.store.putString("sub_lang", code) }) {
                 Text(

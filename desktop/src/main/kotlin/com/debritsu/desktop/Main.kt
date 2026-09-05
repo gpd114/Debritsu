@@ -390,7 +390,8 @@ private fun App() {
 
         if (showSettings) {
             Box(Modifier.width(1.dp).fillMaxSize().background(Muted.copy(alpha = 0.2f)))
-            SettingsPane(Modifier.width(380.dp)) { reload++ }
+            // Wide enough for a row of quality options without clipping them.
+            SettingsPane(Modifier.width(430.dp)) { reload++ }
         }
     }
 }
