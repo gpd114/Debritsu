@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -84,6 +85,10 @@ fun main() {
         Window(
             onCloseRequest = ::exitApplication,
             title = "Debritsu",
+            // The window's icon is separate from the executable's: jpackage
+            // stamps the .ico onto the .exe, and this is what the title bar and
+            // the running taskbar entry show.
+            icon = painterResource("icon.png"),
             state = rememberWindowState(width = 1100.dp, height = 760.dp)
         ) {
             MaterialTheme(

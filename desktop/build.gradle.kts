@@ -70,6 +70,10 @@ compose.desktop {
             targetFormats(TargetFormat.Msi)
             packageName = "Debritsu"
             packageVersion = "0.1.0"
+            // Built from the Android launcher artwork by tools-make-icon.ps1.
+            // Without this the executable carries Compose's own stock icon,
+            // which says nothing about what the program is.
+            windows { iconFile.set(project.file("icon.ico")) }
         }
     }
 }
