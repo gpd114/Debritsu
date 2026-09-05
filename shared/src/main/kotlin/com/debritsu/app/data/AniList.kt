@@ -1,6 +1,5 @@
 package com.debritsu.app.data
 
-import com.debritsu.app.BuildConfig
 import com.debritsu.app.Http
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -56,8 +55,8 @@ object AniList {
                 try {
                     val data = Http.meta.newCall(req).execute().use { res ->
                         val txt = res.body?.string().orEmpty()
-                        if (BuildConfig.DEBUG && !res.isSuccessful) {
-                            android.util.Log.d(
+                        if (BuildInfo.debug && !res.isSuccessful) {
+                            BuildInfo.log(
                                 "DebritsuAniList",
                                 "HTTP ${res.code} — ${txt.take(160)}"
                             )

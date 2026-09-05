@@ -85,6 +85,13 @@ android {
 }
 
 dependencies {
+    // Addons, debrid, AniList and the id mappers, with no Android in them.
+    // Kept as its own module so the planned Windows build can use them without
+    // taking an Android dependency — see WINDOWS-PORT.md on the `windows`
+    // branch. It exports OkHttp, the JSON library and coroutines, which is why
+    // those are not repeated below.
+    implementation(project(":shared"))
+
     implementation(platform("androidx.compose:compose-bom:2024.09.02"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")

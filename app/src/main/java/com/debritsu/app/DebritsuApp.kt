@@ -2,14 +2,28 @@ package com.debritsu.app
 
 import android.app.Application
 import android.content.Context
+import android.content.SharedPreferences
 import com.debritsu.app.cast.GoogleCast
-import okhttp3.OkHttpClient
-import java.util.concurrent.TimeUnit
+import com.debritsu.app.data.BuildInfo
+import com.debritsu.app.data.KeyValueStore
+import com.debritsu.app.data.Settings
 
 class DebritsuApp : Application() {
     override fun onCreate() {
         super.onCreate()
         ctx = this
+
+        // Before anything else. The shared module reads settings from whatever
+        // store it is given and answers with defaults until it has one, so a
+        // screen built ahead of this would quietly see a signed-out app with no
+        // addons rather than fail in any way that pointed here.
+        Settings.store = SharedPrefsStore(
+            getSharedPreferences("debritsu", Context.MODE_PRIVATE)
+        )
+        BuildInfo.debug = BuildConfig.DEBUG
+        BuildInfo.anilistClientId = BuildConfig.ANILIST_CLIENT_ID
+        BuildInfo.log = { tag, message -> android.util.Log.d(tag, message) }
+
         // Nothing discovers Cast devices until CastContext exists, and building
         // it is asynchronous — it binds to Play Services, then registers the
         // Cast provider with MediaRouter. Built here, that's long done by the
@@ -23,35 +37,22 @@ class DebritsuApp : Application() {
     }
 }
 
-object Http {
-    /**
-     * For addons, debrid and downloads: things that are genuinely big or
-     * genuinely slow, and worth waiting on.
-     */
-    val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
-        .callTimeout(150, TimeUnit.SECONDS)
-        .build()
+/**
+ * Settings on Android, which is where they have always been.
+ *
+ * The keys are the settings' own, and unchanged from when this was written
+ * inline, so an app updating into this build reads back everything it had.
+ */
+private class SharedPrefsStore(private val sp: SharedPreferences) : KeyValueStore {
+    override fun getString(key: String, fallback: String) = sp.getString(key, fallback) ?: fallback
+    override fun putString(key: String, value: String) = sp.edit().putString(key, value).apply()
 
-    /**
-     * For metadata: AniList, Jikan, the id mappers. Small requests that either
-     * answer in about a second or are not going to.
-     *
-     * These used to share the client above and inherited its 150 second call
-     * timeout, which is right for a debrid link and badly wrong here. Measured
-     * against AniList on 2026-08-30, one request in five simply hung — the
-     * other four answered in 1 to 2 seconds — so a shelf that drew one of the
-     * bad ones sat there for two and a half minutes rather than failing and
-     * being asked again. The app's own media query answers in 0.9 to 3.1
-     * seconds, so ten is about three times the worst healthy case.
-     *
-     * The connection and thread pools are shared, so this costs nothing to
-     * keep around.
-     */
-    val meta: OkHttpClient = client.newBuilder()
-        .connectTimeout(6, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .callTimeout(10, TimeUnit.SECONDS)
-        .build()
+    override fun getInt(key: String, fallback: Int) = sp.getInt(key, fallback)
+    override fun putInt(key: String, value: Int) = sp.edit().putInt(key, value).apply()
+
+    override fun getFloat(key: String, fallback: Float) = sp.getFloat(key, fallback)
+    override fun putFloat(key: String, value: Float) = sp.edit().putFloat(key, value).apply()
+
+    override fun getBoolean(key: String, fallback: Boolean) = sp.getBoolean(key, fallback)
+    override fun putBoolean(key: String, value: Boolean) = sp.edit().putBoolean(key, value).apply()
 }

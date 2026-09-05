@@ -1,7 +1,5 @@
 package com.debritsu.app.data
 
-import com.debritsu.app.BuildConfig
-
 /**
  * Shared AniList client for public builds.
  *
@@ -15,5 +13,10 @@ import com.debritsu.app.BuildConfig
  *
  * There is no secret here: AniList's implicit grant is designed for public
  * clients, so this is safe to commit.
+ *
+ * Read through [BuildInfo] rather than from a generated BuildConfig, which only
+ * the Android build produces. Each front end registers its own client anyway:
+ * AniList allows one redirect URL per client, and Android's is the custom scheme
+ * `debritsu://auth` while a desktop build needs the pin redirect.
  */
-val DEFAULT_ANILIST_CLIENT_ID: String = BuildConfig.ANILIST_CLIENT_ID
+val DEFAULT_ANILIST_CLIENT_ID: String get() = BuildInfo.anilistClientId
