@@ -388,6 +388,14 @@ class PlayerActivity : ComponentActivity() {
                     episode = target,
                     isMovie = episodeCount == 1,
                     filter = Settings.sourceFilter,
+                    // Was omitted, which made the claim above untrue: without
+                    // it the plausible-size floor falls back to four minutes
+                    // instead of half the real running time, so skipping to the
+                    // next episode inside the player had weaker protection
+                    // against a creditless opening than starting one from the
+                    // detail screen. That is the fault that marked a season of
+                    // Shield Hero watched.
+                    episodeMinutes = episodeMinutes,
                     autoSelect = Settings.autoPlay
                 ) { step -> setPanelSubheading(loading, stepLabel(step)) }
 
