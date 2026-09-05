@@ -55,8 +55,14 @@ private val Muted = Color(0xFF948CAB)
 fun main() {
     Settings.store = FileStore.default()
     BuildInfo.anilistClientId = ANILIST_CLIENT_ID
-    BuildInfo.debug = System.getenv("DEBRITSU_DEBUG") != null
-    BuildInfo.log = { tag, message -> println("$tag  $message") }
+
+    // On by default, to a file. The standalone build has no console to print
+    // to, and its stdout goes nowhere anybody can read — which meant the first
+    // real playback failure could only be described, not diagnosed. A few
+    // kilobytes a session is a fair price for being able to answer "why did it
+    // not do that" without asking someone to reproduce it under a debugger.
+    BuildInfo.debug = System.getenv("DEBRITSU_QUIET") == null
+    BuildInfo.log = Logging.install()
 
     application {
         Window(
@@ -131,7 +137,11 @@ private fun App() {
                                 anilistId = anime.id,
                                 title = anime.title,
                                 episode = ep,
-                                episodeMinutes = 0,
+                                // AniList's own minutes-per-episode where it has
+                                // it, which is what makes the plausible-size
+                                // floor meaningful. Zero falls back to four
+                                // minutes, which is far weaker.
+                                episodeMinutes = anime.durationMins ?: 0,
                                 isMovie = (anime.episodes ?: 0) == 1
                             ) { state ->
                                 status = when (state) {

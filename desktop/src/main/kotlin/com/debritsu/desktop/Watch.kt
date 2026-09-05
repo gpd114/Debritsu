@@ -2,6 +2,7 @@ package com.debritsu.desktop
 
 import com.debritsu.app.data.AniList
 import com.debritsu.app.data.AutoPlay
+import com.debritsu.app.data.BuildInfo
 import com.debritsu.app.data.Settings
 import kotlinx.coroutines.delay
 import java.io.File
@@ -105,19 +106,36 @@ object Watch {
         // question being asked is whether one threshold has been crossed.
         var pushed = false
         var duration = 0L
+        var ticks = 0
         while (session.alive) {
             delay(1000)
             if (duration <= 0L) duration = session.durationMs() ?: 0L
             val position = session.positionMs() ?: continue
 
+            // Every tenth tick, so a failure to push can be read back rather
+            // than guessed at. This is the rule that once marked a season
+            // watched wrongly, so it is worth being able to see it work.
+            if (BuildInfo.debug && ticks++ % 10 == 0) {
+                val target = if (duration > 0) (duration * FINISHED_FRACTION).toLong() else -1
+                BuildInfo.log(
+                    "DebritsuWatch",
+                    "pos=${position}ms dur=${duration}ms mark=${target}ms " +
+                        "plausible=${looksLikeTheEpisode(duration, episodeMinutes)} pushed=$pushed"
+                )
+            }
+
             if (!pushed && duration > 0 &&
                 position >= duration * FINISHED_FRACTION &&
                 looksLikeTheEpisode(duration, episodeMinutes)
             ) {
-                pushed = runCatching { AniList.setProgress(anilistId, episode) }.isSuccess
-                if (pushed && Settings.aniListToken.isNotEmpty()) {
-                    onState(State.Playing("$title — episode $episode marked watched"))
-                }
+                val result = runCatching { AniList.setProgress(anilistId, episode) }
+                pushed = result.isSuccess
+                BuildInfo.log(
+                    "DebritsuWatch",
+                    if (pushed) "pushed episode $episode for $anilistId"
+                    else "push failed: ${result.exceptionOrNull()}"
+                )
+                if (pushed) onState(State.Playing("$title — episode $episode marked watched"))
             }
         }
 

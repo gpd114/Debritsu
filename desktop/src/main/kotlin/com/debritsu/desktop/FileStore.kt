@@ -77,12 +77,12 @@ class FileStore(private val file: File) : KeyValueStore {
          * application data rather than beside the executable, so it survives the
          * program being moved or reinstalled.
          */
-        fun default(): FileStore {
+        fun directory(): File {
             val appData = System.getenv("APPDATA")
-            val dir =
-                if (!appData.isNullOrBlank()) File(appData, "Debritsu")
-                else File(System.getProperty("user.home"), ".debritsu")
-            return FileStore(File(dir, "settings.properties"))
+            return if (!appData.isNullOrBlank()) File(appData, "Debritsu")
+            else File(System.getProperty("user.home"), ".debritsu")
         }
+
+        fun default(): FileStore = FileStore(File(directory(), "settings.properties"))
     }
 }

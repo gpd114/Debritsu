@@ -77,7 +77,7 @@ object Mpv {
             Charsets.UTF_8
         )
 
-        val alive: Boolean get() = process.isAlive
+        val alive: Boolean get() = process.isAlive && !ended
 
         /**
          * Ask mpv for one property.
@@ -88,25 +88,48 @@ object Mpv {
          * [onEvent]. A client that wrote one line and read one line would work
          * until the first event and then be permanently one reply behind.
          */
+        /**
+         * True once the pipe has gone. mpv closing it is the normal end of
+         * playback, not a fault: the viewer shut the window.
+         */
+        @Volatile
+        var ended = false
+            private set
+
         @Synchronized
         fun getDouble(property: String, onEvent: (String) -> Unit = {}): Double? {
+            if (ended) return null
             val id = nextId++
-            writer.write("""{"command":["get_property","$property"],"request_id":$id}""" + "\n")
-            writer.flush()
+            try {
+                writer.write("""{"command":["get_property","$property"],"request_id":$id}""" + "\n")
+                writer.flush()
 
-            val deadline = System.currentTimeMillis() + 4000
-            while (System.currentTimeMillis() < deadline) {
-                val line = pipe.readLine() ?: return null
-                val obj = runCatching { json.parseToJsonElement(line) as? JsonObject }.getOrNull()
-                    ?: continue
-                val replyId = (obj["request_id"] as? JsonPrimitive)?.content?.toIntOrNull()
-                if (replyId == id) {
-                    if ((obj["error"] as? JsonPrimitive)?.content != "success") return null
-                    return obj["data"]?.jsonPrimitive?.doubleOrNull
+                val deadline = System.currentTimeMillis() + 4000
+                while (System.currentTimeMillis() < deadline) {
+                    val line = pipe.readLine() ?: run { ended = true; return null }
+                    val obj = runCatching { json.parseToJsonElement(line) as? JsonObject }.getOrNull()
+                        ?: continue
+                    val replyId = (obj["request_id"] as? JsonPrimitive)?.content?.toIntOrNull()
+                    if (replyId == id) {
+                        val error = (obj["error"] as? JsonPrimitive)?.content
+                        if (error != "success") {
+                            if (BuildInfo.debug) BuildInfo.log("DebritsuMpv", "$property -> $error")
+                            return null
+                        }
+                        return obj["data"]?.jsonPrimitive?.doubleOrNull
+                    }
+                    (obj["event"] as? JsonPrimitive)?.content?.let(onEvent)
                 }
-                (obj["event"] as? JsonPrimitive)?.content?.let(onEvent)
+                if (BuildInfo.debug) BuildInfo.log("DebritsuMpv", "$property timed out")
+                return null
+            } catch (e: java.io.IOException) {
+                // Windows reports a pipe whose other end has gone as "The pipe
+                // is being closed". Uncaught, that escaped the watch loop and
+                // surfaced as an error dialog on an ordinary quit.
+                ended = true
+                if (BuildInfo.debug) BuildInfo.log("DebritsuMpv", "pipe closed: ${e.message}")
+                return null
             }
-            return null
         }
 
         /** Where playback has got to, in milliseconds. */
