@@ -63,6 +63,11 @@ jobs:
             -DestinationPath "debritsu-desktop-$version-portable.zip"
           "MSI=debritsu-desktop-$version.msi" | Out-File -Append $env:GITHUB_ENV
           "ZIP=debritsu-desktop-$version-portable.zip" | Out-File -Append $env:GITHUB_ENV
+          "VERSION=$version" | Out-File -Append $env:GITHUB_ENV
+          # Said out loud because the first release could not prove it: the tag
+          # was 0.1.0 and so is the fallback, so a build ignoring RELEASE_TAG
+          # would have looked identical.
+          "installer reports version: $((Get-Item $msi).VersionInfo.ProductVersion)"
 
       - uses: softprops/action-gh-release@v2
         with:
@@ -70,7 +75,7 @@ jobs:
             ${{ env.MSI }}
             ${{ env.ZIP }}
           tag_name: ${{ github.ref_name }}
-          name: Debritsu for Windows ${{ github.ref_name }}
+          name: Debritsu for Windows ${{ env.VERSION }}
           prerelease: false
           body: |
             Windows build. Install the MSI, or unzip the portable build and run
