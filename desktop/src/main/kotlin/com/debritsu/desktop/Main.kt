@@ -279,6 +279,8 @@ private fun App(
     var showDownloads by remember { mutableStateOf(false) }
     /** Sources to choose from, when automatic selection is off. */
     var choosing by remember { mutableStateOf<Watch.State.Choose?>(null) }
+    /** The show those sources are for, which the list itself does not carry. */
+    var choosingFor by remember { mutableStateOf<Anime?>(null) }
     /**
      * What is playing, or null for nothing.
      *
@@ -367,7 +369,8 @@ private fun App(
                 // AniList's own minutes-per-episode where it has it, which is
                 // what makes the plausible-size floor meaningful.
                 episodeMinutes = anime.durationMins ?: 0,
-                isMovie = (anime.episodes ?: 0) == 1
+                isMovie = (anime.episodes ?: 0) == 1,
+                anime = anime
             ) { state ->
                 status = when (state) {
                     is Watch.State.Preparing -> state.what
@@ -396,6 +399,7 @@ private fun App(
     }
 
     val sources: (Anime, Int) -> Unit = { anime, ep ->
+        choosingFor = anime
         scope.launch {
             Watch.sources(
                 anilistId = anime.id,
@@ -420,6 +424,26 @@ private fun App(
     val download: (Anime, Int) -> Unit = { anime, ep ->
         scope.launch {
             val result = Downloader.episode(anime, ep) { step -> status = "Episode $ep — $step" }
+            status = when (result) {
+                is Downloader.Result.Done -> "Episode $ep downloaded. It will play from disk."
+                is Downloader.Result.Failed -> result.why
+            }
+            reload++
+        }
+    }
+
+    /**
+     * Downloads one source the viewer picked out of the list.
+     *
+     * On the background scope, not this composition's: the list can be closed —
+     * or the player left, which is where the other copy of it lives — while the
+     * transfer is running, and cancelling then would be the opposite of what
+     * pressing Download meant.
+     */
+    val downloadSource: (Anime, Int, com.debritsu.app.data.StreamOption) -> Unit = { anime, ep, stream ->
+        status = "Episode $ep — starting download"
+        Downloader.background.launch {
+            val result = Downloader.source(anime, ep, stream) { step -> status = "Episode $ep — $step" }
             status = when (result) {
                 is Downloader.Result.Done -> "Episode $ep downloaded. It will play from disk."
                 is Downloader.Result.Failed -> result.why
@@ -487,6 +511,9 @@ private fun App(
         SourcesScreen(
             state = pick,
             onBack = { choosing = null },
+            onDownload = choosingFor?.let { show ->
+                { stream -> downloadSource(show, pick.episode, stream) }
+            },
             onPick = { stream ->
                 choosing = null
                 scope.launch {
@@ -497,7 +524,8 @@ private fun App(
                         title = pick.title,
                         episode = pick.episode,
                         episodeMinutes = pick.episodeMinutes,
-                        isMovie = pick.isMovie
+                        isMovie = pick.isMovie,
+                        anime = choosingFor
                     ) { state ->
                         status = when (state) {
                             is Watch.State.Preparing -> state.what

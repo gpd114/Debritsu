@@ -1,6 +1,7 @@
 package com.debritsu.desktop
 
 import com.debritsu.app.data.AniList
+import com.debritsu.app.data.Anime
 import com.debritsu.app.data.AutoPlay
 import com.debritsu.app.data.BuildInfo
 import com.debritsu.app.data.Debrid
@@ -61,6 +62,15 @@ object Watch {
          * Null for a downloaded file, which came from no search.
          */
         val outcome: AutoPlay.Outcome?,
+        /**
+         * The show, where the caller had one.
+         *
+         * Only so a download started from the player can be filed — the index
+         * wants a cover and an episode count, and neither is derivable from an
+         * id and a title. Null when playback was started from the downloads
+         * screen, which is the one case where downloading is already moot.
+         */
+        val anime: Anime?,
         /** Where libVLC lives. Held here so the screen need not look again. */
         val vlcDir: File
     )
@@ -142,6 +152,8 @@ object Watch {
         episode: Int,
         episodeMinutes: Int,
         isMovie: Boolean,
+        /** Passed on to the target, only so the player can file a download. */
+        anime: Anime? = null,
         onState: (State) -> Unit
     ) {
         val vlcDir = Vlc.directory(Settings.store.getString("vlc_path", ""))
@@ -167,7 +179,7 @@ object Watch {
                 State.Ready(
                     target(
                         vlcDir, file.absolutePath, title, episode, episodeMinutes, anilistId,
-                        isMovie, emptyList(), null
+                        isMovie, emptyList(), null, anime
                     )
                 )
             )
@@ -195,7 +207,7 @@ object Watch {
             State.Ready(
                 target(
                     vlcDir, url, title, episode, episodeMinutes, anilistId, isMovie,
-                    outcome.subtitles, outcome
+                    outcome.subtitles, outcome, anime
                 )
             )
         )
@@ -216,7 +228,8 @@ object Watch {
         anilistId: Int,
         isMovie: Boolean,
         subtitles: List<Subtitle>,
-        outcome: AutoPlay.Outcome?
+        outcome: AutoPlay.Outcome?,
+        anime: Anime?
     ): Target {
         val resume = Progress.position(anilistId, episode)
         if (resume > 0) BuildInfo.log("DebritsuWatch", "resuming at ${resume}ms")
@@ -227,7 +240,7 @@ object Watch {
         )
         return Target(
             url, title, episode, episodeMinutes, anilistId, isMovie, subtitles, resume,
-            outcome, vlcDir
+            outcome, anime, vlcDir
         )
     }
 
@@ -307,6 +320,7 @@ object Watch {
         episode: Int,
         episodeMinutes: Int,
         isMovie: Boolean,
+        anime: Anime? = null,
         onState: (State) -> Unit
     ) {
         val vlcDir = Vlc.directory(Settings.store.getString("vlc_path", ""))
@@ -334,7 +348,8 @@ object Watch {
                     vlcDir, url, title, episode, episodeMinutes, anilistId, isMovie, subs,
                     // The same search with a different source marked as the one
                     // playing, so picking again lists what this one listed.
-                    outcome.copy(url = url, chosen = stream)
+                    outcome.copy(url = url, chosen = stream),
+                    anime
                 )
             )
         )

@@ -73,6 +73,8 @@ fun rankSources(
 fun SourcesScreen(
     state: Watch.State.Choose,
     onBack: () -> Unit,
+    /** Absent where there is nothing to file a download under. */
+    onDownload: ((StreamOption) -> Unit)? = null,
     onPick: (StreamOption) -> Unit
 ) {
     val streams = state.outcome.results.flatMap { it.streams }
@@ -112,7 +114,13 @@ fun SourcesScreen(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             items(ranked) { (stream, meta) ->
-                SourceRow(stream, meta, filter, minSize) { onPick(stream) }
+                SourceRow(
+                    stream = stream,
+                    meta = meta,
+                    filter = filter,
+                    minSizeMb = minSize,
+                    onDownload = onDownload?.let { { it(stream) } }
+                ) { onPick(stream) }
             }
         }
     }
@@ -126,6 +134,8 @@ internal fun SourceRow(
     minSizeMb: Int,
     /** Marked when this is the release already on screen. */
     playing: Boolean = false,
+    /** Offered where there is something to file the download under. */
+    onDownload: (() -> Unit)? = null,
     onPick: () -> Unit
 ) {
     val accepted = filter.accepts(stream, meta, minSizeMb)
@@ -143,10 +153,21 @@ internal fun SourceRow(
                 style = MaterialTheme.typography.labelSmall
             )
         }
-        Text(
-            stream.name.lineSequence().joinToString(" ").trim(),
-            style = MaterialTheme.typography.bodyMedium
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stream.name.lineSequence().joinToString(" ").trim(),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            // Beside the name rather than under the row, so it reads as a
+            // second thing you can do with this source rather than as a
+            // decision about the list.
+            onDownload?.let {
+                TextButton(onClick = it) {
+                    Text("Download", color = SrcKeep, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
 
         Text(
             buildString {

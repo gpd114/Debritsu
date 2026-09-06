@@ -334,12 +334,27 @@ class VlcPlayer(vlcDirectory: java.io.File) {
             return "force" in n || "forced" in n || "signs" in n || "songs" in n
         }
 
+        // Captions for the deaf and hard of hearing: the same dialogue, plus
+        // "[door creaks]" and speaker labels for everything the audio carries.
+        // Correct subtitles, and not the ones anybody watching with sound
+        // wants — but they sort before the dialogue track in a release that
+        // ships both, so left alone they simply won. A release that has only
+        // SDH still gets it, below.
+        fun isDescriptive(name: String): Boolean {
+            val n = name.lowercase()
+            return "sdh" in n || "cc" in n.split(' ', '(', ')', '[', ']', '-')
+        }
+
         fun isEnglish(name: String): Boolean {
             val n = name.lowercase()
             return "eng" in n || "english" in n || preferred.lowercase() in n
         }
 
-        val wanted = real.firstOrNull { isEnglish(it.second) && !isForced(it.second) }
+        fun usable(name: String) = !isForced(name) && !isDescriptive(name)
+
+        val wanted = real.firstOrNull { isEnglish(it.second) && usable(it.second) }
+            ?: real.firstOrNull { isEnglish(it.second) && !isForced(it.second) }
+            ?: real.firstOrNull { usable(it.second) }
             ?: real.firstOrNull { !isForced(it.second) }
             ?: real.first()
 

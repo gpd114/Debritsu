@@ -4,9 +4,11 @@ import com.debritsu.app.Http
 import com.debritsu.app.data.Anime
 import com.debritsu.app.data.AutoPlay
 import com.debritsu.app.data.BuildInfo
+import com.debritsu.app.data.Debrid
 import com.debritsu.app.data.DownloadIndex
 import com.debritsu.app.data.Downloaded
 import com.debritsu.app.data.Settings
+import com.debritsu.app.data.StreamOption
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -28,6 +30,18 @@ import java.util.concurrent.ConcurrentHashMap
  * rather than started again.
  */
 object Downloader {
+
+    /**
+     * Where downloads started from a screen actually run.
+     *
+     * Not the screen's own scope. A download begun from the player's source
+     * list would be cancelled the moment Back was pressed, which is precisely
+     * when somebody would press it — start the download, leave the episode,
+     * come back to nothing.
+     */
+    val background = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + Dispatchers.IO
+    )
 
     /** How far along each download is, 0f..1f, while this program is running. */
     private val live = ConcurrentHashMap<String, Float>()
@@ -103,6 +117,39 @@ object Downloader {
         val url = outcome.url
             ?: return@withContext Result.Failed(outcome.message ?: "Nothing downloadable was found.")
 
+        save(anime, episode, url, outcome.chosen?.name.orEmpty(), onStep)
+    }
+
+    /**
+     * Downloads one source the viewer picked out of the list themselves.
+     *
+     * Resolved here rather than when the list was drawn, for the same reason
+     * playing one is: resolving adds it to the debrid account, and doing that
+     * to two hundred sources to draw a list is a download nobody asked for.
+     */
+    suspend fun source(
+        anime: Anime,
+        episode: Int,
+        stream: StreamOption,
+        onStep: (String) -> Unit
+    ): Result = withContext(Dispatchers.IO) {
+        onStep("Resolving")
+        val url = runCatching { Debrid.resolve(stream) }.getOrNull()
+            ?: return@withContext Result.Failed(
+                "That source would not resolve — most likely it is not cached with " +
+                    "${Settings.debridProvider.label}."
+            )
+        save(anime, episode, url, stream.name, onStep)
+    }
+
+    /** The half after a URL is in hand, shared by both routes to one. */
+    private suspend fun save(
+        anime: Anime,
+        episode: Int,
+        url: String,
+        sourceName: String,
+        onStep: (String) -> Unit
+    ): Result = withContext(Dispatchers.IO) {
         // Fetched now so the downloads screen has a picture on a plane. Posters
         // caches to disk by URL, so storing the URL is enough — but only if it
         // has been fetched at least once, and the moment of downloading is the
@@ -115,7 +162,7 @@ object Downloader {
             title = anime.title,
             coverPath = anime.cover,
             fileName = DownloadIndex.fileNameFor(anime.title, episode),
-            sourceName = outcome.chosen?.name.orEmpty(),
+            sourceName = sourceName,
             totalEpisodes = anime.episodes
         )
         DownloadIndex.put(item)

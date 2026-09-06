@@ -318,6 +318,24 @@ fun PlayerScreen(
                 outcome = outcome,
                 note = sourceNote,
                 onClose = { sourcesOpen = false },
+                // On the background scope rather than this screen's: pressing
+                // Download and then Back is an obvious thing to do, and it
+                // would cancel the transfer the moment the player closed.
+                onDownload = target.anime?.let { show ->
+                    { stream ->
+                        sourceNote = "Downloading — starting"
+                        Downloader.background.launch {
+                            val result = Downloader.source(show, target.episode, stream) { step ->
+                                sourceNote = "Downloading — $step"
+                            }
+                            sourceNote = when (result) {
+                                is Downloader.Result.Done -> "Downloaded. It will play from disk."
+                                is Downloader.Result.Failed -> result.why
+                            }
+                        }
+                        Unit
+                    }
+                },
                 onPick = { stream ->
                     val from = outcome ?: return@SourcesOverlay
                     scope.launch {
@@ -366,6 +384,7 @@ private fun SourcesOverlay(
     outcome: com.debritsu.app.data.AutoPlay.Outcome?,
     note: String?,
     onClose: () -> Unit,
+    onDownload: ((com.debritsu.app.data.StreamOption) -> Unit)?,
     onPick: (com.debritsu.app.data.StreamOption) -> Unit
 ) {
     val filter = com.debritsu.app.data.Settings.sourceFilter
@@ -422,7 +441,8 @@ private fun SourcesOverlay(
                         meta = meta,
                         filter = filter,
                         minSizeMb = minSize,
-                        playing = stream == nowPlaying
+                        playing = stream == nowPlaying,
+                        onDownload = onDownload?.let { { it(stream) } }
                     ) { onPick(stream) }
                 }
             }
