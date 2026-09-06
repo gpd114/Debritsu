@@ -7,6 +7,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -131,6 +132,16 @@ fun PlayerScreen(
     /** What is happening while another episode is being found, if anything. */
     var switching by remember(target.url) { mutableStateOf<String?>(null) }
 
+    /**
+     * Which track list is open, if either.
+     *
+     * These used to cycle to the next track and say nothing at all. That is
+     * indistinguishable from a broken button when a release has one audio
+     * track and no subtitle tracks — which is most of them, since anime
+     * commonly burns the subtitles into the picture. A list says what there is.
+     */
+    var trackMenu by remember(target.url) { mutableStateOf<String?>(null) }
+
     // Beyond the last episode there is nothing to go to. A show whose count
     // AniList does not know keeps the button, because refusing to move on a
     // missing number would be worse than trying and finding nothing.
@@ -149,8 +160,21 @@ fun PlayerScreen(
      */
     val goToEpisode: (Int) -> Unit = { wanted ->
         val anime = target.anime
+        // Logged on arrival, because the last time this failed the log could
+        // not say whether the press had reached here at all — and "the button
+        // does nothing" has at least three causes that look identical.
+        BuildInfo.log(
+            "DebritsuWatch",
+            "episode button: want $wanted, from ${target.episode}, " +
+                "show has ${anime?.episodes ?: "an unknown number of"} episodes"
+        )
         switching = "Finding episode $wanted"
         scope.launch {
+            // An exception escaping here cancels the scope that raised it, and
+            // with it every later launch from this screen — which is exactly
+            // the shape of "it worked once and never again". It is caught and
+            // said out loud instead.
+            runCatching {
             Watch.episode(
                 anilistId = target.anilistId,
                 title = target.title,
@@ -175,6 +199,10 @@ fun PlayerScreen(
                         switching = "Episode $wanted needs a source chosen — use Sources"
                     else -> Unit
                 }
+            }
+            }.onFailure {
+                BuildInfo.log("DebritsuWatch", "episode $wanted failed: $it")
+                switching = "Could not open episode $wanted: ${it.message ?: it}"
             }
         }
     }
@@ -233,14 +261,21 @@ fun PlayerScreen(
         if (!player.isReleased) onState(Watch.State.Finished(false))
     }
 
-    // Hides itself while nothing moves, paused or not.
+    // Fullscreen hides them while nothing moves; windowed keeps them.
     //
-    // Pausing used to hold them open, on the reasoning that a still picture
-    // with no controls reads as a frozen program. It does not: pausing is
-    // usually done to look at the picture, and the controls are then covering
-    // the thing they were pressed to see.
-    LaunchedEffect(lastMoved) {
+    // Which is what every other player does, and for a reason: fullscreen is
+    // the picture and nothing else, so anything over it is in the way, while a
+    // window that hides its own controls is a window with a title bar and no
+    // way to press play — the frame is already telling you this is a program
+    // rather than a picture, so hiding the controls only makes it a worse one.
+    //
+    // Pausing does not hold them open in fullscreen. That was tried on the
+    // reasoning that a still picture with no controls reads as a frozen
+    // program; it does not, because pausing is usually done to look at the
+    // picture and the controls then cover the thing they were pressed to see.
+    LaunchedEffect(lastMoved, fullscreen) {
         controlsShown = true
+        if (!fullscreen) return@LaunchedEffect
         delay(2500)
         controlsShown = false
     }
@@ -448,8 +483,8 @@ fun PlayerScreen(
                     paused = next
                 },
                 onSeek = { player.seekBy(it) },
-                onSubtitles = { cycle(player.subtitleTracks(), player.subtitleTrack()) { id -> player.setSubtitleTrack(id) } },
-                onAudio = { cycle(player.audioTracks(), player.audioTrack()) { id -> player.setAudioTrack(id) } },
+                onSubtitles = { trackMenu = if (trackMenu == "subtitles") null else "subtitles" },
+                onAudio = { trackMenu = if (trackMenu == "audio") null else "audio" },
                 onFullscreen = { onFullscreen(!fullscreen) },
                 onSources = { sourcesOpen = true },
                 onBack = onBack
@@ -471,6 +506,29 @@ fun PlayerScreen(
                 // name rather than as a hint.
                 Text(skippable.label)
             }
+        }
+
+        trackMenu?.let { which ->
+            val subtitles = which == "subtitles"
+            val tracks = if (subtitles) player.subtitleTracks() else player.audioTracks()
+            val current = if (subtitles) player.subtitleTrack() else player.audioTrack()
+            TrackMenu(
+                title = if (subtitles) "Subtitles" else "Audio",
+                tracks = tracks,
+                current = current,
+                // Said plainly rather than left as a button that appears dead.
+                // A file with one audio track and its subtitles burned into the
+                // picture is normal for anime, not a fault.
+                empty = if (subtitles)
+                    "No subtitle tracks in this file. Many releases burn them into the picture."
+                else "One audio track in this file.",
+                onPick = { id ->
+                    BuildInfo.log("DebritsuVlc", "track -> $id")
+                    if (subtitles) player.setSubtitleTrack(id) else player.setAudioTrack(id)
+                    trackMenu = null
+                },
+                onClose = { trackMenu = null }
+            )
         }
 
         if (sourcesOpen) {
@@ -653,13 +711,63 @@ private fun ControlIcon(
     }
 }
 
-/** Steps to the next track in a list, wrapping. */
-private fun cycle(tracks: List<Pair<Int, String>>, current: Int, set: (Int) -> Unit) {
-    if (tracks.isEmpty()) return
-    val index = tracks.indexOfFirst { it.first == current }
-    val next = tracks[(index + 1).mod(tracks.size)]
-    BuildInfo.log("DebritsuVlc", "track -> ${next.second}")
-    set(next.first)
+/**
+ * The tracks in this file, to pick from.
+ *
+ * Small and beside the button that opened it, rather than the full-height
+ * panel the sources use: a file has a handful of tracks and two hundred
+ * sources, and the two want different shapes.
+ */
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.TrackMenu(
+    title: String,
+    tracks: List<Pair<Int, String>>,
+    current: Int,
+    empty: String,
+    onPick: (Int) -> Unit,
+    onClose: () -> Unit
+) {
+    // -1 is VLC's "disabled" entry. Worth offering for subtitles and never for
+    // audio, but it is simplest to show what the file has and let the list
+    // carry it — turning subtitles off is a thing people want.
+    val real = tracks.filter { it.first != -1 }
+
+    Column(
+        Modifier.align(Alignment.BottomEnd)
+            .padding(end = 20.dp, bottom = 96.dp)
+            .width(340.dp)
+            .background(Color(0xF2160F24), RoundedCornerShape(10.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = Paper)
+            TextButton(onClick = onClose) {
+                Text("Close", color = Muted, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+
+        if (real.isEmpty()) {
+            Text(empty, color = Muted, style = MaterialTheme.typography.bodySmall)
+            return@Column
+        }
+
+        tracks.forEach { (id, name) ->
+            val label = if (id == -1) "Off" else name
+            Text(
+                (if (id == current) "●  " else "○  ") + label,
+                color = if (id == current) Violet else Paper,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth()
+                    .clickable { onPick(id) }
+                    .padding(vertical = 6.dp, horizontal = 4.dp)
+            )
+        }
+    }
 }
 
 @Composable
