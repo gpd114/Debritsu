@@ -48,6 +48,17 @@ fun VlcBanner(onInstalled: () -> Unit) {
     var found by remember { mutableStateOf(Vlc.directory(Settings.store.getString("vlc_path", ""))) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
+
+    /**
+     * Whether winget answered, or null while nobody has asked yet.
+     *
+     * Asked once, off the drawing thread — deciding this now costs starting a
+     * process, and the old check did it inline on every redraw of the banner.
+     * Null means unknown, and the button stays live: offering something that
+     * might not work beats refusing something that would.
+     */
+    var winget by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(Unit) { winget = VlcInstall.available() }
     val scope = rememberCoroutineScope()
     val clipboard: ClipboardManager = LocalClipboardManager.current
 
@@ -83,7 +94,7 @@ fun VlcBanner(onInstalled: () -> Unit) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(
-                enabled = !busy && VlcInstall.available(),
+                enabled = !busy && winget != false,
                 onClick = {
                     busy = true
                     message = ""
@@ -104,7 +115,7 @@ fun VlcBanner(onInstalled: () -> Unit) {
                 Text(
                     when {
                         busy -> "Installing…"
-                        !VlcInstall.available() -> "winget not available"
+                        winget == false -> "winget not available"
                         else -> "Install VLC"
                     }
                 )

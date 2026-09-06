@@ -26,9 +26,35 @@ object VlcInstall {
     val command = "winget install --id $PACKAGE --exact " +
         "--accept-package-agreements --accept-source-agreements"
 
-    fun available(): Boolean = System.getenv("PATH").orEmpty()
-        .split(File.pathSeparator)
-        .any { File(it, "winget.exe").canExecute() }
+    /** Remembered, so the banner is not starting a process to redraw itself. */
+    @Volatile
+    private var runs: Boolean? = null
+
+    /**
+     * Whether winget is here, decided by running it.
+     *
+     * It used to look for `winget.exe` on the PATH and ask whether the file was
+     * executable. That reported "winget not available" on a machine where
+     * winget works perfectly, because Windows installs it as an App Execution
+     * Alias: a zero-byte reparse point that the JVM does not consider
+     * executable, or in some cases consider present at all. The file says
+     * nothing useful; whether it starts says everything.
+     */
+    suspend fun available(): Boolean = withContext(Dispatchers.IO) {
+        runs?.let { return@withContext it }
+        val ok = runCatching {
+            val p = ProcessBuilder("winget", "--version")
+                .redirectErrorStream(true)
+                .start()
+            // Drained, or a process whose output nobody reads can fill its pipe
+            // and never exit.
+            p.inputStream.readBytes()
+            p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS) && p.exitValue() == 0
+        }.getOrDefault(false)
+        BuildInfo.log("DebritsuVlc", "winget ${if (ok) "answers" else "does not answer"}")
+        runs = ok
+        ok
+    }
 
     sealed interface Result {
         data class Installed(val dir: File) : Result
