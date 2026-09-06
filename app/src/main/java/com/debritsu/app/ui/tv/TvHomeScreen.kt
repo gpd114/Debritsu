@@ -16,6 +16,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -31,7 +35,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -235,20 +241,27 @@ fun TvHomeScreen(
                     ),
                     modifier = Modifier.weight(1f).focusRequester(searchFocus)
                 )
-            } else {
+            } else if (query.isNotBlank()) {
+                // Only when there is something to say. It used to read "Search
+                // anime" whenever nothing had been searched, which is a label
+                // for a field that is not on screen — the field only exists
+                // while searching — so it sat in the corner of the shelves
+                // describing nothing.
                 Text(
-                    if (query.isBlank()) "Search anime" else "Results for “${query.trim()}”",
+                    "Results for “${query.trim()}”",
                     style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
                     color = Ink.Mist,
                     modifier = Modifier.weight(1f)
                 )
+            } else {
+                Spacer(Modifier.weight(1f))
             }
             Spacer(Modifier.width(12.dp))
             if (!searchActive) {
-                Button(onClick = { searchActive = true }) { Text("Search") }
+                TvIconButton(Icons.Default.Search, "Search") { searchActive = true }
                 Spacer(Modifier.width(12.dp))
             }
-            Button(onClick = onSettings) { Text("Settings") }
+            TvIconButton(Icons.Default.Settings, "Settings", onSettings)
         }
 
         // Nothing can be played until an addon is configured, and on a fresh
@@ -284,6 +297,35 @@ fun TvHomeScreen(
                     TvShelf(title, list, onOpen)
                 }
             }
+        }
+    }
+}
+
+/**
+ * A button in the top row that shows its icon, and its name while focused.
+ *
+ * Icons alone are wrong on a television: there is no pointer to hover, no
+ * tooltip, and the viewer is across the room from a glyph a few millimetres
+ * across. Naming it while the remote is on it costs nothing — focus is where
+ * attention already is, and only one of these can hold it — and means the row
+ * reads as icons without ever being a guess.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun TvIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    name: String,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    Button(
+        onClick = onClick,
+        modifier = Modifier.onFocusChanged { focused = it.isFocused }
+    ) {
+        Icon(icon, contentDescription = name, modifier = Modifier.size(20.dp))
+        if (focused) {
+            Spacer(Modifier.width(8.dp))
+            Text(name)
         }
     }
 }
