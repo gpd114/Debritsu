@@ -73,6 +73,33 @@ fun DetailScreen(
     var editing by remember(initial.id) { mutableStateOf(false) }
     var extras by remember(initial.id) { mutableStateOf<AniList.Extras?>(null) }
 
+    /**
+     * Episode titles, and which episodes are filler or recap.
+     *
+     * AniList does not track any of it; MyAnimeList does, through Jikan. Asked
+     * for separately and late on purpose — it is the slow, flaky end of the
+     * three-hop chain (AniList id, then the mapping, then Jikan) and a MAL
+     * outage surfaces exactly here. Nothing waits on it and nothing breaks
+     * without it; the grid simply shows numbers, as it always did.
+     */
+    var episodeMeta by remember(initial.id) {
+        mutableStateOf<Map<Int, com.debritsu.app.data.Jikan.EpisodeMeta>>(emptyMap())
+    }
+
+    /** Whichever episode the pointer is over, so its title can be read. */
+    var hovered by remember(initial.id) { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(initial.id) {
+        val mal = withContext(Dispatchers.IO) {
+            runCatching {
+                com.debritsu.app.data.Mappings.forAniList(initial.id, initial.title).mal?.toIntOrNull()
+            }.getOrNull()
+        }
+        episodeMeta = withContext(Dispatchers.IO) {
+            runCatching { com.debritsu.app.data.Jikan.episodes(mal) }.getOrDefault(emptyMap())
+        }
+    }
+
     LaunchedEffect(initial.id) {
         val full = withContext(Dispatchers.IO) { runCatching { AniList.media(initial.id) }.getOrNull() }
         if (full != null) {
@@ -189,7 +216,37 @@ fun DetailScreen(
         }
 
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
-            Text("Episodes", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Episodes",
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.titleSmall
+                )
+
+                // One line, showing whichever episode the pointer is over and
+                // otherwise the one you would play next.
+                //
+                // Not a tooltip on each chip: a hover popup over a grid of a
+                // hundred and seventy of them is a lot of windows, and the
+                // last thing to watch the pointer around a clickable thing in
+                // this build swallowed two presses in three.
+                val showing = hovered ?: next
+                episodeMeta[showing]?.let { meta ->
+                    val tag = when {
+                        meta.filler -> "  ·  FILLER"
+                        meta.recap -> "  ·  RECAP"
+                        else -> ""
+                    }
+                    Text(
+                        "$showing.  ${meta.title.orEmpty()}$tag",
+                        color = if (meta.filler || meta.recap) DetailWarn else DetailMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 12.dp)
+                    )
+                }
+            }
             FlowRow(
                 Modifier.fillMaxWidth().padding(top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -202,6 +259,7 @@ fun DetailScreen(
 
                 for (ep in 1..total) {
                     val held = DownloadIndex.get(anime.id, ep)
+                    val meta = episodeMeta[ep]
                     EpisodeChip(
                         episode = ep,
                         watched = ep <= anime.progress,
@@ -209,6 +267,12 @@ fun DetailScreen(
                         partWatched = Progress.fraction(anime.id, ep),
                         downloaded = held != null && Downloader.isComplete(held),
                         downloading = held != null && Downloader.isRunning(held),
+                        // Marked, not hidden. Filler is still an episode, and
+                        // whether to watch it is the viewer's call — the point
+                        // is being able to tell before pressing play rather
+                        // than ten minutes in.
+                        skippable = meta?.filler == true || meta?.recap == true,
+                        onHover = { hovered = if (it) ep else null },
                         onPlay = { onPlay(anime, ep) },
                         onDownload = { onDownload(anime, ep) }
                     )
@@ -244,6 +308,7 @@ private val DetailPaper = androidx.compose.ui.graphics.Color(0xFFF1EEF8)
 private val DetailMuted = androidx.compose.ui.graphics.Color(0xFF948CAB)
 private val DetailViolet = androidx.compose.ui.graphics.Color(0xFF8B5CF6)
 private val DetailEdge = androidx.compose.ui.graphics.Color(0xFF2A2340)
+private val DetailWarn = androidx.compose.ui.graphics.Color(0xFFE29075)
 
 private val STATUSES = listOf(
     "CURRENT" to "Watching",

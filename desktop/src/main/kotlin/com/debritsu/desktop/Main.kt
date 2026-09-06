@@ -42,6 +42,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -72,6 +73,9 @@ private val Muted = Color(0xFF948CAB)
 
 /** For a download that is on disk. Semantic, and deliberately not the accent. */
 private val Keep = Color(0xFF6FC79B)
+
+/** Filler and recaps: worth marking, not worth hiding. */
+private val Warn = Color(0xFFE29075)
 
 fun main() {
     Settings.store = FileStore.default()
@@ -722,6 +726,7 @@ private fun App(
 
 /** Shared with the detail screen, which lays out the same grid. */
 @Composable
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 internal fun EpisodeChip(
     episode: Int,
     watched: Boolean,
@@ -729,6 +734,9 @@ internal fun EpisodeChip(
     partWatched: Float,
     downloaded: Boolean,
     downloading: Boolean,
+    /** Filler or a recap, according to MyAnimeList. */
+    skippable: Boolean = false,
+    onHover: (Boolean) -> Unit = {},
     onPlay: () -> Unit,
     onDownload: () -> Unit
 ) {
@@ -744,15 +752,24 @@ internal fun EpisodeChip(
         else -> Paper.copy(alpha = 0.85f)
     }
     Row(
-        Modifier.clip(RoundedCornerShape(6.dp)).background(background),
+        Modifier.clip(RoundedCornerShape(6.dp)).background(background)
+            .onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Enter) { onHover(true) }
+            .onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Exit) { onHover(false) },
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             Modifier.clickable(onClick = onPlay).padding(start = 10.dp, end = 6.dp, top = 7.dp, bottom = 7.dp)
         ) {
             Text(
-                if (partWatched > 0f) "$episode · ${(partWatched * 100).toInt()}%" else "$episode",
-                color = ink,
+                buildString {
+                    append(episode)
+                    if (partWatched > 0f) append(" · ${(partWatched * 100).toInt()}%")
+                    // A dot rather than a word: the grid runs to a hundred and
+                    // seventy of these on a long show, and the title line above
+                    // says which of the two it is.
+                    if (skippable) append(" •")
+                },
+                color = if (skippable) Warn else ink,
                 style = MaterialTheme.typography.bodySmall
             )
         }
