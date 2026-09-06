@@ -1,13 +1,13 @@
 # Debritsu
 
-**This is the `windows` branch.** The desktop port is planned but not started —
-read [WINDOWS-PORT.md](WINDOWS-PORT.md) before touching anything here, including
-the four open questions at the end, which were deliberately not verified. No code
-has moved yet; this branch is currently `main` plus that document.
+**This is the `windows` branch.** It carries the Android app plus a Windows
+desktop build, and the desktop build works: shelves, search, detail pages,
+downloads, its own player, skip-intro and AniList sync. Tag `desktop-v*` to
+release it. [WINDOWS-PORT.md](WINDOWS-PORT.md) records how it got here.
 
-Android anime player. Content comes from Stremio addons, links are resolved
-through a debrid provider, and progress syncs to AniList. The app ships no
-sources and no content of its own.
+Anime player. Content comes from Stremio addons, links are resolved through a
+debrid provider, and progress syncs to AniList. The app ships no sources and no
+content of its own.
 
 ## Building
 
@@ -107,6 +107,41 @@ Both are wrapped in `BuildConfig.DEBUG` and cost nothing in release.
 - **Most televisions cannot fetch HTTPS**, and debrid links are always HTTPS, so
   DLNA casting fails on them. Not fixable from this side without proxying the
   stream through the phone.
+
+## The desktop build
+
+`gradle :desktop:createDistributable` produces
+`desktop/build/compose/binaries/main/app/Debritsu/Debritsu.exe`. **Run that, not
+`:desktop:run`** — a run launched from an agent session is killed when the
+session moves on. It is a snapshot: code changes are invisible until it is
+rebuilt, and rebuilding needs the app closed.
+
+**VLC must be installed and is not bundled.** Debritsu decodes through libVLC;
+shipping it would mean redistributing GPL software with an obligation to publish
+the corresponding source for that exact build. The app offers to fetch it
+through winget instead.
+
+Things that cost time here and will again:
+
+- **libVLC's callback output scales into the buffer; it does not pad it.**
+  Whatever size you return from `getBufferFormat`, the picture is scaled to fill
+  it — so the buffer's dimensions say nothing about the video's shape, and
+  cropping to the video's own height throws away picture. Keep the first size it
+  asks for. `gradle :desktop:probe -PprobeFile=...` dumps a frame to a PNG;
+  looking at one answered in a single run what two rounds of reasoning got wrong.
+- **Hardware decoding does not help.** `--avcodec-hw=any` leaves processor time
+  unchanged, because callback output cannot take GPU surfaces. It no longer
+  black-screens — that was a missing `jdk.unsupported` module — so it looks
+  worth trying and is not.
+- **Releasing the player while anything is inside it is a segfault**, reported
+  as JNA's "Invalid memory access" with a log that simply stops. Raise a flag so
+  every accessor no-ops, wait for any frame in flight, then free.
+- **`TooltipArea` swallows clicks.** It cost two presses in three on the control
+  bar. Also: a state read inside `Box { }` is a read in the enclosing function,
+  so a 60fps counter there rebuilds the whole screen and drops clicks.
+- **A hidden window's composition stops.** Fullscreen is a second window and the
+  main one is hidden behind it, so anything the fullscreen player needs must be
+  passed in or held outside composition — a captured value freezes.
 
 ## Working notes
 
