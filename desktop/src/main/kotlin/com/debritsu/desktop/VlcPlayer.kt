@@ -99,10 +99,13 @@ class VlcPlayer(vlcDirectory: java.io.File) {
     var cropHeight: Int = 0
 
     /** The size VLC says the video actually is, once it is playing. */
-    fun sourceSize(): Pair<Int, Int>? = runCatching {
-        val d = player.video().videoDimension() ?: return null
-        d.width to d.height
-    }.getOrNull()
+    fun sourceSize(): Pair<Int, Int>? {
+        if (released) return null
+        return runCatching {
+            val d = player.video().videoDimension() ?: return null
+            d.width to d.height
+        }.getOrNull()
+    }
 
     fun frame(): ImageBitmap? = current.get()
 
@@ -122,6 +125,26 @@ class VlcPlayer(vlcDirectory: java.io.File) {
      */
     @Volatile
     var publishing: Boolean = true
+
+    /**
+     * Set the instant release begins, and checked by everything that calls into
+     * libVLC.
+     *
+     * Releasing frees the video buffer and the player behind it, and three
+     * things are still using them at that moment: this callback, the screen's
+     * frame loop asking for a position every 16ms, and the progress watcher
+     * asking every second. Any of them reaching a freed pointer is a segfault
+     * inside a native call, which arrives as "Invalid memory access" and takes
+     * the process with it — no exception, no stack, nothing in the log after
+     * the last frame. That is what Back did.
+     */
+    @Volatile
+    private var released = false
+
+    val isReleased: Boolean get() = released
+
+    /** Held while a frame is being copied, so release can wait for one in flight. */
+    private val frameLock = Any()
 
     private val bufferFormatCallback = object : BufferFormatCallback {
         override fun getBufferFormat(width: Int, height: Int): BufferFormat {
@@ -143,7 +166,12 @@ class VlcPlayer(vlcDirectory: java.io.File) {
     }
 
     private val renderCallback = RenderCallback { _, buffers, format ->
-        if (!publishing) return@RenderCallback
+        if (released || !publishing) return@RenderCallback
+        synchronized(frameLock) {
+        // Checked again inside the lock: release may have started between the
+        // test above and getting in here, and the buffer would then be freed
+        // under us mid-copy.
+        if (released) return@RenderCallback
         try {
             val width = format.width
             val bufferHeight = format.height
@@ -212,6 +240,7 @@ class VlcPlayer(vlcDirectory: java.io.File) {
                 BuildInfo.log("DebritsuVlc", "frame failed: $t")
             }
         }
+        }
     }
 
     /**
@@ -238,20 +267,26 @@ class VlcPlayer(vlcDirectory: java.io.File) {
         )
     }
 
-    /** Set when playback ends of its own accord, so the screen can react. */
     @Volatile
-    var ended = false
-        private set
+    private var finished = false
+
+    /**
+     * Nothing more will play: it ended of its own accord, or this was released.
+     *
+     * Both loops that watch playback spin on this, so a release has to end them
+     * — otherwise they carry on asking a freed player for a position.
+     */
+    val ended: Boolean get() = finished || released
 
     init {
         player.events().addMediaPlayerEventListener(object : MediaPlayerEventAdapter() {
             override fun finished(mediaPlayer: MediaPlayer) {
-                ended = true
+                finished = true
             }
 
             override fun error(mediaPlayer: MediaPlayer) {
                 BuildInfo.log("DebritsuVlc", "playback error")
-                ended = true
+                finished = true
             }
 
             /**
@@ -365,33 +400,77 @@ class VlcPlayer(vlcDirectory: java.io.File) {
         else -> code
     }
 
-    val playing: Boolean get() = player.status().isPlaying
-    fun positionMs(): Long = player.status().time()
-    fun durationMs(): Long = player.status().length()
+    val playing: Boolean
+        get() = !released && runCatching { player.status().isPlaying }.getOrDefault(false)
 
-    fun setPaused(paused: Boolean) = player.controls().setPause(paused)
-    fun seekTo(ms: Long) = player.controls().setTime(ms)
-    fun seekBy(seconds: Int) = player.controls().skipTime(seconds * 1000L)
-    fun setVolume(percent: Int) { runCatching { player.audio().setVolume(percent.coerceIn(0, 125)) } }
-    fun volume(): Int = runCatching { player.audio().volume() }.getOrDefault(100)
-    fun muted(): Boolean = runCatching { player.audio().isMute }.getOrDefault(false)
-    fun setMuted(muted: Boolean) { runCatching { player.audio().setMute(muted) } }
+    /**
+     * The last position and duration seen while the player was alive.
+     *
+     * Kept because the screen saves the resume position on its way out, and by
+     * then Back has already released the player — so asking it would give
+     * nothing and the spot would be lost every time somebody left mid-episode.
+     */
+    @Volatile private var lastPosition = -1L
+    @Volatile private var lastDuration = -1L
+
+    fun positionMs(): Long {
+        if (released) return lastPosition
+        val at = runCatching { player.status().time() }.getOrDefault(-1L)
+        if (at >= 0) lastPosition = at
+        return at
+    }
+
+    fun durationMs(): Long {
+        if (released) return lastDuration
+        val of = runCatching { player.status().length() }.getOrDefault(-1L)
+        if (of > 0) lastDuration = of
+        return of
+    }
+
+    fun setPaused(paused: Boolean) { if (!released) runCatching { player.controls().setPause(paused) } }
+    fun seekTo(ms: Long) { if (!released) runCatching { player.controls().setTime(ms) } }
+    fun seekBy(seconds: Int) { if (!released) runCatching { player.controls().skipTime(seconds * 1000L) } }
+    fun setVolume(percent: Int) { if (!released) runCatching { player.audio().setVolume(percent.coerceIn(0, 125)) } }
+    fun volume(): Int = if (released) 0 else runCatching { player.audio().volume() }.getOrDefault(100)
+    fun muted(): Boolean = !released && runCatching { player.audio().isMute }.getOrDefault(false)
+    fun setMuted(muted: Boolean) { if (!released) runCatching { player.audio().setMute(muted) } }
 
     /** Track lists, for pickers that name what they are choosing between. */
     fun subtitleTracks(): List<Pair<Int, String>> =
-        runCatching { player.subpictures().trackDescriptions().map { it.id() to it.description() } }
+        if (released) emptyList()
+        else runCatching { player.subpictures().trackDescriptions().map { it.id() to it.description() } }
             .getOrDefault(emptyList())
 
     fun audioTracks(): List<Pair<Int, String>> =
-        runCatching { player.audio().trackDescriptions().map { it.id() to it.description() } }
+        if (released) emptyList()
+        else runCatching { player.audio().trackDescriptions().map { it.id() to it.description() } }
             .getOrDefault(emptyList())
 
-    fun subtitleTrack(): Int = runCatching { player.subpictures().track() }.getOrDefault(-1)
-    fun setSubtitleTrack(id: Int) { runCatching { player.subpictures().setTrack(id) } }
-    fun audioTrack(): Int = runCatching { player.audio().track() }.getOrDefault(-1)
-    fun setAudioTrack(id: Int) { runCatching { player.audio().setTrack(id) } }
+    fun subtitleTrack(): Int = if (released) -1 else runCatching { player.subpictures().track() }.getOrDefault(-1)
+    fun setSubtitleTrack(id: Int) { if (!released) runCatching { player.subpictures().setTrack(id) } }
+    fun audioTrack(): Int = if (released) -1 else runCatching { player.audio().track() }.getOrDefault(-1)
+    fun setAudioTrack(id: Int) { if (!released) runCatching { player.audio().setTrack(id) } }
 
+    /**
+     * Frees libVLC, once nothing is inside it.
+     *
+     * The order is the whole point. The flag goes up first, so every accessor
+     * and the render callback turn into no-ops from this instant; then the lock
+     * is taken, which waits for a frame already being copied to finish; only
+     * then is anything freed. Releasing first and hoping — which is what this
+     * did — is a segfault whenever a frame or a position poll lands in the
+     * window between, and at 60 frames a second that is most of the time.
+     */
+    @Synchronized
     fun release() {
+        if (released) return
+        released = true
+        publishing = false
+
+        // Empty on purpose: this is a barrier, not work. It returns once no
+        // frame is in the callback, and none can enter now.
+        synchronized(frameLock) { }
+
         runCatching { nativeLog?.release() }
         runCatching { player.controls().stop() }
         runCatching { player.release() }

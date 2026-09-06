@@ -117,7 +117,13 @@ fun PlayerScreen(
             override fun positionMs() = player.positionMs().takeIf { it >= 0 }
             override fun durationMs() = player.durationMs().takeIf { it > 0 }
         }
-        launch { Watch.follow(watched, target, onState) }
+        launch {
+            // Same reason as below: this loop also ends when the player is
+            // released, and that is Back rather than the episode finishing.
+            Watch.follow(watched, target) { state ->
+                if (state !is Watch.State.Finished || !player.isReleased) onState(state)
+            }
+        }
 
         // Redrawn from the frame counter rather than from the bitmap: the
         // bitmap is reused between frames, so its identity never changes and
@@ -145,7 +151,10 @@ fun PlayerScreen(
             if (durationMs <= 0L) durationMs = player.durationMs()
             paused = !player.playing
         }
-        onState(Watch.State.Finished(false))
+        // Only if it ran out. Being released ends this loop too, and reporting
+        // that as the episode finishing put "Playback ended." on the shelves
+        // every time somebody pressed Back.
+        if (!player.isReleased) onState(Watch.State.Finished(false))
     }
 
     // Hides itself while nothing moves, paused or not.
