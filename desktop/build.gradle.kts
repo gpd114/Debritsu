@@ -113,3 +113,15 @@ compose.desktop {
         }
     }
 }
+
+// Throwaway: dumps where libVLC puts the picture inside its padded buffer.
+// gradle :desktop:probe -PprobeFile="C:\path\to\file.mp4"
+tasks.register<JavaExec>("probe") {
+    mainClass.set("com.debritsu.desktop.FrameProbeKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    jvmArgs = listOf(
+        "--add-opens", "java.base/java.nio=ALL-UNNAMED",
+        "--add-opens", "java.base/sun.nio.ch=ALL-UNNAMED"
+    )
+    args = listOf(project.findProperty("probeFile") as String? ?: "")
+}

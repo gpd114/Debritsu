@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -94,6 +95,9 @@ fun PlayerScreen(
     var controlsShown by remember(target.url) { mutableStateOf(true) }
     var lastMoved by remember(target.url) { mutableStateOf(0L) }
 
+    /** The video's own proportions, which the decoded buffer's are not. */
+    var aspect by remember(target.url) { mutableStateOf(16f / 9f) }
+
     // The source list, over the picture rather than instead of it.
     //
     // Backing out to the app to change source stopped playback, lost the place
@@ -140,11 +144,13 @@ fun PlayerScreen(
             if (!chosenSubtitles && frames > 0) {
                 chosenSubtitles = true
                 player.chooseSubtitles()
-                // The picture's real height, so the alignment padding VLC adds
-                // to the buffer is not drawn as a strip under the video.
+                // The video's shape, which the buffer's own does not give: the
+                // callback output scales the picture into whatever buffer size
+                // VLC settles on, and that is not the video's proportions. An
+                // AV1 release lands in a 1920x1152 buffer and is still 16:9.
                 player.sourceSize()?.let { (w, h) ->
                     BuildInfo.log("DebritsuVlc", "source is ${w}x$h")
-                    player.cropHeight = h
+                    if (w > 0 && h > 0) aspect = w.toFloat() / h
                 }
             }
             if (scrubbing == null) positionMs = player.positionMs()
@@ -264,13 +270,20 @@ fun PlayerScreen(
         @Suppress("UNUSED_EXPRESSION") frames
 
         player.frame()?.let { bitmap ->
+            // Drawn at the video's aspect rather than the buffer's, and made to
+            // fill that: the buffer holds the whole picture, but stretched to
+            // whatever height VLC settled on, so squashing it back into the
+            // right shape is the correction. Fit against the buffer's own
+            // dimensions would letterbox a 16:9 episode as though it were 5:3.
+            //
+            // aspectRatio sizes within the window rather than beyond it, so a
+            // 4:3 episode is still letterboxed rather than cropped.
             Image(
                 bitmap = bitmap,
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                // Fit, not crop: a 4:3 episode in a 16:9 window should be
-                // letterboxed rather than have its sides cut off.
-                contentScale = ContentScale.Fit
+                modifier = Modifier.align(Alignment.Center)
+                    .aspectRatio(aspect, matchHeightConstraintsFirst = false),
+                contentScale = ContentScale.FillBounds
             )
         } ?: Text(
             "Opening…",

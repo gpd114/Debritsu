@@ -86,19 +86,13 @@ class VlcPlayer(vlcDirectory: java.io.File) {
         private set
 
     /**
-     * The picture's real height, as against the buffer's.
+     * The size VLC says the video actually is, once it is playing.
      *
-     * VLC aligns the buffer it asks for — 1080 becomes 1088 — and those extra
-     * rows are padding, not picture. Drawing them puts a strip of rubbish under
-     * the video, which in fullscreen reads as a border round the image.
-     *
-     * Zero until asked for, because it is only knowable once playback has
-     * started and the video size is published.
+     * Wanted for its shape, not its size. libVLC's callback output scales the
+     * picture into whatever buffer it is given, so the buffer's own dimensions
+     * say nothing about the video's proportions — an AV1 release decoded to a
+     * 1920x1152 buffer is still 16:9 and has to be drawn as such.
      */
-    @Volatile
-    var cropHeight: Int = 0
-
-    /** The size VLC says the video actually is, once it is playing. */
     fun sourceSize(): Pair<Int, Int>? {
         if (released) return null
         return runCatching {
@@ -174,12 +168,20 @@ class VlcPlayer(vlcDirectory: java.io.File) {
         if (released) return@RenderCallback
         try {
             val width = format.width
-            val bufferHeight = format.height
-            val needed = width * bufferHeight * 4
 
-            // Only the rows that are picture. The rest is alignment padding and
-            // drawing it shows as a strip below the image.
-            val height = cropHeight.takeIf { it in 1..bufferHeight } ?: bufferHeight
+            // The whole buffer, every row of it.
+            //
+            // It used to take only the video's own height out of a taller
+            // buffer, on the reasoning that VLC aligns what it asks for and the
+            // extra rows are padding. They are not. libVLC's callback output
+            // scales the picture into whatever buffer it is handed, so the
+            // whole thing is picture — dumping a 1920x1152 frame to a file and
+            // looking at it settled that after two wrong guesses. Cropping it
+            // to 1080 discarded the bottom 6% of the image and stretched what
+            // was left, which is what "the subtitles are bigger and cut off at
+            // the bottom" was. The shape is corrected where it is drawn.
+            val height = format.height
+            val needed = width * height * 4
 
             // Once, on the first frame. Whether this fires at all is the
             // difference between "the picture is wrong" and "there is no
