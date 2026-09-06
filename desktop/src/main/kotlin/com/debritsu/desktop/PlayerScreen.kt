@@ -223,11 +223,13 @@ fun PlayerScreen(
         onDispose { onKeys(null) }
     }
 
-    // Asked for when the list is opened and not before: finding sources means
-    // querying every addon, which is not something to do behind playback that
-    // is going fine.
+    // The search this playback came out of, which is normally already here.
+    // Only a downloaded episode arrives without one, having come from no
+    // search at all — that is the single case that has to go and ask.
+    val outcome = target.outcome ?: sourceList?.outcome
+
     LaunchedEffect(sourcesOpen, target.episode) {
-        if (!sourcesOpen || sourceList != null) return@LaunchedEffect
+        if (!sourcesOpen || outcome != null) return@LaunchedEffect
         Watch.sources(
             anilistId = target.anilistId,
             title = target.title,
@@ -237,19 +239,7 @@ fun PlayerScreen(
         ) { state ->
             when (state) {
                 is Watch.State.Preparing -> sourceNote = state.what
-                is Watch.State.Choose -> {
-                    sourceList = state
-                    sourceNote = null
-                    // Said out loud, because the marker has now failed twice
-                    // for reasons that were invisible from the screen: a name
-                    // several releases share, then a URL minted per request.
-                    val all = state.outcome.results.flatMap { it.streams }
-                    BuildInfo.log(
-                        "DebritsuSources",
-                        "${all.size} sources, ${all.count { it.identity() == target.sourceKey }} " +
-                            "match the one playing (key=${target.sourceKey})"
-                    )
-                }
+                is Watch.State.Choose -> { sourceList = state; sourceNote = null }
                 is Watch.State.Failed -> sourceNote = state.why
                 else -> Unit
             }
@@ -316,15 +306,15 @@ fun PlayerScreen(
         if (sourcesOpen) {
             SourcesOverlay(
                 target = target,
-                list = sourceList,
+                outcome = outcome,
                 note = sourceNote,
                 onClose = { sourcesOpen = false },
                 onPick = { stream ->
-                    val list = sourceList ?: return@SourcesOverlay
+                    val from = outcome ?: return@SourcesOverlay
                     scope.launch {
                         Watch.chosen(
                             stream = stream,
-                            subtitles = list.outcome.subtitles,
+                            outcome = from,
                             anilistId = target.anilistId,
                             title = target.title,
                             episode = target.episode,
@@ -364,23 +354,26 @@ fun PlayerScreen(
 @Composable
 private fun SourcesOverlay(
     target: Watch.Target,
-    list: Watch.State.Choose?,
+    outcome: com.debritsu.app.data.AutoPlay.Outcome?,
     note: String?,
     onClose: () -> Unit,
     onPick: (com.debritsu.app.data.StreamOption) -> Unit
 ) {
     val filter = com.debritsu.app.data.Settings.sourceFilter
     val minSize = com.debritsu.app.data.minEpisodeSizeMb(target.episodeMinutes)
-    // What is playing goes to the top, whatever it scores.
-    //
-    // Marking it where it happened to rank was no use: 219 sources came back
-    // for one episode, and a mark a dozen screens down is a mark nobody sees.
-    // The sort is stable, so everything else keeps its order.
-    val ranked = remember(list, target.sourceKey) {
-        rankSources(list?.outcome?.results?.flatMap { it.streams }.orEmpty(), target.episodeMinutes)
-            .sortedByDescending { (stream, _) ->
-                target.sourceKey != null && stream.identity() == target.sourceKey
-            }
+
+    // The source playing is one of these, not something to be found among
+    // them: this is the list it was picked out of. So it is compared as an
+    // object and there is nothing left to get wrong.
+    val nowPlaying = outcome?.chosen
+
+    // And it goes to the top whatever it scores. Marking it where it happened
+    // to rank was no use — 219 sources came back for one episode, and a mark a
+    // dozen screens down is a mark nobody sees. The sort is stable, so
+    // everything else keeps its order.
+    val ranked = remember(outcome) {
+        rankSources(outcome?.results?.flatMap { it.streams }.orEmpty(), target.episodeMinutes)
+            .sortedByDescending { (stream, _) -> stream == nowPlaying }
     }
 
     Box(Modifier.fillMaxSize().background(Color(0x99000000))) {
@@ -420,8 +413,7 @@ private fun SourcesOverlay(
                         meta = meta,
                         filter = filter,
                         minSizeMb = minSize,
-                        playing = target.sourceKey != null &&
-                            stream.identity() == target.sourceKey
+                        playing = stream == nowPlaying
                     ) { onPick(stream) }
                 }
             }

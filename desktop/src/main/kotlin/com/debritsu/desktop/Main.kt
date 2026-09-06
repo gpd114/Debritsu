@@ -492,7 +492,7 @@ private fun App(
                 scope.launch {
                     Watch.chosen(
                         stream = stream,
-                        subtitles = pick.outcome.subtitles,
+                        outcome = pick.outcome,
                         anilistId = pick.anilistId,
                         title = pick.title,
                         episode = pick.episode,

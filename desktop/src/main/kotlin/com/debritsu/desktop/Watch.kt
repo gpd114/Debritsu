@@ -43,13 +43,24 @@ object Watch {
         val subtitles: List<Subtitle>,
         val resumeFromMs: Long,
         /**
-         * Which release this is playing, so the source list can mark it.
+         * The search this came from, kept whole — including which of its
+         * sources is the one playing.
          *
-         * A hash rather than a name, because names do not identify anything —
-         * four rows of one episode came back all called "[TB ⚡] Comet 1080p".
-         * Null for a downloaded file, which came from no list.
+         * Kept rather than re-run, after two attempts to recognise the playing
+         * release in a fresh search both failed. The name is not unique: four
+         * rows of one episode came back all called "[TB ⚡] Comet 1080p". The
+         * URL is not stable: an addon that resolves for you mints a signed
+         * one-shot link per request, so the same release has a different URL
+         * every fetch. And the two searches need not even return the same set
+         * — one gave 219 sources and the next 20.
+         *
+         * Holding the list makes all of that moot: the source playing is an
+         * object in it, not something to be found again. It is also instant
+         * and does not ask twenty addons a second time.
+         *
+         * Null for a downloaded file, which came from no search.
          */
-        val sourceKey: String?,
+        val outcome: AutoPlay.Outcome?,
         /** Where libVLC lives. Held here so the screen need not look again. */
         val vlcDir: File
     )
@@ -184,7 +195,7 @@ object Watch {
             State.Ready(
                 target(
                     vlcDir, url, title, episode, episodeMinutes, anilistId, isMovie,
-                    outcome.subtitles, outcome.chosen
+                    outcome.subtitles, outcome
                 )
             )
         )
@@ -205,16 +216,18 @@ object Watch {
         anilistId: Int,
         isMovie: Boolean,
         subtitles: List<Subtitle>,
-        source: StreamOption?
+        outcome: AutoPlay.Outcome?
     ): Target {
         val resume = Progress.position(anilistId, episode)
         if (resume > 0) BuildInfo.log("DebritsuWatch", "resuming at ${resume}ms")
-        source?.let {
-            BuildInfo.log("DebritsuWatch", "playing ${it.name.lineSequence().first()} (${it.identity()})")
-        }
+        BuildInfo.log(
+            "DebritsuWatch",
+            "playing ${outcome?.chosen?.name?.lineSequence()?.first() ?: "a local file"}, " +
+                "of ${outcome?.results?.sumOf { it.streams.size } ?: 0} sources"
+        )
         return Target(
             url, title, episode, episodeMinutes, anilistId, isMovie, subtitles, resume,
-            source?.identity(), vlcDir
+            outcome, vlcDir
         )
     }
 
@@ -287,7 +300,8 @@ object Watch {
      */
     suspend fun chosen(
         stream: StreamOption,
-        subtitles: List<Subtitle>,
+        /** The search [stream] was picked out of, carried on so the player keeps the list. */
+        outcome: AutoPlay.Outcome,
         anilistId: Int,
         title: String,
         episode: Int,
@@ -313,12 +327,14 @@ object Watch {
             return
         }
 
-        val subs = (stream.subtitles + subtitles).distinctBy { it.url }
+        val subs = (stream.subtitles + outcome.subtitles).distinctBy { it.url }
         onState(
             State.Ready(
                 target(
                     vlcDir, url, title, episode, episodeMinutes, anilistId, isMovie, subs,
-                    stream
+                    // The same search with a different source marked as the one
+                    // playing, so picking again lists what this one listed.
+                    outcome.copy(url = url, chosen = stream)
                 )
             )
         )
