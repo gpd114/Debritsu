@@ -97,7 +97,17 @@ fun PlayerScreen(
     // rather than start again.
     val alreadyPlaying = remember(target.url) { ActivePlayer.holds(target.url) }
     val player = remember(target.url) { ActivePlayer.of(target.url, target.vlcDir) }
-    var frames by remember(target.url) { mutableStateOf(0L) }
+
+    /**
+     * The frame counter, held as a state object rather than read here.
+     *
+     * It changes sixty times a second, and a read in this function's body
+     * invalidates this function — including every button on the control bar,
+     * rebuilt sixty times a second along with it. A click landing across one of
+     * those rebuilds is dropped, which is what "one press in three works" was.
+     * Only [VideoSurface] reads it, so only the picture redraws at that rate.
+     */
+    val frames = remember(target.url) { mutableStateOf(0L) }
     var paused by remember(target.url) { mutableStateOf(false) }
     var positionMs by remember(target.url) { mutableStateOf(0L) }
     var durationMs by remember(target.url) { mutableStateOf(0L) }
@@ -231,15 +241,16 @@ fun PlayerScreen(
         // bitmap is reused between frames, so its identity never changes and
         // Compose would have no reason to draw it again.
         var chosenSubtitles = false
+        var told = 0L
         while (!player.ended) {
             delay(16)
-            frames = player.frames
+            frames.value = player.frames
 
             // Once the picture is up, which is when VLC knows its tracks. The
             // mediaPlayerReady event was supposed to do this and never fired,
             // so the track list was never read and nothing was ever chosen
             // beyond the one attached file.
-            if (!chosenSubtitles && frames > 0) {
+            if (!chosenSubtitles && frames.value > 0) {
                 chosenSubtitles = true
                 player.chooseSubtitles()
                 // The video's shape, which the buffer's own does not give: the
@@ -251,9 +262,18 @@ fun PlayerScreen(
                     if (w > 0 && h > 0) aspect = w.toFloat() / h
                 }
             }
-            if (scrubbing == null) positionMs = player.positionMs()
-            if (durationMs <= 0L) durationMs = player.durationMs()
-            paused = !player.playing
+            // Four times a second, not sixty. These are read by this function,
+            // so each change rebuilds the whole control bar — and nothing here
+            // needs finer than that: the clock counts seconds, the scrubber
+            // moves a pixel a second, and the skip button appears within a
+            // quarter of a second of the opening starting.
+            val now = System.currentTimeMillis()
+            if (now - told >= 250) {
+                told = now
+                if (scrubbing == null) positionMs = player.positionMs()
+                if (durationMs <= 0L) durationMs = player.durationMs()
+                paused = !player.playing
+            }
         }
         // Only if it ran out. Being released ends this loop too, and reporting
         // that as the episode finishing put "Playback ended." on the shelves
@@ -411,31 +431,20 @@ fun PlayerScreen(
 
     Box(
         Modifier.fillMaxSize().background(Color.Black)
-            .onPointerEvent(PointerEventType.Move) { lastMoved = System.currentTimeMillis() }
+            // Only where it does something, and not on every single move.
+            // Windowed keeps its controls, so there is nothing to wake; and a
+            // state write per mouse event rebuilt this screen as fast as the
+            // mouse could report, for no visible gain.
+            .onPointerEvent(PointerEventType.Move) {
+                if (!fullscreen) return@onPointerEvent
+                val now = System.currentTimeMillis()
+                if (now - lastMoved > 200) lastMoved = now
+            }
     ) {
-        // Read so the frame counter is an input to this composition; without it
-        // nothing here depends on it and the picture never updates.
-        @Suppress("UNUSED_EXPRESSION") frames
-
-        player.frame()?.let { bitmap ->
-            // Drawn at the video's aspect rather than the buffer's, and made to
-            // fill that: the buffer holds the whole picture, but stretched to
-            // whatever height VLC settled on, so squashing it back into the
-            // right shape is the correction. Fit against the buffer's own
-            // dimensions would letterbox a 16:9 episode as though it were 5:3.
-            //
-            // aspectRatio sizes within the window rather than beyond it, so a
-            // 4:3 episode is still letterboxed rather than cropped.
-            Image(
-                bitmap = bitmap,
-                contentDescription = null,
-                modifier = Modifier.align(Alignment.Center)
-                    .aspectRatio(aspect, matchHeightConstraintsFirst = false),
-                contentScale = ContentScale.FillBounds
-            )
-        } ?: Text(
-            "Opening…",
-            color = Muted,
+        VideoSurface(
+            player = player,
+            frames = frames,
+            aspect = aspect,
             modifier = Modifier.align(Alignment.Center)
         )
 
@@ -709,6 +718,45 @@ private fun ControlIcon(
             )
         }
     }
+}
+
+/**
+ * The picture, and nothing else.
+ *
+ * Its own function on purpose. A composable's reads belong to the nearest
+ * non-inline function around them, and Box is inline — so reading the frame
+ * counter beside the controls put the whole screen on a sixty-times-a-second
+ * rebuild, which cost clicks as well as work. In here it invalidates this and
+ * nothing more.
+ */
+@Composable
+private fun VideoSurface(
+    player: VlcPlayer,
+    frames: androidx.compose.runtime.State<Long>,
+    aspect: Float,
+    modifier: Modifier
+) {
+    // The read that drives the redraw. The bitmap itself cannot: a new frame is
+    // a new object each time but nothing here would notice, and reading the
+    // counter is what makes the picture a function of it.
+    @Suppress("UNUSED_EXPRESSION") frames.value
+
+    player.frame()?.let { bitmap ->
+        // Drawn at the video's aspect rather than the buffer's, and made to
+        // fill that: the buffer holds the whole picture, but stretched to
+        // whatever height VLC settled on, so squashing it back into the right
+        // shape is the correction. Fit against the buffer's own dimensions
+        // would letterbox a 16:9 episode as though it were 5:3.
+        //
+        // aspectRatio sizes within the window rather than beyond it, so a 4:3
+        // episode is still letterboxed rather than cropped.
+        Image(
+            bitmap = bitmap,
+            contentDescription = null,
+            modifier = modifier.aspectRatio(aspect, matchHeightConstraintsFirst = false),
+            contentScale = ContentScale.FillBounds
+        )
+    } ?: Text("Opening…", color = Muted, modifier = modifier)
 }
 
 /**
