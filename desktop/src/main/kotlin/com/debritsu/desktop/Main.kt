@@ -293,6 +293,8 @@ private fun App(
 
     /** The show being looked at in full, or null for the shelves. */
     var detailOf by remember { mutableStateOf<Anime?>(null) }
+    /** Whether the detail page changed a list entry, so the shelves are stale. */
+    var listEdited by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
     /** Sources to choose from, when automatic selection is off. */
     var choosing by remember { mutableStateOf<Watch.State.Choose?>(null) }
@@ -610,11 +612,21 @@ private fun App(
     if (showing != null) {
         DetailScreen(
             initial = showing,
-            onBack = { detailOf = null; reload++ },
+            onBack = {
+                detailOf = null
+                // Only when something was actually changed, or leaving a page
+                // you only looked at costs five requests.
+                if (listEdited) { listEdited = false; reload++ }
+            },
             onOpenOther = { detailOf = it },
             onDownload = download,
             onSources = sources,
-            onPlay = play
+            onPlay = play,
+            // Marked stale rather than reloaded now: the shelves are behind
+            // this page, and refetching five lists while somebody is still
+            // pressing buttons on the entry spends AniList's thirty requests a
+            // minute on a page nobody is looking at.
+            onChanged = { listEdited = true }
         )
         return
     }
