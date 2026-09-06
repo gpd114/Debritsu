@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -322,7 +321,18 @@ private fun TvIconButton(
         onClick = onClick,
         modifier = Modifier.onFocusChanged { focused = it.isFocused }
     ) {
-        Icon(icon, contentDescription = name, modifier = Modifier.size(20.dp))
+        // The television library's Icon, not Compose Material 3's.
+        //
+        // They read different LocalContentColor composition locals, and the
+        // button that supplies the colour is the television one. Material 3's
+        // Icon therefore ignored it and stayed white — invisible on the white
+        // pill a focused button becomes, so focusing Search made the magnifying
+        // glass disappear and left the word alone.
+        androidx.tv.material3.Icon(
+            imageVector = icon,
+            contentDescription = name,
+            modifier = Modifier.size(20.dp)
+        )
         if (focused) {
             Spacer(Modifier.width(8.dp))
             Text(name)
