@@ -24,16 +24,34 @@ fun main(args: Array<String>) {
     val path = args.firstOrNull() ?: error("give a file to probe")
     Vlc.prepare()
 
-    val factory = MediaPlayerFactory("--intf=dummy", "--no-audio", "--avcodec-hw=none", "--quiet")
+    // Second argument is the hardware-decoding setting, so "none" and "any"
+    // can be compared on the same file. It was set to none while chasing a
+    // black screen, and the black screen turned out to be a missing JDK
+    // module — so whether software decoding is actually necessary has never
+    // been tested since the real cause was found.
+    val hw = args.getOrNull(1)?.takeIf { it.isNotBlank() } ?: "none"
+    println("decoding with --avcodec-hw=$hw")
+    val factory = MediaPlayerFactory("--intf=dummy", "--no-audio", "--avcodec-hw=$hw", "--quiet")
     val player = factory.mediaPlayers().newEmbeddedMediaPlayer()
 
     val reported = java.util.concurrent.atomic.AtomicBoolean(false)
     var seen = 0
 
+    // Fourth argument pins the buffer to the first size VLC asks for, which is
+    // the video's own. Left alone, VLC comes back a second time wanting a
+    // taller one — 1088 for HEVC, 1090 for H.264, 1152 for AV1 — and scales
+    // every frame up into it, which is work done to produce more bytes to copy.
+    // Whether it will simply accept the smaller one is the question.
+    val pin = args.getOrNull(3) == "pin"
+    var pinned: Pair<Int, Int>? = null
+
     val format = object : BufferFormatCallback {
         override fun getBufferFormat(width: Int, height: Int): BufferFormat {
             println("getBufferFormat asked for ${width}x$height")
-            return RV32BufferFormat(width, height)
+            if (!pin) return RV32BufferFormat(width, height)
+            val use = pinned ?: (width to height).also { pinned = it }
+            if (use.second != height) println("  pinning to ${use.first}x${use.second}")
+            return RV32BufferFormat(use.first, use.second)
         }
 
         override fun allocatedBuffers(buffers: Array<out ByteBuffer>) {
@@ -41,11 +59,66 @@ fun main(args: Array<String>) {
         }
     }
 
+    // What the player does per frame, timed. Two full-frame copies were the
+    // obvious suspect for "picture is too late to be displayed"; whether they
+    // are actually the cost is a measurement, not an opinion.
+    var timedFrames = 0
+    var copyNanos = 0L
+    var rasterNanos = 0L
+    var scratch = ByteArray(0)
+    val started = System.nanoTime()
+
     val render = RenderCallback { _, buffers, fmt ->
         seen++
+
+        run {
+            val w = fmt.width
+            val h = fmt.height
+            val n = w * h * 4
+            if (scratch.size != n) scratch = ByteArray(n)
+            val b = buffers[0]
+            b.rewind()
+            if (b.remaining() >= n) {
+                val t0 = System.nanoTime()
+                b.get(scratch, 0, n)
+                val t1 = System.nanoTime()
+                org.jetbrains.skia.Image.makeRaster(
+                    org.jetbrains.skia.ImageInfo(
+                        w, h,
+                        org.jetbrains.skia.ColorType.BGRA_8888,
+                        org.jetbrains.skia.ColorAlphaType.OPAQUE
+                    ),
+                    scratch,
+                    w * 4
+                )
+                val t2 = System.nanoTime()
+                copyNanos += t1 - t0
+                rasterNanos += t2 - t1
+                timedFrames++
+                if (timedFrames == 400) {
+                    val elapsedMs = (System.nanoTime() - started) / 1_000_000
+                    // Playback is real time, so frames per second cannot show
+                    // whether hardware decoding engaged — it is pinned at the
+                    // content's rate either way. Processor time can: software
+                    // decoding of 1080p is most of a core, hardware decoding is
+                    // a fraction of one.
+                    val cpuMs = (java.lang.management.ManagementFactory.getOperatingSystemMXBean()
+                        as? com.sun.management.OperatingSystemMXBean)
+                        ?.processCpuTime?.div(1_000_000) ?: -1
+                    println(
+                        "over $timedFrames frames of ${w}x$h (${n / 1_048_576} MB each): " +
+                            "copy ${copyNanos / timedFrames / 1000}us, " +
+                            "makeRaster ${rasterNanos / timedFrames / 1000}us, " +
+                            "delivered at ${timedFrames * 1000L / elapsedMs.coerceAtLeast(1)} fps, " +
+                            "${cpuMs}ms of processor time over ${elapsedMs}ms wall " +
+                            "(${cpuMs * 100 / elapsedMs.coerceAtLeast(1)}% of a core)"
+                    )
+                }
+            }
+        }
         // Not the first frame: the first few of a fade-in are black all over,
         // which would say every row is blank and answer nothing.
-        if (reported.get() || seen < 200) return@RenderCallback
+        if (reported.get() || seen < 450) return@RenderCallback
         reported.set(true)
 
         val w = fmt.width
@@ -149,7 +222,8 @@ fun main(args: Array<String>) {
     }
 
     player.videoSurface().set(factory.videoSurfaces().newVideoSurface(format, render, true))
-    player.media().play(path, ":start-time=300")
+    val startAt = args.getOrNull(2)?.toIntOrNull() ?: 300
+    player.media().play(path, ":start-time=$startAt")
 
     val until = System.currentTimeMillis() + 40_000
     while (System.currentTimeMillis() < until && !reported.get()) Thread.sleep(100)

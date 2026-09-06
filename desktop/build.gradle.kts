@@ -45,6 +45,22 @@ dependencies {
 val anilistClientId: String = anilistProps.getProperty("desktopClientId")
     ?: anilistProps.getProperty("clientId", "")
 
+/**
+ * The version stamped into the installer, taken from the tag being built.
+ *
+ * An MSI version has to be plain numbers — jpackage refuses anything else and
+ * fails the build rather than warning — so `desktop-v0.2.0` becomes `0.2.0` and
+ * anything that is not three numbers falls back. The Android build takes its
+ * versionName from RELEASE_TAG the same way, for the same reason: five
+ * different binaries once shipped claiming the same version because the number
+ * lived in a file somebody had to remember to edit.
+ */
+val desktopVersion: String = (System.getenv("RELEASE_TAG") ?: "")
+    .removePrefix("desktop-v")
+    .removePrefix("v")
+    .takeIf { it.matches(Regex("""\d+(\.\d+){0,2}""")) }
+    ?: "0.1.0"
+
 val generateBuildInfo by tasks.registering {
     val out = layout.buildDirectory.dir("generated/buildinfo")
     val clientId = anilistClientId
@@ -105,7 +121,9 @@ compose.desktop {
 
             targetFormats(TargetFormat.Msi)
             packageName = "Debritsu"
-            packageVersion = "0.1.0"
+            packageVersion = desktopVersion
+            description = "Anime player. Stremio addons, a debrid provider, AniList."
+            vendor = "Debritsu"
             // Built from the Android launcher artwork by tools-make-icon.ps1.
             // Without this the executable carries Compose's own stock icon,
             // which says nothing about what the program is.
@@ -123,5 +141,10 @@ tasks.register<JavaExec>("probe") {
         "--add-opens", "java.base/java.nio=ALL-UNNAMED",
         "--add-opens", "java.base/sun.nio.ch=ALL-UNNAMED"
     )
-    args = listOf(project.findProperty("probeFile") as String? ?: "")
+    args = listOf(
+        project.findProperty("probeFile") as String? ?: "",
+        project.findProperty("probeHw") as String? ?: "",
+        project.findProperty("probeAt") as String? ?: "",
+        project.findProperty("probePin") as String? ?: ""
+    )
 }

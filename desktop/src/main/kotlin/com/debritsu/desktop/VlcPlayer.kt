@@ -140,14 +140,37 @@ class VlcPlayer(vlcDirectory: java.io.File) {
     /** Held while a frame is being copied, so release can wait for one in flight. */
     private val frameLock = Any()
 
+    /**
+     * The buffer size agreed for this playback, kept so VLC cannot enlarge it.
+     *
+     * Left alone, VLC asks a second time for something taller than the video —
+     * 1088 for HEVC, 1090 for H.264, 1152 for AV1, none of them an alignment of
+     * anything, just what it settled on — and then scales every frame up into
+     * it. That costs a resample on the way in, more bytes to copy twice, and a
+     * second resample on the way out to square the shape up again. Two passes
+     * of resampling per frame to arrive back where the video started.
+     *
+     * The first size it asks for is the video's own, so that one is kept.
+     * Measured across AV1, HEVC and H.264 before being relied on: all three
+     * accept it and keep delivering frames.
+     */
+    @Volatile
+    private var agreedFormat: Pair<Int, Int>? = null
+
     private val bufferFormatCallback = object : BufferFormatCallback {
-        override fun getBufferFormat(width: Int, height: Int): BufferFormat {
-            // Called more than once, and not only when the format changes —
-            // VLC settles from the coded size to an aligned one (1080 becomes
-            // 1088) and asks again. Allocating unconditionally left the buffer
-            // sized for one height while frames arrived at another, which
-            // overflowed, threw inside a native callback, and made VLC rebuild
-            // its output over and over.
+        override fun getBufferFormat(sourceWidth: Int, sourceHeight: Int): BufferFormat {
+            val (width, height) = agreedFormat
+                ?: (sourceWidth to sourceHeight).also { agreedFormat = it }
+            if (height != sourceHeight || width != sourceWidth) {
+                BuildInfo.log(
+                    "DebritsuVlc",
+                    "asked for ${sourceWidth}x$sourceHeight, keeping ${width}x$height"
+                )
+            }
+            // Called more than once, and not only when the format changes.
+            // Allocating unconditionally left the buffer sized for one height
+            // while frames arrived at another, which overflowed, threw inside a
+            // native callback, and made VLC rebuild its output over and over.
             if (width != videoWidth || height != videoHeight) {
                 videoWidth = width
                 videoHeight = height
@@ -383,6 +406,10 @@ class VlcPlayer(vlcDirectory: java.io.File) {
             if (audioLanguage.isNotBlank()) add(":audio-language=${languages(audioLanguage)}")
             if (subtitleLanguage.isNotBlank()) add(":sub-language=${languages(subtitleLanguage)}")
         }.toTypedArray()
+
+        // A different file is a different size, so the agreed buffer format
+        // starts again with it.
+        agreedFormat = null
 
         player.media().play(url, *options)
 

@@ -1,0 +1,85 @@
+name: Release desktop
+
+# Push a tag when you want a Windows release:
+#   git tag desktop-v0.1.0 && git push origin desktop-v0.1.0
+#
+# Tag push only, deliberately. Drafting a release in the web UI fires the
+# `release` event, and GitHub runs those from the *default* branch — where this
+# file does not exist, because the desktop build lives on `windows`. A release
+# drafted by hand would therefore build nothing and, worse, would run the
+# Android workflow and attach a phone APK to it.
+on:
+  push:
+    tags: [ 'desktop-v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Pinned rather than windows-latest. jpackage builds an MSI through the WiX
+    # toolset, which is preinstalled on this image; windows-latest moves to
+    # whatever GitHub promotes next, and an image without WiX fails the build
+    # with an error that says nothing about WiX.
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      # Both: the MSI for people who want it installed, and the app folder
+      # zipped for people who would rather not run an installer — which, for an
+      # unsigned build that SmartScreen will complain about, is a fair
+      # preference. Same binary either way.
+      - name: Build the installer and the portable build
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gradle :desktop:packageMsi :desktop:createDistributable --no-daemon
+
+      - name: Name the artifacts after the tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^desktop-v', ''
+          $msi = Get-ChildItem desktop/build/compose/binaries/main/msi/*.msi | Select-Object -First 1
+          Copy-Item $msi "debritsu-desktop-$version.msi"
+          Compress-Archive `
+            -Path desktop/build/compose/binaries/main/app/Debritsu `
+            -DestinationPath "debritsu-desktop-$version-portable.zip"
+          "MSI=debritsu-desktop-$version.msi" | Out-File -Append $env:GITHUB_ENV
+          "ZIP=debritsu-desktop-$version-portable.zip" | Out-File -Append $env:GITHUB_ENV
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.MSI }}
+            ${{ env.ZIP }}
+          tag_name: ${{ github.ref_name }}
+          name: Debritsu for Windows ${{ github.ref_name }}
+          prerelease: false
+          body: |
+            Windows build. Install the MSI, or unzip the portable build and run
+            `Debritsu.exe` — the same program either way. Neither is code
+            signed, so SmartScreen will warn on first run: More info → Run
+            anyway.
+
+            **VLC is required and is not bundled.** Debritsu decodes through
+            libVLC, and shipping it would mean redistributing GPL software with
+            an obligation to publish the corresponding source for that exact
+            build. The app checks on startup and offers to fetch it through
+            winget if it is missing; you can also install VLC yourself, or point
+            Settings at an existing copy.
+
+            **Setup:** Settings → add a Stremio addon URL (a debrid-backed one
+            such as AIOStreams, Comet or MediaFusion) and your debrid API key.
+            AniList sign-in is optional and uses a copy-in token. Debritsu ships
+            no sources and no content of its own.
