@@ -1,18 +1,24 @@
 package com.debritsu.desktop
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.HorizontalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -23,7 +29,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,6 +77,108 @@ private fun ScoreColour(score: Int): Color = when {
     score >= 80 -> Color(0xCC2F7D5B)
     score >= 70 -> Color(0xCC8A6A2F)
     else -> Color(0xCC8A4433)
+}
+
+/**
+ * What is airing soon, soonest first, along the top bar.
+ *
+ * A row rather than the single soonest, because "when is there something new"
+ * is rarely a question about one show — and a strip that only ever names one
+ * of six looks like it has nothing more to say.
+ *
+ * The scrollbar is drawn rather than left to be discovered. A row that runs off
+ * the edge is only obviously scrollable once you have already tried, and on a
+ * desktop a wheel does not scroll sideways, so without it the rest of the list
+ * may as well not exist. Chevrons move it a card at a time for the same reason.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun AiringStrip(airing: List<Anime>, modifier: Modifier = Modifier, onOpen: (Anime) -> Unit) {
+    val row = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
+    // A thumb that fills its track says "nothing hidden" as clearly as an empty
+    // one says the opposite, so the controls only appear when they mean
+    // something.
+    val scrollable by remember {
+        derivedStateOf {
+            val info = row.layoutInfo
+            info.totalItemsCount > info.visibleItemsInfo.size
+        }
+    }
+
+    Column(modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Airing next",
+                color = ShelfViolet,
+                style = MaterialTheme.typography.labelSmall
+            )
+
+            if (scrollable) {
+                Text(
+                    " ‹ ",
+                    color = ShelfMuted,
+                    modifier = Modifier.clickable {
+                        scope.launch {
+                            row.animateScrollToItem((row.firstVisibleItemIndex - 2).coerceAtLeast(0))
+                        }
+                    }
+                )
+            }
+
+            LazyRow(
+                state = row,
+                modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                items(airing, key = { it.id }) { show ->
+                    Row(
+                        Modifier.clip(RoundedCornerShape(6.dp))
+                            .background(ShelfMuted.copy(alpha = 0.12f))
+                            .clickable { onOpen(show) }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            show.title,
+                            color = ShelfPaper,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 150.dp)
+                        )
+                        Text(
+                            "  ep ${show.nextEpisode}  ${airsIn(show.airingInSeconds ?: 0)}",
+                            color = ShelfMuted,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+
+            if (scrollable) {
+                Text(
+                    " › ",
+                    color = ShelfMuted,
+                    modifier = Modifier.clickable {
+                        scope.launch {
+                            row.animateScrollToItem(row.firstVisibleItemIndex + 2)
+                        }
+                    }
+                )
+            }
+        }
+
+        if (scrollable) {
+            HorizontalScrollbar(
+                adapter = rememberScrollbarAdapter(row),
+                modifier = Modifier.fillMaxWidth().padding(top = 2.dp, end = 14.dp)
+            )
+        }
+    }
 }
 
 /** One horizontal row of shows, as on the phone and the television. */

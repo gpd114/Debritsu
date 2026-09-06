@@ -769,40 +769,39 @@ private fun App(
                 // single most useful thing this bar could say, and it answers
                 // the question the shelves cannot: not what to watch now, but
                 // when there will be something new.
-                val soonest = (watching + planning)
+                val airing = (watching + planning)
                     .filter { it.nextEpisode != null && (it.airingInSeconds ?: 0) > 0 }
-                    .minByOrNull { it.airingInSeconds ?: Int.MAX_VALUE }
+                    .sortedBy { it.airingInSeconds ?: Int.MAX_VALUE }
 
-                if (soonest != null) {
-                    Row(
-                        Modifier.weight(1f).padding(start = 14.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { detailOf = soonest },
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Airing next",
-                            color = Violet,
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                        Text(
-                            "  ${soonest.title}  ·  ep ${soonest.nextEpisode}  " +
-                                airsIn(soonest.airingInSeconds ?: 0),
-                            color = Muted,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
-                    }
-                } else {
+                if (airing.isEmpty()) {
                     Box(Modifier.weight(1f))
+                } else {
+                    AiringStrip(
+                        airing = airing,
+                        modifier = Modifier.weight(1f).padding(start = 14.dp),
+                        onOpen = { detailOf = it }
+                    )
                 }
-                TextButton(onClick = { showDownloads = true }) {
-                    val kept = DownloadIndex.all().size
-                    Text(if (kept > 0) "Downloads ($kept)" else "Downloads")
-                }
-                TextButton(onClick = { reload++ }) { Text("Refresh") }
-                TextButton(onClick = { showSettings = !showSettings }) { Text("Settings") }
+                // Read so the count beside the arrow follows a download rather
+                // than waiting for the next time this bar happens to redraw.
+                Downloader.revision.value
+                val kept = DownloadIndex.all().size
+
+                IconAction(
+                    icon = AppIcons.Download,
+                    name = "Downloads",
+                    badge = kept.takeIf { it > 0 }?.toString(),
+                    onClick = { showDownloads = true }
+                )
+                IconAction(AppIcons.Refresh, "Refresh", onClick = { reload++ })
+                IconAction(
+                    icon = AppIcons.Settings,
+                    name = "Settings",
+                    // Lit while the panel is open, since it is the way out as
+                    // well as the way in.
+                    tint = if (showSettings) Violet else Muted,
+                    onClick = { showSettings = !showSettings }
+                )
             }
 
             // Above everything, because without VLC nothing on this screen can

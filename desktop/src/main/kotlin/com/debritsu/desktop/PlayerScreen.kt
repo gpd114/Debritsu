@@ -923,21 +923,21 @@ private fun Controls(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ControlIcon(PlayerIcons.Back, "Back", onBack, tint = Muted)
+            ControlIcon(AppIcons.Back, "Back", onBack, tint = Muted)
             ControlIcon(
-                PlayerIcons.PreviousEpisode, "Previous episode",
+                AppIcons.PreviousEpisode, "Previous episode",
                 { onEpisode(-1) }, enabled = hasPrevious
             )
-            ControlIcon(PlayerIcons.Rewind, "Back 10 seconds", { onSeek(-10) })
+            ControlIcon(AppIcons.Rewind, "Back 10 seconds", { onSeek(-10) })
             ControlIcon(
-                if (paused) PlayerIcons.Play else PlayerIcons.Pause,
+                if (paused) AppIcons.Play else AppIcons.Pause,
                 if (paused) "Play" else "Pause",
                 onPlayPause,
                 size = 22.dp
             )
-            ControlIcon(PlayerIcons.Forward, "Forward 30 seconds", { onSeek(30) })
+            ControlIcon(AppIcons.Forward, "Forward 30 seconds", { onSeek(30) })
             ControlIcon(
-                PlayerIcons.NextEpisode, "Next episode",
+                AppIcons.NextEpisode, "Next episode",
                 { onEpisode(1) }, enabled = hasNext
             )
 
@@ -953,11 +953,11 @@ private fun Controls(
             )
             Box(Modifier.width(12.dp))
 
-            ControlIcon(PlayerIcons.Subtitles, "Subtitle track", onSubtitles, tint = Muted)
-            ControlIcon(PlayerIcons.Audio, "Audio track", onAudio, tint = Muted)
-            ControlIcon(PlayerIcons.Sources, "Sources", onSources, tint = Muted)
+            ControlIcon(AppIcons.Subtitles, "Subtitle track", onSubtitles, tint = Muted)
+            ControlIcon(AppIcons.Audio, "Audio track", onAudio, tint = Muted)
+            ControlIcon(AppIcons.Sources, "Sources", onSources, tint = Muted)
             ControlIcon(
-                if (fullscreen) PlayerIcons.Windowed else PlayerIcons.Fullscreen,
+                if (fullscreen) AppIcons.Windowed else AppIcons.Fullscreen,
                 if (fullscreen) "Leave fullscreen" else "Fullscreen",
                 onFullscreen,
                 tint = Muted
