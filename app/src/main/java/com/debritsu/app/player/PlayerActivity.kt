@@ -243,6 +243,7 @@ class PlayerActivity : ComponentActivity() {
                 // point" from "cues arrive and are not drawn" — the two cases
                 // needing completely different fixes.
                 override fun onTracksChanged(tracks: Tracks) {
+                    preferDialogueSubtitles(tracks)
                     if (!BuildConfig.DEBUG) return
                     tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
                         .forEachIndexed { g, group ->
@@ -856,6 +857,91 @@ class PlayerActivity : ComponentActivity() {
      * episode and only some are in sync with the release being played, being
      * able to pick a specific one is the whole point.
      */
+    /**
+     * Which media item the subtitle correction below has already run for.
+     *
+     * Once per item: track selection changes again the moment the correction
+     * applies an override, and re-running would fight the viewer's own choice
+     * from the CC button for the rest of the episode.
+     */
+    private var dialoguePreferredFor: String? = null
+
+    /**
+     * Steps off an SDH track when the release also ships a plain one.
+     *
+     * SDH is the same dialogue with "[door creaks]" and speaker labels added
+     * for everything the audio carries. Correct subtitles, and not the ones
+     * somebody watching with sound wants — but nothing in the selection rules
+     * separates them from the dialogue track, so when a release ships both,
+     * whichever comes first in the file wins. It routinely is the SDH one.
+     *
+     * Not done through role flags: the flag exists, and whether it is set
+     * depends on the muxer rather than on the content, so a rule built on it
+     * silently does nothing against half of what is out there. The label is
+     * what the release actually wrote, and is the same thing the desktop
+     * player matches on.
+     *
+     * Deliberately conservative: it moves only within the same language, only
+     * to an embedded track, and only away from something that named itself
+     * descriptive. A release with nothing but SDH keeps it.
+     */
+    private fun preferDialogueSubtitles(tracks: Tracks) {
+        val exo = player ?: return
+        val key = exo.currentMediaItem?.localConfiguration?.uri?.toString() ?: return
+        if (dialoguePreferredFor == key) return
+
+        val groups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+        if (groups.isEmpty()) return
+        dialoguePreferredFor = key
+
+        var language: String? = null
+        var descriptive = false
+        for (group in groups) {
+            for (i in 0 until group.length) {
+                if (!group.isTrackSelected(i)) continue
+                val format = group.getTrackFormat(i)
+                language = format.language
+                descriptive = isDescriptive(format)
+            }
+        }
+        if (!descriptive) return
+
+        for (group in groups) {
+            for (i in 0 until group.length) {
+                val format = group.getTrackFormat(i)
+                // Side-loaded subtitles are a separate decision — the picker
+                // exists for those, and one is not a swap for an embedded track.
+                if (format.label?.startsWith(ADDON_MARKER) == true) continue
+                if (format.language != language) continue
+                if (isDescriptive(format) || isForced(format)) continue
+
+                if (BuildConfig.DEBUG) {
+                    Log.d("DebritsuSubs", "moving off SDH to ${format.label} (${format.language})")
+                }
+                exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
+                    .build()
+                return
+            }
+        }
+    }
+
+    /** Captions written for viewers who cannot hear the audio. */
+    private fun isDescriptive(format: Format): Boolean {
+        if (format.roleFlags and C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND != 0) return true
+        val label = format.label?.lowercase() ?: return false
+        return "sdh" in label ||
+            "hearing" in label ||
+            "cc" in label.split(' ', '(', ')', '[', ']', '-', '.', '_')
+    }
+
+    /** Signs and songs rather than dialogue, however it says so. */
+    private fun isForced(format: Format): Boolean {
+        if (format.selectionFlags and C.SELECTION_FLAG_FORCED != 0) return true
+        val label = format.label?.lowercase() ?: return false
+        return "forced" in label || "force" in label || "signs" in label || "songs" in label
+    }
+
     private fun showSubtitlePicker() {
         val exo = player ?: return
 
