@@ -137,7 +137,7 @@ fun main() {
          * exactly what "windowed does nothing" was. Both windows are declared
          * at this level so either can come and go on its own.
          */
-        val fullscreenSlot = remember { mutableStateOf<(@Composable () -> Unit)?>(null) }
+        val fullscreenSlot = remember { mutableStateOf<(@Composable (Boolean) -> Unit)?>(null) }
 
         // No placement change here any more. Fullscreen is its own window, and
         // maximising this one as well left it that size underneath and on
@@ -238,7 +238,7 @@ fun main() {
                         onSurface = Paper
                     )
                 ) {
-                    Surface(Modifier.fillMaxSize(), color = Color.Black) { fullscreenPlayer() }
+                    Surface(Modifier.fillMaxSize(), color = Color.Black) { fullscreenPlayer(true) }
                 }
             }
         }
@@ -259,7 +259,7 @@ private fun App(
     onPlayerKeys: (((androidx.compose.ui.input.key.KeyEvent) -> Boolean)?) -> Unit,
     playerKeys: (androidx.compose.ui.input.key.KeyEvent) -> Boolean,
     /** Where the player is published for the fullscreen window to show. */
-    fullscreenSlot: androidx.compose.runtime.MutableState<(@Composable () -> Unit)?>
+    fullscreenSlot: androidx.compose.runtime.MutableState<(@Composable (Boolean) -> Unit)?>
 ) {
     var showSettings by remember { mutableStateOf(Settings.aniListToken.isEmpty()) }
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
@@ -430,10 +430,16 @@ private fun App(
     // composition, so moving between the two does not restart it.
     val nowPlaying = playing
     if (nowPlaying != null) {
-        val player: @Composable () -> Unit = {
+        // Takes whether it is fullscreen as an argument rather than closing
+        // over it. The closure is built in this window's composition, which
+        // stops while the window is hidden — so a captured value freezes at
+        // whatever it was when fullscreen was last off. That is why the button
+        // read "Fullscreen" while already fullscreen, and pressing it set the
+        // flag it was already at.
+        val player: @Composable (Boolean) -> Unit = { isFullscreen ->
             PlayerScreen(
             target = nowPlaying,
-            fullscreen = fullscreen,
+            fullscreen = isFullscreen,
             onFullscreen = onFullscreen,
             onKeys = onPlayerKeys,
             // The only thing that stops playback. Leaving the screen no longer
@@ -472,7 +478,7 @@ private fun App(
         DisposableEffect(Unit) { onDispose { fullscreenSlot.value = null } }
 
         if (!fullscreen) {
-            player()
+            player(false)
             return
         }
         // Fullscreen: the other window is showing it, and this one is hidden.
