@@ -1,10 +1,7 @@
 package com.debritsu.desktop
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.HorizontalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,7 +35,12 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.debritsu.app.data.Anime
@@ -91,7 +93,6 @@ private fun ScoreColour(score: Int): Color = when {
  * desktop a wheel does not scroll sideways, so without it the rest of the list
  * may as well not exist. Chevrons move it a card at a time for the same reason.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AiringStrip(airing: List<Anime>, modifier: Modifier = Modifier, onOpen: (Anime) -> Unit) {
     val row = rememberLazyListState()
@@ -106,6 +107,11 @@ fun AiringStrip(airing: List<Anime>, modifier: Modifier = Modifier, onOpen: (Ani
             info.totalItemsCount > info.visibleItemsInfo.size
         }
     }
+
+    // Each edge fades only while there is something past it, so a row that fits
+    // is drawn whole and a row scrolled to its end stops pretending otherwise.
+    val fadeStart by remember { derivedStateOf { row.canScrollBackward } }
+    val fadeEnd by remember { derivedStateOf { row.canScrollForward } }
 
     Column(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -129,7 +135,48 @@ fun AiringStrip(airing: List<Anime>, modifier: Modifier = Modifier, onOpen: (Ani
 
             LazyRow(
                 state = row,
-                modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
+                modifier = Modifier.weight(1f).padding(horizontal = 2.dp)
+                    // Fades the end chips into the edge rather than cutting
+                    // them off, which is how the phone says "there is more"
+                    // without anything to read. Drawn through an offscreen
+                    // layer so it fades the content itself; painted straight on
+                    // it would be a band of background colour over the top,
+                    // which is only the same thing while nothing scrolls under
+                    // it.
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        // DstIn keeps the content where this brush is opaque
+                        // and erases it where the brush is clear, so alpha runs
+                        // from one to nothing across the last few percent.
+                        //
+                        // Both ends, unlike the phone's: a mouse can leave this
+                        // row parked in the middle, and a hard cut on the left
+                        // then looks like a rendering fault rather than an
+                        // edge.
+                        if (fadeStart) {
+                            drawRect(
+                                brush = Brush.horizontalGradient(
+                                    0f to Color.Transparent,
+                                    0.06f to Color.Black,
+                                    startX = 0f,
+                                    endX = size.width
+                                ),
+                                blendMode = BlendMode.DstIn
+                            )
+                        }
+                        if (fadeEnd) {
+                            drawRect(
+                                brush = Brush.horizontalGradient(
+                                    0.92f to Color.Black,
+                                    1f to Color.Transparent,
+                                    startX = 0f,
+                                    endX = size.width
+                                ),
+                                blendMode = BlendMode.DstIn
+                            )
+                        }
+                    },
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -172,12 +219,10 @@ fun AiringStrip(airing: List<Anime>, modifier: Modifier = Modifier, onOpen: (Ani
             }
         }
 
-        if (scrollable) {
-            HorizontalScrollbar(
-                adapter = rememberScrollbarAdapter(row),
-                modifier = Modifier.fillMaxWidth().padding(top = 2.dp, end = 14.dp)
-            )
-        }
+        // No scrollbar. It was here before the fade and now says the same thing
+        // twice, in a strip that has to stay one line tall — the search field
+        // was shrunk to make this room, not to spend it on a second row of
+        // furniture. The fade says there is more; the chevrons move it.
     }
 }
 
