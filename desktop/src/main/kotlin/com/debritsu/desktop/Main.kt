@@ -279,10 +279,15 @@ private fun App(
     var showDownloads by remember { mutableStateOf(false) }
     /** Sources to choose from, when automatic selection is off. */
     var choosing by remember { mutableStateOf<Watch.State.Choose?>(null) }
-    /** What is playing, in this window. Null when nothing is. */
-    var playing by remember { mutableStateOf<Watch.Target?>(null) }
-    /** Remembered so the Sources button inside the player knows what to list. */
-    var playingShow by remember { mutableStateOf<Anime?>(null) }
+    /**
+     * What is playing, or null for nothing.
+     *
+     * Kept by the player rather than here. The player screen is composed in
+     * this window or in the fullscreen one, and only one of those is running at
+     * a time — so a source changed from inside the player has to be somewhere
+     * both can see.
+     */
+    var playing by ActivePlayer.playing
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(reload) {
@@ -354,7 +359,6 @@ private fun App(
     // Defined once and handed to every screen, so an episode started from a
     // shelf, a search result or the detail page goes through one path.
     val play: (Anime, Int) -> Unit = { anime, ep ->
-        playingShow = anime
         scope.launch {
             Watch.episode(
                 anilistId = anime.id,
@@ -438,7 +442,6 @@ private fun App(
         // flag it was already at.
         val player: @Composable (Boolean) -> Unit = { isFullscreen ->
             PlayerScreen(
-            target = nowPlaying,
             fullscreen = isFullscreen,
             onFullscreen = onFullscreen,
             onKeys = onPlayerKeys,
@@ -448,13 +451,7 @@ private fun App(
             onBack = {
                 ActivePlayer.release()
                 onFullscreen(false)
-                playing = null
                 reload++
-            },
-            onSources = {
-                val show = playingShow
-                playing = null
-                if (show != null) sources(show, nowPlaying.episode)
             },
             onState = { state ->
                 status = when (state) {
@@ -499,7 +496,8 @@ private fun App(
                         anilistId = pick.anilistId,
                         title = pick.title,
                         episode = pick.episode,
-                        episodeMinutes = pick.episodeMinutes
+                        episodeMinutes = pick.episodeMinutes,
+                        isMovie = pick.isMovie
                     ) { state ->
                         status = when (state) {
                             is Watch.State.Preparing -> state.what

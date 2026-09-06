@@ -10,9 +10,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -24,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.focusable
@@ -41,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.debritsu.app.data.BuildInfo
 import com.debritsu.app.data.Progress
@@ -65,15 +70,18 @@ private val Muted = Color(0xFFC4BCD8)
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun PlayerScreen(
-    target: Watch.Target,
     fullscreen: Boolean,
     onFullscreen: (Boolean) -> Unit,
     /** Registers this screen's key handling with the window. */
     onKeys: (((androidx.compose.ui.input.key.KeyEvent) -> Boolean)?) -> Unit,
     onBack: () -> Unit,
-    onSources: () -> Unit,
     onState: (Watch.State) -> Unit
 ) {
+    // Read from the player rather than taken as an argument, because switching
+    // source has to be seen by both windows and the argument would come from
+    // whichever composition happened to be frozen at the time.
+    val target = ActivePlayer.playing.value ?: return
+
     // Was it already playing before the window was rebuilt? Going fullscreen
     // recreates the window, and everything below has to pick up where it was
     // rather than start again.
@@ -86,6 +94,17 @@ fun PlayerScreen(
     var scrubbing by remember(target.url) { mutableStateOf<Float?>(null) }
     var controlsShown by remember(target.url) { mutableStateOf(true) }
     var lastMoved by remember(target.url) { mutableStateOf(0L) }
+
+    // The source list, over the picture rather than instead of it.
+    //
+    // Backing out to the app to change source stopped playback, lost the place
+    // and made comparing two releases a matter of memory. Kept per episode
+    // rather than per source, so switching and switching back does not go
+    // asking the addons twice.
+    var sourcesOpen by remember(target.episode) { mutableStateOf(false) }
+    var sourceList by remember(target.episode) { mutableStateOf<Watch.State.Choose?>(null) }
+    var sourceNote by remember(target.episode) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(target.url) {
         // Only if this is not the same playback carried across a window rebuild.
@@ -176,7 +195,7 @@ fun PlayerScreen(
     //
     // Deliberately does not wake the controls. These exist so playback can be
     // driven without anything appearing over the picture.
-    DisposableEffect(target.url, fullscreen, paused) {
+    DisposableEffect(target.url, fullscreen, paused, sourcesOpen) {
         onKeys { event ->
             if (event.type != KeyEventType.KeyDown) return@onKeys false
             when (event.key) {
@@ -192,11 +211,38 @@ fun PlayerScreen(
                 Key.DirectionDown -> { player.setVolume(player.volume() - 5); true }
                 Key.M -> { player.setMuted(!player.muted()); true }
                 Key.F -> { onFullscreen(!fullscreen); true }
-                Key.Escape -> if (fullscreen) { onFullscreen(false); true } else false
+                // The list first, then fullscreen. Escape closes the nearest
+                // thing that is open, which is what it does everywhere else.
+                Key.Escape -> when {
+                    sourcesOpen -> { sourcesOpen = false; true }
+                    fullscreen -> { onFullscreen(false); true }
+                    else -> false
+                }
                 else -> false
             }
         }
         onDispose { onKeys(null) }
+    }
+
+    // Asked for when the list is opened and not before: finding sources means
+    // querying every addon, which is not something to do behind playback that
+    // is going fine.
+    LaunchedEffect(sourcesOpen, target.episode) {
+        if (!sourcesOpen || sourceList != null) return@LaunchedEffect
+        Watch.sources(
+            anilistId = target.anilistId,
+            title = target.title,
+            episode = target.episode,
+            episodeMinutes = target.episodeMinutes,
+            isMovie = target.isMovie
+        ) { state ->
+            when (state) {
+                is Watch.State.Preparing -> sourceNote = state.what
+                is Watch.State.Choose -> { sourceList = state; sourceNote = null }
+                is Watch.State.Failed -> sourceNote = state.why
+                else -> Unit
+            }
+        }
     }
 
     Box(
@@ -251,9 +297,119 @@ fun PlayerScreen(
                 onSubtitles = { cycle(player.subtitleTracks(), player.subtitleTrack()) { id -> player.setSubtitleTrack(id) } },
                 onAudio = { cycle(player.audioTracks(), player.audioTrack()) { id -> player.setAudioTrack(id) } },
                 onFullscreen = { onFullscreen(!fullscreen) },
-                onSources = onSources,
+                onSources = { sourcesOpen = true },
                 onBack = onBack
             )
+        }
+
+        if (sourcesOpen) {
+            SourcesOverlay(
+                target = target,
+                list = sourceList,
+                note = sourceNote,
+                onClose = { sourcesOpen = false },
+                onPick = { stream ->
+                    val list = sourceList ?: return@SourcesOverlay
+                    scope.launch {
+                        Watch.chosen(
+                            stream = stream,
+                            subtitles = list.outcome.subtitles,
+                            anilistId = target.anilistId,
+                            title = target.title,
+                            episode = target.episode,
+                            episodeMinutes = target.episodeMinutes,
+                            isMovie = target.isMovie
+                        ) { state ->
+                            when (state) {
+                                is Watch.State.Preparing -> sourceNote = state.what
+                                is Watch.State.Failed -> sourceNote = state.why
+                                // Swapped underneath rather than handed back to
+                                // the app. Everything below keys on the URL, so
+                                // the new one starts and the old one is released
+                                // without the screen going anywhere.
+                                is Watch.State.Ready -> {
+                                    ActivePlayer.playing.value = state.target
+                                    sourceNote = null
+                                    sourcesOpen = false
+                                }
+                                else -> Unit
+                            }
+                        }
+                    }
+                }
+            )
+        }
+    }
+}
+
+/**
+ * The source list, over the picture.
+ *
+ * Down the side rather than across the whole window: what is playing stays
+ * visible while a different release is being considered, which is most of the
+ * reason for changing source in the first place.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun SourcesOverlay(
+    target: Watch.Target,
+    list: Watch.State.Choose?,
+    note: String?,
+    onClose: () -> Unit,
+    onPick: (com.debritsu.app.data.StreamOption) -> Unit
+) {
+    val filter = com.debritsu.app.data.Settings.sourceFilter
+    val minSize = com.debritsu.app.data.minEpisodeSizeMb(target.episodeMinutes)
+    val ranked = remember(list) {
+        rankSources(list?.outcome?.results?.flatMap { it.streams }.orEmpty(), target.episodeMinutes)
+    }
+
+    Box(Modifier.fillMaxSize().background(Color(0x99000000))) {
+        Column(
+            Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(560.dp)
+                .background(Color(0xF2160F24)).padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Sources", style = MaterialTheme.typography.titleMedium, color = Paper)
+                    Text(
+                        "${target.title} — episode ${target.episode}" +
+                            (ranked.size.takeIf { it > 0 }?.let { "  ·  $it found" } ?: ""),
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                TextButton(onClick = onClose) { Text("Close", color = Muted) }
+            }
+
+            note?.let {
+                Text(it, color = Muted, style = MaterialTheme.typography.bodySmall)
+            }
+
+            LazyColumn(
+                Modifier.fillMaxWidth().weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(ranked) { (stream, meta) ->
+                    SourceRow(
+                        stream = stream,
+                        meta = meta,
+                        filter = filter,
+                        minSizeMb = minSize,
+                        // Compared on the name, which is all an addon gives
+                        // that survives resolving — the URL handed to the
+                        // player is a debrid link and looks nothing like the
+                        // source it came from.
+                        playing = target.source != null &&
+                            stream.name.lineSequence().joinToString(" ").trim() == target.source
+                    ) { onPick(stream) }
+                }
+            }
         }
     }
 }
@@ -298,6 +454,20 @@ private fun Controls(
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
+        // What is actually playing, named. Two releases of one episode differ
+        // in the encode, the subtitle track and whether the signs are burned
+        // in, and none of that can be told from the picture until it is wrong.
+        target.source?.let {
+            Text(
+                it,
+                color = Muted,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, bottom = 2.dp)
+            )
+        }
+
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(clock(positionMs), color = Paper, style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.width(56.dp))

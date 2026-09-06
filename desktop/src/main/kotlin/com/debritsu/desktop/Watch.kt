@@ -38,8 +38,20 @@ object Watch {
         val episode: Int,
         val episodeMinutes: Int,
         val anilistId: Int,
+        /** Carried so the player can list sources without asking the shelves. */
+        val isMovie: Boolean,
         val subtitles: List<Subtitle>,
         val resumeFromMs: Long,
+        /**
+         * The release this is playing, as the addon named it.
+         *
+         * Shown by the player, because "it's a bit hit and miss and I can't
+         * tell which source is showing" is not answerable from the picture —
+         * two releases of the same episode differ in the encode, the subtitle
+         * track and whether the signs are burned in, and none of that is
+         * visible until it is wrong.
+         */
+        val source: String?,
         /** Where libVLC lives. Held here so the screen need not look again. */
         val vlcDir: File
     )
@@ -88,7 +100,8 @@ object Watch {
             val anilistId: Int,
             val title: String,
             val episode: Int,
-            val episodeMinutes: Int
+            val episodeMinutes: Int,
+            val isMovie: Boolean
         ) : State
     }
 
@@ -141,7 +154,14 @@ object Watch {
         if (downloaded != null) {
             val file = Downloader.fileFor(downloaded)
             BuildInfo.log("DebritsuWatch", "playing local file ${file.absolutePath}")
-            onState(State.Ready(target(vlcDir, file.absolutePath, title, episode, episodeMinutes, anilistId, emptyList())))
+            onState(
+                State.Ready(
+                    target(
+                        vlcDir, file.absolutePath, title, episode, episodeMinutes, anilistId,
+                        isMovie, emptyList(), "Downloaded · ${file.name}"
+                    )
+                )
+            )
             return
         }
 
@@ -152,7 +172,7 @@ object Watch {
         // caller choose. Both routes go through the same finding, so a manual
         // pick sees exactly the sources the automatic one considered.
         if (!Settings.autoPlay && outcome.url == null && outcome.message == null) {
-            onState(State.Choose(outcome, anilistId, title, episode, episodeMinutes))
+            onState(State.Choose(outcome, anilistId, title, episode, episodeMinutes, isMovie))
             return
         }
 
@@ -164,7 +184,10 @@ object Watch {
 
         onState(
             State.Ready(
-                target(vlcDir, url, title, episode, episodeMinutes, anilistId, outcome.subtitles)
+                target(
+                    vlcDir, url, title, episode, episodeMinutes, anilistId, isMovie,
+                    outcome.subtitles, outcome.chosen?.name
+                )
             )
         )
     }
@@ -182,11 +205,17 @@ object Watch {
         episode: Int,
         episodeMinutes: Int,
         anilistId: Int,
-        subtitles: List<Subtitle>
+        isMovie: Boolean,
+        subtitles: List<Subtitle>,
+        source: String?
     ): Target {
         val resume = Progress.position(anilistId, episode)
         if (resume > 0) BuildInfo.log("DebritsuWatch", "resuming at ${resume}ms")
-        return Target(url, title, episode, episodeMinutes, anilistId, subtitles, resume, vlcDir)
+        return Target(
+            url, title, episode, episodeMinutes, anilistId, isMovie, subtitles, resume,
+            source?.lineSequence()?.joinToString(" ")?.trim()?.ifBlank { null },
+            vlcDir
+        )
     }
 
     /**
@@ -212,7 +241,7 @@ object Watch {
             onState(State.Failed(outcome.message ?: "No sources were found."))
             return
         }
-        onState(State.Choose(outcome, anilistId, title, episode, episodeMinutes))
+        onState(State.Choose(outcome, anilistId, title, episode, episodeMinutes, isMovie))
     }
 
     /** The finding half, shared by playing and by listing sources. */
@@ -263,11 +292,12 @@ object Watch {
         title: String,
         episode: Int,
         episodeMinutes: Int,
+        isMovie: Boolean,
         onState: (State) -> Unit
     ) {
         val vlcDir = Vlc.directory(Settings.store.getString("vlc_path", ""))
         if (vlcDir == null) {
-            onState(State.Failed("mpv was not found. Set its path in Settings."))
+            onState(State.Failed("VLC was not found. Set its folder in Settings."))
             return
         }
 
@@ -284,7 +314,14 @@ object Watch {
         }
 
         val subs = (stream.subtitles + subtitles).distinctBy { it.url }
-        onState(State.Ready(target(vlcDir, url, title, episode, episodeMinutes, anilistId, subs)))
+        onState(
+            State.Ready(
+                target(
+                    vlcDir, url, title, episode, episodeMinutes, anilistId, isMovie, subs,
+                    stream.name
+                )
+            )
+        )
     }
 
     /**

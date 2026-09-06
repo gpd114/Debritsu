@@ -1,5 +1,7 @@
 package com.debritsu.desktop
 
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
 import com.debritsu.app.data.BuildInfo
 import java.io.File
 
@@ -20,6 +22,19 @@ object ActivePlayer {
 
     private var key: String? = null
     private var player: VlcPlayer? = null
+
+    /**
+     * What is playing, or null for nothing.
+     *
+     * Out here rather than in the app's composition for the same reason the
+     * player is, and for one more: the fullscreen window and the main window
+     * are two separate compositions, and hiding a window stops its own. So a
+     * source switched from inside fullscreen would be invisible to the window
+     * underneath, which would then compose with the old target and restart
+     * playback of the release that had just been swapped away. Held as Compose
+     * state so either window sees a change the other made.
+     */
+    val playing: MutableState<Watch.Target?> = mutableStateOf(null)
 
     /** The player for [url], made if there is not one already. */
     @Synchronized
@@ -49,5 +64,6 @@ object ActivePlayer {
         player?.let { runCatching { it.release() } }
         player = null
         key = null
+        playing.value = null
     }
 }

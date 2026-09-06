@@ -28,6 +28,35 @@ private val SrcPanel = Color(0xFF1E1830)
 private val SrcMuted = Color(0xFF948CAB)
 private val SrcWarn = Color(0xFFE29075)
 private val SrcKeep = Color(0xFF6FC79B)
+private val SrcAccent = Color(0xFF8B5CF6)
+
+/**
+ * Sources in the order they should be read: everything that meets the filters
+ * first, best of them at the top, then the rest — also ranked, so near misses
+ * come before hopeless ones.
+ *
+ * Score alone was not enough and was actively wrong: a 4K source scores well
+ * and is rejected by a 1080p ceiling, so rejected sources floated above
+ * accepted ones and the list had to be read rather than glanced at.
+ *
+ * Shared with the player's own source list, so both orders agree — a list that
+ * ranks differently depending on where it was opened from is worse than one
+ * that does not rank at all.
+ */
+fun rankSources(
+    streams: List<StreamOption>,
+    episodeMinutes: Int
+): List<Pair<StreamOption, StreamMeta>> {
+    val filter = com.debritsu.app.data.Settings.sourceFilter
+    val minSize = com.debritsu.app.data.minEpisodeSizeMb(episodeMinutes)
+    return streams
+        .map { it to StreamMeta.of(it) }
+        .sortedWith(
+            compareByDescending<Pair<StreamOption, StreamMeta>> { (s, m) ->
+                filter.accepts(s, m, minSize)
+            }.thenByDescending { (s, m) -> filter.score(s, m) }
+        )
+}
 
 /**
  * Every source an addon offered, for choosing by hand.
@@ -46,20 +75,7 @@ fun SourcesScreen(
     val streams = state.outcome.results.flatMap { it.streams }
     val filter = com.debritsu.app.data.Settings.sourceFilter
     val minSize = com.debritsu.app.data.minEpisodeSizeMb(state.episodeMinutes)
-
-    // Everything that meets the filters first, best of them at the top, then
-    // the rest — also ranked, so near misses come before hopeless ones.
-    //
-    // Score alone was not enough and was actively wrong: a 4K source scores
-    // well and is rejected by a 1080p ceiling, so rejected sources floated
-    // above accepted ones and the list had to be read rather than glanced at.
-    val ranked = streams
-        .map { it to StreamMeta.of(it) }
-        .sortedWith(
-            compareByDescending<Pair<StreamOption, StreamMeta>> { (s, m) ->
-                filter.accepts(s, m, minSize)
-            }.thenByDescending { (s, m) -> filter.score(s, m) }
-        )
+    val ranked = rankSources(streams, state.episodeMinutes)
 
     Column(Modifier.fillMaxSize().padding(28.dp)) {
         Row(
@@ -100,11 +116,13 @@ fun SourcesScreen(
 }
 
 @Composable
-private fun SourceRow(
+internal fun SourceRow(
     stream: StreamOption,
     meta: StreamMeta,
     filter: SourceFilter,
     minSizeMb: Int,
+    /** Marked when this is the release already on screen. */
+    playing: Boolean = false,
     onPick: () -> Unit
 ) {
     val accepted = filter.accepts(stream, meta, minSizeMb)
@@ -115,7 +133,9 @@ private fun SourceRow(
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         Text(
-            stream.name.lineSequence().joinToString(" ").trim(),
+            (if (playing) "▶  " else "") +
+                stream.name.lineSequence().joinToString(" ").trim(),
+            color = if (playing) SrcAccent else Color.Unspecified,
             style = MaterialTheme.typography.bodyMedium
         )
 
