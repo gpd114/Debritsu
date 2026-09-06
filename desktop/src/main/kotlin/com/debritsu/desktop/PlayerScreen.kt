@@ -3,7 +3,9 @@ package com.debritsu.desktop
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,10 +16,15 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -120,6 +127,57 @@ fun PlayerScreen(
     var sourceList by remember(target.episode) { mutableStateOf<Watch.State.Choose?>(null) }
     var sourceNote by remember(target.episode) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+
+    /** What is happening while another episode is being found, if anything. */
+    var switching by remember(target.url) { mutableStateOf<String?>(null) }
+
+    // Beyond the last episode there is nothing to go to. A show whose count
+    // AniList does not know keeps the button, because refusing to move on a
+    // missing number would be worse than trying and finding nothing.
+    val lastEpisode = target.anime?.episodes ?: 0
+    val hasPrevious = target.episode > 1
+    val hasNext = lastEpisode <= 0 || target.episode < lastEpisode
+
+    /**
+     * Moves to another episode without leaving the player.
+     *
+     * The same path a shelf uses, ending in the same place a source switch
+     * does: the target is swapped underneath and everything below rekeys on
+     * the new URL. Backing out to the detail page did work, but it stopped
+     * playback, lost the position for the episode being left, and made the
+     * commonest thing anybody does at the end of an episode the longest.
+     */
+    val goToEpisode: (Int) -> Unit = { wanted ->
+        val anime = target.anime
+        switching = "Finding episode $wanted"
+        scope.launch {
+            Watch.episode(
+                anilistId = target.anilistId,
+                title = target.title,
+                episode = wanted,
+                // From the show where it is known, since this is what stops a
+                // ninety-second creditless opening marking the episode watched.
+                episodeMinutes = anime?.durationMins ?: target.episodeMinutes,
+                isMovie = target.isMovie,
+                anime = anime
+            ) { state ->
+                when (state) {
+                    is Watch.State.Preparing -> switching = state.what
+                    is Watch.State.Failed -> switching = state.why
+                    is Watch.State.Ready -> {
+                        ActivePlayer.playing.value = state.target
+                        switching = null
+                    }
+                    // Automatic selection is off. The list belongs to the app's
+                    // own screen, and there is no way to that from in here, so
+                    // say so rather than appearing to do nothing.
+                    is Watch.State.Choose ->
+                        switching = "Episode $wanted needs a source chosen — use Sources"
+                    else -> Unit
+                }
+            }
+        }
+    }
 
     LaunchedEffect(target.url) {
         // Only if this is not the same playback carried across a window rebuild.
@@ -346,6 +404,21 @@ fun PlayerScreen(
             modifier = Modifier.align(Alignment.Center)
         )
 
+        // Said over the picture while another episode is being found, because
+        // resolving one takes seconds and the current episode carries on
+        // playing throughout — so without this the button looks ignored.
+        switching?.let {
+            Text(
+                it,
+                color = Paper,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.align(Alignment.TopCenter)
+                    .padding(top = 24.dp)
+                    .background(Color(0xCC120E1C), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+        }
+
         AnimatedVisibility(
             visible = controlsShown,
             enter = fadeIn(),
@@ -359,6 +432,9 @@ fun PlayerScreen(
                 durationMs = durationMs,
                 fraction = scrubbing ?: fraction(positionMs, durationMs),
                 fullscreen = fullscreen,
+                hasPrevious = hasPrevious,
+                hasNext = hasNext,
+                onEpisode = { step -> goToEpisode(target.episode + step) },
                 onScrub = { scrubbing = it },
                 onScrubbed = {
                     val to = ((scrubbing ?: 0f) * durationMs).toLong()
@@ -535,6 +611,48 @@ private fun SourcesOverlay(
     }
 }
 
+/**
+ * One control on the bar, with the name it would have had as a word.
+ *
+ * The name is not decoration: an icon-only bar is a guessing game the first
+ * time, and this is what a hover says. It is also what a screen reader reads,
+ * which is the same problem from the other side.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ControlIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    name: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    tint: Color = Paper,
+    size: androidx.compose.ui.unit.Dp = 26.dp
+) {
+    TooltipArea(tooltip = {
+        Surface(color = Color(0xF2231B38), shape = RoundedCornerShape(6.dp)) {
+            Text(
+                name,
+                color = Paper,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+            )
+        }
+    }) {
+        IconButton(onClick = onClick, enabled = enabled) {
+            Icon(
+                imageVector = icon,
+                contentDescription = name,
+                // Dimmed rather than hidden when there is nowhere to go. A
+                // control that disappears at the last episode moves everything
+                // beside it, and a bar whose buttons shift is worse than one
+                // with a button that is plainly unavailable.
+                tint = if (enabled) tint else tint.copy(alpha = 0.3f),
+                modifier = Modifier.size(size)
+            )
+        }
+    }
+}
+
 /** Steps to the next track in a list, wrapping. */
 private fun cycle(tracks: List<Pair<Int, String>>, current: Int, set: (Int) -> Unit) {
     if (tracks.isEmpty()) return
@@ -552,6 +670,10 @@ private fun Controls(
     durationMs: Long,
     fraction: Float,
     fullscreen: Boolean,
+    hasPrevious: Boolean,
+    hasNext: Boolean,
+    /** −1 or +1, relative to what is playing. */
+    onEpisode: (Int) -> Unit,
     onScrub: (Float) -> Unit,
     onScrubbed: () -> Unit,
     onPlayPause: () -> Unit,
@@ -603,13 +725,29 @@ private fun Controls(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onBack) { Text("← Back", color = Muted) }
-            TextButton(onClick = { onSeek(-10) }) { Text("−10s", color = Paper) }
-            TextButton(onClick = onPlayPause) { Text(if (paused) "Play" else "Pause", color = Paper) }
-            TextButton(onClick = { onSeek(30) }) { Text("+30s", color = Paper) }
+            ControlIcon(PlayerIcons.Back, "Back", onBack, tint = Muted)
+            ControlIcon(
+                PlayerIcons.PreviousEpisode, "Previous episode",
+                { onEpisode(-1) }, enabled = hasPrevious
+            )
+            ControlIcon(PlayerIcons.Rewind, "Back 10 seconds", { onSeek(-10) })
+            ControlIcon(
+                if (paused) PlayerIcons.Play else PlayerIcons.Pause,
+                if (paused) "Play" else "Pause",
+                onPlayPause,
+                size = 34.dp
+            )
+            ControlIcon(PlayerIcons.Forward, "Forward 30 seconds", { onSeek(30) })
+            ControlIcon(
+                PlayerIcons.NextEpisode, "Next episode",
+                { onEpisode(1) }, enabled = hasNext
+            )
 
             Box(Modifier.weight(1f))
 
+            // Kept as words. Every other control here is a verb with a shape
+            // everyone already knows; this is the only one whose content is the
+            // point, and an icon cannot say which episode of what.
             Text(
                 "${target.title} · ep ${target.episode}",
                 color = Muted,
@@ -617,22 +755,15 @@ private fun Controls(
             )
             Box(Modifier.width(12.dp))
 
-            TextButton(onClick = onSubtitles) {
-                Text("Subtitles", color = Muted, style = MaterialTheme.typography.bodySmall)
-            }
-            TextButton(onClick = onAudio) {
-                Text("Audio", color = Muted, style = MaterialTheme.typography.bodySmall)
-            }
-            TextButton(onClick = onSources) {
-                Text("Sources", color = Muted, style = MaterialTheme.typography.bodySmall)
-            }
-            TextButton(onClick = onFullscreen) {
-                Text(
-                    if (fullscreen) "Windowed" else "Fullscreen",
-                    color = Muted,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
+            ControlIcon(PlayerIcons.Subtitles, "Subtitle track", onSubtitles, tint = Muted)
+            ControlIcon(PlayerIcons.Audio, "Audio track", onAudio, tint = Muted)
+            ControlIcon(PlayerIcons.Sources, "Sources", onSources, tint = Muted)
+            ControlIcon(
+                if (fullscreen) PlayerIcons.Windowed else PlayerIcons.Fullscreen,
+                if (fullscreen) "Leave fullscreen" else "Fullscreen",
+                onFullscreen,
+                tint = Muted
+            )
         }
     }
 }

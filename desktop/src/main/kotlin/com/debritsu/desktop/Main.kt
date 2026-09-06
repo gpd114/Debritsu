@@ -113,7 +113,24 @@ fun main() {
         // Held here rather than inside the player, because the window is what
         // goes fullscreen and Escape has to reach it wherever focus happens to
         // be — which, while mpv is drawing, is often the native surface.
-        val windowState = rememberWindowState(width = 1100.dp, height = 760.dp)
+        // Sized from the screen rather than to a fixed 1100x760.
+        //
+        // Compose's Dp here is a user-space pixel, which is a *scaled* one: on a
+        // 1080p laptop at 150% the whole workspace is 1280x720 of them, so a
+        // window asking for 760 was taller than the desktop. Windows clamped it
+        // to the screen, and the result was a window that filled everything with
+        // a title bar on top — fullscreen with a frame, which is neither.
+        val screen = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+            .defaultScreenDevice.defaultConfiguration.bounds
+        BuildInfo.log(
+            "DebritsuUi",
+            "screen is ${screen.width}x${screen.height} in the units window sizes use"
+        )
+        val windowState = rememberWindowState(
+            width = (screen.width * 0.8).toInt().coerceAtMost(1400).dp,
+            height = (screen.height * 0.8).toInt().coerceAtMost(900).dp,
+            position = androidx.compose.ui.window.WindowPosition(Alignment.Center)
+        )
         var fullscreen by remember { mutableStateOf(false) }
 
         /**
