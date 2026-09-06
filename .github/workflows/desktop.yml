@@ -32,6 +32,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # The desktop build needs none of this, but Gradle configures every
+      # project in the build before running anything, and :app is an Android
+      # one — without an SDK it fails at configuration, long before it gets
+      # near the task actually asked for.
+      - uses: android-actions/setup-android@v3
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
