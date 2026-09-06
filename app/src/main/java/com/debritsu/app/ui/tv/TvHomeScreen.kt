@@ -1,6 +1,10 @@
 package com.debritsu.app.ui.tv
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -341,23 +345,47 @@ private fun airsIn(seconds: Int): String {
 }
 
 /**
- * What is airing soon, soonest first, along the top row.
+ * What is airing soon, soonest first, ticking along the top row.
  *
- * Not focusable and not scrollable, unlike the desktop's. A row the remote can
- * enter would sit between the buttons above and the shelves below, and every
- * journey from Search to a show would have to cross it — a toll on the common
- * path to save the rare one. What fits is what there is; the last chip fades
- * into the edge to say there is more rather than being cut in half.
+ * Not focusable, and that is the design. A row the remote can enter would sit
+ * between the buttons above and the shelves below, so every journey from Search
+ * to a show would have to cross it — a toll on the common path to save the rare
+ * one.
  *
- * The fade is drawn through an offscreen layer so it fades the content itself.
- * Painted straight on it would be a band of background colour, which is only
- * the same thing over a background that never changes.
+ * Which leaves the problem that anything past the edge cannot be reached, so it
+ * comes to the viewer instead: it waits, creeps to the end slowly enough to
+ * read, waits again, then slides back. Only when there is something off the
+ * edge — a strip that fits sits still, because motion nobody needs is just
+ * something moving in the corner of a room.
+ *
+ * The fades are drawn through an offscreen layer so they fade the content
+ * itself. Painted straight on they would be bands of background colour, which
+ * is only the same thing while the background never changes and nothing moves
+ * underneath — and here something always does.
  */
 @Composable
 private fun TvAiringStrip(airing: List<Anime>, modifier: Modifier = Modifier) {
     if (airing.isEmpty()) {
         Spacer(modifier)
         return
+    }
+
+    val scroll = rememberScrollState()
+
+    LaunchedEffect(airing) {
+        while (true) {
+            delay(4000)
+            val distance = scroll.maxValue
+            if (distance <= 0) continue
+            // About a hundred pixels a second. Faster is unreadable across a
+            // room; slower and the far end never arrives.
+            scroll.animateScrollTo(
+                distance,
+                tween(durationMillis = distance * 10, easing = LinearEasing)
+            )
+            delay(4000)
+            scroll.animateScrollTo(0, tween(durationMillis = 900))
+        }
     }
 
     Row(
@@ -367,16 +395,30 @@ private fun TvAiringStrip(airing: List<Anime>, modifier: Modifier = Modifier) {
                 drawContent()
                 // DstIn keeps the content where the brush is opaque and erases
                 // it where the brush is clear, so alpha runs one to nothing.
-                drawRect(
-                    brush = Brush.horizontalGradient(
-                        0.88f to Color.Black,
-                        1f to Color.Transparent,
-                        startX = 0f,
-                        endX = size.width
-                    ),
-                    blendMode = BlendMode.DstIn
-                )
-            },
+                if (scroll.value > 0) {
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            0f to Color.Transparent,
+                            0.05f to Color.Black,
+                            startX = 0f,
+                            endX = size.width
+                        ),
+                        blendMode = BlendMode.DstIn
+                    )
+                }
+                if (scroll.value < scroll.maxValue) {
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            0.88f to Color.Black,
+                            1f to Color.Transparent,
+                            startX = 0f,
+                            endX = size.width
+                        ),
+                        blendMode = BlendMode.DstIn
+                    )
+                }
+            }
+            .horizontalScroll(scroll, enabled = false),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -386,10 +428,9 @@ private fun TvAiringStrip(airing: List<Anime>, modifier: Modifier = Modifier) {
         )
         Spacer(Modifier.width(12.dp))
 
-        // Laid out plainly rather than in a lazy row: nothing scrolls, so there
-        // is nothing to recycle, and a Row simply stops drawing what will not
-        // fit — which is exactly the behaviour wanted here.
-        airing.take(6).forEach { show ->
+        // All of them, not the few that fit. The ticker is what makes the rest
+        // reachable, so capping the list would undo the point of it.
+        airing.forEach { show ->
             Row(
                 Modifier.padding(end = 10.dp)
                     .clip(RoundedCornerShape(8.dp))
