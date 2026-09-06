@@ -28,7 +28,10 @@ private val SrcPanel = Color(0xFF1E1830)
 private val SrcMuted = Color(0xFF948CAB)
 private val SrcWarn = Color(0xFFE29075)
 private val SrcKeep = Color(0xFF6FC79B)
-private val SrcAccent = Color(0xFF8B5CF6)
+private val SrcAccent = Color(0xFFB79BF7)
+
+/** The row for what is on screen: the panel colour lifted towards the accent. */
+private val SrcPlaying = Color(0xFF2F2350)
 
 /**
  * Sources in the order they should be read: everything that meets the filters
@@ -43,6 +46,19 @@ private val SrcAccent = Color(0xFF8B5CF6)
  * ranks differently depending on where it was opened from is worse than one
  * that does not rank at all.
  */
+/**
+ * What identifies one release among an addon's answers.
+ *
+ * Not the name. Addons routinely give several different releases the same one —
+ * a single episode came back with four rows all called "[TB ⚡] Comet 1080p",
+ * differing only in the encode and the size buried in the description. The
+ * torrent hash and the file within it are the only things that actually pick
+ * one out, and they survive resolving, which the URL does not: what the player
+ * is handed is a debrid link that looks nothing like the source it came from.
+ */
+fun StreamOption.identity(): String =
+    infoHash?.let { "$it/${fileIdx ?: 0}" } ?: url ?: "$addon/$name/$description"
+
 fun rankSources(
     streams: List<StreamOption>,
     episodeMinutes: Int
@@ -128,14 +144,20 @@ internal fun SourceRow(
     val accepted = filter.accepts(stream, meta, minSizeMb)
 
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(SrcPanel)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+            .background(if (playing) SrcPlaying else SrcPanel)
             .clickable(onClick = onPick).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
+        if (playing) {
+            Text(
+                "▶  NOW PLAYING",
+                color = SrcAccent,
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
         Text(
-            (if (playing) "▶  " else "") +
-                stream.name.lineSequence().joinToString(" ").trim(),
-            color = if (playing) SrcAccent else Color.Unspecified,
+            stream.name.lineSequence().joinToString(" ").trim(),
             style = MaterialTheme.typography.bodyMedium
         )
 

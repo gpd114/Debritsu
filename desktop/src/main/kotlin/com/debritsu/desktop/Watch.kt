@@ -43,15 +43,13 @@ object Watch {
         val subtitles: List<Subtitle>,
         val resumeFromMs: Long,
         /**
-         * The release this is playing, as the addon named it.
+         * Which release this is playing, so the source list can mark it.
          *
-         * Shown by the player, because "it's a bit hit and miss and I can't
-         * tell which source is showing" is not answerable from the picture —
-         * two releases of the same episode differ in the encode, the subtitle
-         * track and whether the signs are burned in, and none of that is
-         * visible until it is wrong.
+         * A hash rather than a name, because names do not identify anything —
+         * four rows of one episode came back all called "[TB ⚡] Comet 1080p".
+         * Null for a downloaded file, which came from no list.
          */
-        val source: String?,
+        val sourceKey: String?,
         /** Where libVLC lives. Held here so the screen need not look again. */
         val vlcDir: File
     )
@@ -158,7 +156,7 @@ object Watch {
                 State.Ready(
                     target(
                         vlcDir, file.absolutePath, title, episode, episodeMinutes, anilistId,
-                        isMovie, emptyList(), "Downloaded · ${file.name}"
+                        isMovie, emptyList(), null
                     )
                 )
             )
@@ -186,7 +184,7 @@ object Watch {
             State.Ready(
                 target(
                     vlcDir, url, title, episode, episodeMinutes, anilistId, isMovie,
-                    outcome.subtitles, outcome.chosen?.name
+                    outcome.subtitles, outcome.chosen
                 )
             )
         )
@@ -207,14 +205,16 @@ object Watch {
         anilistId: Int,
         isMovie: Boolean,
         subtitles: List<Subtitle>,
-        source: String?
+        source: StreamOption?
     ): Target {
         val resume = Progress.position(anilistId, episode)
         if (resume > 0) BuildInfo.log("DebritsuWatch", "resuming at ${resume}ms")
+        source?.let {
+            BuildInfo.log("DebritsuWatch", "playing ${it.name.lineSequence().first()} (${it.identity()})")
+        }
         return Target(
             url, title, episode, episodeMinutes, anilistId, isMovie, subtitles, resume,
-            source?.lineSequence()?.joinToString(" ")?.trim()?.ifBlank { null },
-            vlcDir
+            source?.identity(), vlcDir
         )
     }
 
@@ -318,7 +318,7 @@ object Watch {
             State.Ready(
                 target(
                     vlcDir, url, title, episode, episodeMinutes, anilistId, isMovie, subs,
-                    stream.name
+                    stream
                 )
             )
         )

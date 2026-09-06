@@ -45,7 +45,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.debritsu.app.data.BuildInfo
 import com.debritsu.app.data.Progress
@@ -360,8 +359,16 @@ private fun SourcesOverlay(
 ) {
     val filter = com.debritsu.app.data.Settings.sourceFilter
     val minSize = com.debritsu.app.data.minEpisodeSizeMb(target.episodeMinutes)
-    val ranked = remember(list) {
+    // What is playing goes to the top, whatever it scores.
+    //
+    // Marking it where it happened to rank was no use: 219 sources came back
+    // for one episode, and a mark a dozen screens down is a mark nobody sees.
+    // The sort is stable, so everything else keeps its order.
+    val ranked = remember(list, target.sourceKey) {
         rankSources(list?.outcome?.results?.flatMap { it.streams }.orEmpty(), target.episodeMinutes)
+            .sortedByDescending { (stream, _) ->
+                target.sourceKey != null && stream.identity() == target.sourceKey
+            }
     }
 
     Box(Modifier.fillMaxSize().background(Color(0x99000000))) {
@@ -401,12 +408,8 @@ private fun SourcesOverlay(
                         meta = meta,
                         filter = filter,
                         minSizeMb = minSize,
-                        // Compared on the name, which is all an addon gives
-                        // that survives resolving — the URL handed to the
-                        // player is a debrid link and looks nothing like the
-                        // source it came from.
-                        playing = target.source != null &&
-                            stream.name.lineSequence().joinToString(" ").trim() == target.source
+                        playing = target.sourceKey != null &&
+                            stream.identity() == target.sourceKey
                     ) { onPick(stream) }
                 }
             }
@@ -454,20 +457,10 @@ private fun Controls(
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        // What is actually playing, named. Two releases of one episode differ
-        // in the encode, the subtitle track and whether the signs are burned
-        // in, and none of that can be told from the picture until it is wrong.
-        target.source?.let {
-            Text(
-                it,
-                color = Muted,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, bottom = 2.dp)
-            )
-        }
-
+        // No source name here. It was tried and it did not answer the question:
+        // the name is not unique — one episode came back with four rows all
+        // called "[TB ⚡] Comet 1080p" — so reading it told you nothing you
+        // could then find in the list. The list marks the row instead.
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(clock(positionMs), color = Paper, style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.width(56.dp))
