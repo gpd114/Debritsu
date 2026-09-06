@@ -124,10 +124,29 @@ compose.desktop {
             packageVersion = desktopVersion
             description = "Anime player. Stremio addons, a debrid provider, AniList."
             vendor = "Debritsu"
-            // Built from the Android launcher artwork by tools-make-icon.ps1.
-            // Without this the executable carries Compose's own stock icon,
-            // which says nothing about what the program is.
-            windows { iconFile.set(project.file("icon.ico")) }
+            windows {
+                // Built from the Android launcher artwork by tools-make-icon.ps1.
+                // Without this the executable carries Compose's own stock icon,
+                // which says nothing about what the program is.
+                iconFile.set(project.file("icon.ico"))
+
+                // jpackage creates neither of these unless asked, so the first
+                // installer put Debritsu on the machine with no way to start it
+                // except finding the exe in Program Files.
+                shortcut = true
+                menu = true
+                menuGroup = "Debritsu"
+
+                // Fixed, and must never change.
+                //
+                // This is what tells Windows that a new MSI replaces the
+                // installed one rather than sitting beside it. jpackage invents
+                // a UUID per build when none is given, so every release would
+                // have been a separate program in Add or Remove Programs, all
+                // called Debritsu, and uninstalling would have been a matter of
+                // guessing which. Changing this later has the same effect.
+                upgradeUuid = "81cb0241-7d19-43fd-9159-e506b6a9ca2e"
+            }
         }
     }
 }
