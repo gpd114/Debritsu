@@ -47,17 +47,25 @@ private val SrcPlaying = Color(0xFF2F2350)
  * that does not rank at all.
  */
 /**
- * What identifies one release among an addon's answers.
+ * What identifies one release among an addon's answers, across two fetches.
  *
- * Not the name. Addons routinely give several different releases the same one —
- * a single episode came back with four rows all called "[TB ⚡] Comet 1080p",
- * differing only in the encode and the size buried in the description. The
- * torrent hash and the file within it are the only things that actually pick
- * one out, and they survive resolving, which the URL does not: what the player
- * is handed is a debrid link that looks nothing like the source it came from.
+ * Not the name: addons routinely give several releases the same one — a single
+ * episode came back with four rows all called "[TB ⚡] Comet 1080p", differing
+ * only in the encode and a size buried in the description.
+ *
+ * And explicitly not the URL, which was the first attempt and was wrong. An
+ * addon that resolves for you returns no torrent hash at all, only a direct
+ * link — and that link is a signed one-shot playback token minted per request,
+ * so the same release comes back with a different URL every time it is asked
+ * for. Matching on it matched nothing, every time.
+ *
+ * So: the hash where there is one, and otherwise the addon's own description,
+ * which is where the filename, size and codec live and is the same text on
+ * every fetch.
  */
 fun StreamOption.identity(): String =
-    infoHash?.let { "$it/${fileIdx ?: 0}" } ?: url ?: "$addon/$name/$description"
+    infoHash?.let { "$it/${fileIdx ?: 0}" }
+        ?: "$addon|${name.trim()}|${description.trim()}"
 
 fun rankSources(
     streams: List<StreamOption>,

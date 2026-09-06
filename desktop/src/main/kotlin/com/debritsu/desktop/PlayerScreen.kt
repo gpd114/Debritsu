@@ -237,7 +237,19 @@ fun PlayerScreen(
         ) { state ->
             when (state) {
                 is Watch.State.Preparing -> sourceNote = state.what
-                is Watch.State.Choose -> { sourceList = state; sourceNote = null }
+                is Watch.State.Choose -> {
+                    sourceList = state
+                    sourceNote = null
+                    // Said out loud, because the marker has now failed twice
+                    // for reasons that were invisible from the screen: a name
+                    // several releases share, then a URL minted per request.
+                    val all = state.outcome.results.flatMap { it.streams }
+                    BuildInfo.log(
+                        "DebritsuSources",
+                        "${all.size} sources, ${all.count { it.identity() == target.sourceKey }} " +
+                            "match the one playing (key=${target.sourceKey})"
+                    )
+                }
                 is Watch.State.Failed -> sourceNote = state.why
                 else -> Unit
             }
