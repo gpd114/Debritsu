@@ -35,6 +35,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.lifecycle.Lifecycle
@@ -238,8 +245,12 @@ fun TvHomeScreen(
                         unfocusedContainerColor = Ink.Veil,
                         focusedContainerColor = Ink.Veil
                     ),
-                    modifier = Modifier.weight(1f).focusRequester(searchFocus)
+                    // Half the row rather than all of it. A search box does not
+                    // get more useful for being a metre wide, and the space it
+                    // was taking says what is airing instead.
+                    modifier = Modifier.width(420.dp).focusRequester(searchFocus)
                 )
+                Spacer(Modifier.weight(1f))
             } else if (query.isNotBlank()) {
                 // Only when there is something to say. It used to read "Search
                 // anime" whenever nothing had been searched, which is a label
@@ -253,7 +264,21 @@ fun TvHomeScreen(
                     modifier = Modifier.weight(1f)
                 )
             } else {
-                Spacer(Modifier.weight(1f))
+                // What is airing soon, in the room the header gave up.
+                //
+                // Deliberately not focusable, which is the whole design of it.
+                // A focusable row here would sit between the top buttons and
+                // the shelves, so every trip from Search to a show would cross
+                // it — and this is something to glance at rather than something
+                // to visit. It shows what fits and fades what does not, which
+                // on a television is the right trade: the shelves are the thing
+                // you came for.
+                TvAiringStrip(
+                    airing = (watching + planning)
+                        .filter { it.nextEpisode != null && (it.airingInSeconds ?: 0) > 0 }
+                        .sortedBy { it.airingInSeconds ?: Int.MAX_VALUE },
+                    modifier = Modifier.weight(1f)
+                )
             }
             Spacer(Modifier.width(12.dp))
             if (!searchActive) {
@@ -295,6 +320,97 @@ fun TvHomeScreen(
                 items(shelves) { (title, list) ->
                     TvShelf(title, list, onOpen)
                 }
+            }
+        }
+    }
+}
+
+/**
+ * "in 2d 4h", "in 5h 12m", "in 48m" — as much as is worth reading from a sofa.
+ */
+private fun airsIn(seconds: Int): String {
+    val days = seconds / 86_400
+    val hours = (seconds % 86_400) / 3600
+    val minutes = (seconds % 3600) / 60
+    return when {
+        days > 0 -> "in ${days}d ${hours}h"
+        hours > 0 -> "in ${hours}h ${minutes}m"
+        minutes > 0 -> "in ${minutes}m"
+        else -> "any moment"
+    }
+}
+
+/**
+ * What is airing soon, soonest first, along the top row.
+ *
+ * Not focusable and not scrollable, unlike the desktop's. A row the remote can
+ * enter would sit between the buttons above and the shelves below, and every
+ * journey from Search to a show would have to cross it — a toll on the common
+ * path to save the rare one. What fits is what there is; the last chip fades
+ * into the edge to say there is more rather than being cut in half.
+ *
+ * The fade is drawn through an offscreen layer so it fades the content itself.
+ * Painted straight on it would be a band of background colour, which is only
+ * the same thing over a background that never changes.
+ */
+@Composable
+private fun TvAiringStrip(airing: List<Anime>, modifier: Modifier = Modifier) {
+    if (airing.isEmpty()) {
+        Spacer(modifier)
+        return
+    }
+
+    Row(
+        modifier
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                // DstIn keeps the content where the brush is opaque and erases
+                // it where the brush is clear, so alpha runs one to nothing.
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        0.88f to Color.Black,
+                        1f to Color.Transparent,
+                        startX = 0f,
+                        endX = size.width
+                    ),
+                    blendMode = BlendMode.DstIn
+                )
+            },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            "Airing next",
+            style = androidx.tv.material3.MaterialTheme.typography.labelMedium,
+            color = Ink.Iris
+        )
+        Spacer(Modifier.width(12.dp))
+
+        // Laid out plainly rather than in a lazy row: nothing scrolls, so there
+        // is nothing to recycle, and a Row simply stops drawing what will not
+        // fit — which is exactly the behaviour wanted here.
+        airing.take(6).forEach { show ->
+            Row(
+                Modifier.padding(end = 10.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Ink.Veil)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    show.title,
+                    style = androidx.tv.material3.MaterialTheme.typography.labelMedium,
+                    color = Ink.Bone,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 260.dp)
+                )
+                Text(
+                    "  ep ${show.nextEpisode}  ${airsIn(show.airingInSeconds ?: 0)}",
+                    style = androidx.tv.material3.MaterialTheme.typography.labelMedium,
+                    color = Ink.Mist,
+                    maxLines = 1
+                )
             }
         }
     }
