@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -97,6 +99,16 @@ fun PlayerScreen(
 
     /** The video's own proportions, which the decoded buffer's are not. */
     var aspect by remember(target.url) { mutableStateOf(16f / 9f) }
+
+    /** Opening and ending times for this episode, when AniSkip knows them. */
+    var segments by remember(target.url) {
+        mutableStateOf<List<com.debritsu.app.data.AniSkip.Segment>>(emptyList())
+    }
+
+    // The one on screen now, if any. Follows the position the frame loop is
+    // already reading, so it needs no polling of its own — which is how the
+    // phone does it, because it has no such loop to lean on.
+    val skippable = segments.firstOrNull { positionMs in it.startMs..it.endMs }
 
     // The source list, over the picture rather than instead of it.
     //
@@ -209,10 +221,17 @@ fun PlayerScreen(
     //
     // Deliberately does not wake the controls. These exist so playback can be
     // driven without anything appearing over the picture.
-    DisposableEffect(target.url, fullscreen, paused, sourcesOpen) {
+    DisposableEffect(target.url, fullscreen, paused, sourcesOpen, skippable) {
         onKeys { event ->
             if (event.type != KeyEventType.KeyDown) return@onKeys false
             when (event.key) {
+                // Only while there is something to skip, so S is free to mean
+                // nothing the rest of the time rather than seeking at random.
+                Key.S -> skippable?.let {
+                    player.seekTo(it.endMs)
+                    positionMs = it.endMs
+                    true
+                } ?: false
                 Key.Spacebar, Key.K -> {
                     val next = !paused
                     player.setPaused(next)
@@ -236,6 +255,42 @@ fun PlayerScreen(
             }
         }
         onDispose { onKeys(null) }
+    }
+
+    /**
+     * Opening and ending times, the same way the phone and television get them.
+     *
+     * AniSkip indexes by MAL id, so the AniList id has to be mapped first — the
+     * same three-hop chain the episode titles go through, and it fails the same
+     * way, quietly and without consequence beyond no button appearing.
+     */
+    LaunchedEffect(target.url) {
+        if (target.anilistId <= 0 || target.episode <= 0) return@LaunchedEffect
+
+        // The service scales its timings to the particular encode, so it wants
+        // the duration — which is not known the instant playback starts.
+        var waited = 0
+        while (waited < 5000 && player.durationMs() <= 0L) {
+            delay(250)
+            waited += 250
+        }
+
+        val mal = runCatching {
+            com.debritsu.app.data.Mappings.forAniList(target.anilistId, target.title).mal?.toIntOrNull()
+        }.getOrNull()
+
+        val found = runCatching {
+            com.debritsu.app.data.AniSkip.segments(
+                mal, target.episode, player.durationMs().coerceAtLeast(0L)
+            )
+        }.getOrDefault(emptyList())
+
+        BuildInfo.log(
+            "DebritsuWatch",
+            "aniskip: mal=$mal episode=${target.episode} -> " +
+                found.joinToString { "${it.kind} ${it.startMs}..${it.endMs}" }.ifEmpty { "nothing" }
+        )
+        segments = found
     }
 
     // The search this playback came out of, which is normally already here.
@@ -323,6 +378,20 @@ fun PlayerScreen(
                 onSources = { sourcesOpen = true },
                 onBack = onBack
             )
+        }
+
+        // Above the controls rather than beside them, and it moves up when they
+        // are showing so it never sits on the scrubber. Hidden while the source
+        // list is open, which covers that side of the screen anyway.
+        if (skippable != null && !sourcesOpen) {
+            Button(
+                onClick = { player.seekTo(skippable.endMs); positionMs = skippable.endMs },
+                colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Paper),
+                modifier = Modifier.align(Alignment.BottomEnd)
+                    .padding(end = 28.dp, bottom = if (controlsShown) 132.dp else 40.dp)
+            ) {
+                Text("${skippable.label}   ·   S")
+            }
         }
 
         if (sourcesOpen) {

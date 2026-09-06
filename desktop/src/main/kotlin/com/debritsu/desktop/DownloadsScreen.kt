@@ -49,6 +49,11 @@ fun DownloadsScreen(
     onPlay: (Downloaded) -> Unit,
     onChanged: () -> Unit
 ) {
+    // Read so this list is rebuilt as downloads progress. Without it the index
+    // is plain data Compose never looks at again, and a transfer would finish
+    // with the screen still showing what it said when it opened.
+    Downloader.revision.value
+
     val items = DownloadIndex.all().sortedWith(compareBy({ it.title }, { it.episode }))
 
     Column(Modifier.fillMaxSize().padding(28.dp)) {

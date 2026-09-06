@@ -43,6 +43,32 @@ object Downloader {
         kotlinx.coroutines.SupervisorJob() + Dispatchers.IO
     )
 
+    /**
+     * Changes whenever a download does, so screens showing one redraw.
+     *
+     * Everything about a download's state — the index, the part file on disk,
+     * how far along it is — is ordinary data that Compose has no reason to read
+     * twice. So a download ran to completion with the list still showing what
+     * it said when it was opened, and only leaving the screen and coming back
+     * refreshed it. Reading this before that data subscribes to it.
+     *
+     * Bumped at most four times a second while bytes arrive. The transfer
+     * reports every 64KB, which on a fast connection is over a hundred times a
+     * second — recomposing a list that often to move a progress bar a pixel is
+     * work for nothing.
+     */
+    val revision = androidx.compose.runtime.mutableStateOf(0)
+
+    @Volatile
+    private var lastBump = 0L
+
+    private fun changed(now: Boolean = false) {
+        val at = System.currentTimeMillis()
+        if (!now && at - lastBump < 250) return
+        lastBump = at
+        revision.value++
+    }
+
     /** How far along each download is, 0f..1f, while this program is running. */
     private val live = ConcurrentHashMap<String, Float>()
 
@@ -55,6 +81,7 @@ object Downloader {
 
     fun cancel(item: Downloaded) {
         cancelled += item.key
+        changed(now = true)
     }
 
     fun directory(): File {
@@ -75,6 +102,7 @@ object Downloader {
         cancel(item)
         runCatching { fileFor(item).delete() }
         DownloadIndex.forget(item)
+        changed(now = true)
     }
 
     sealed interface Result {
@@ -170,9 +198,14 @@ object Downloader {
         val target = fileFor(item)
         target.parentFile?.mkdirs()
         cancelled -= item.key
+        // Before the first byte, so the episode shows as downloading straight
+        // away rather than when the transfer first reports.
+        live[item.key] = 0f
+        changed(now = true)
 
         val result = runCatching { fetch(url, target, item.key, onStep) }
         live -= item.key
+        changed(now = true)
 
         result.fold(
             onSuccess = { ok ->
@@ -240,6 +273,7 @@ object Downloader {
                         if (total > 0) {
                             val fraction = (written.toFloat() / total).coerceIn(0f, 1f)
                             live[key] = fraction
+                            changed()
                             onStep("${(fraction * 100).toInt()}%  ·  ${written / 1_048_576} MB")
                         } else {
                             onStep("${written / 1_048_576} MB")

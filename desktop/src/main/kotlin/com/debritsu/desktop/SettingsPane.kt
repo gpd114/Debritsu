@@ -53,13 +53,27 @@ private val SetMuted = Color(0xFF948CAB)
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsPane(modifier: Modifier = Modifier, onChanged: () -> Unit) {
+fun SettingsPane(
+    modifier: Modifier = Modifier,
+    onClose: () -> Unit,
+    onChanged: () -> Unit
+) {
     Column(
         modifier.fillMaxSize().background(SetPanel).verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("Settings", style = MaterialTheme.typography.titleLarge)
+        // A way out from inside the panel. The Settings button in the bar does
+        // close it, but that is behind the panel and reads as the way in, not
+        // the way back — so the only obvious exit was to guess.
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Settings", style = MaterialTheme.typography.titleLarge)
+            TextButton(onClick = onClose) { Text("Done", color = SetMuted) }
+        }
 
         SectionHeading("AniList")
         AniListSection(onChanged)

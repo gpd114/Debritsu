@@ -168,6 +168,11 @@ fun DetailScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                // Subscribes these chips to download progress, so an episode
+                // shows as downloading and then downloaded while you watch it
+                // rather than on the next visit to this page.
+                Downloader.revision.value
+
                 for (ep in 1..total) {
                     val held = DownloadIndex.get(anime.id, ep)
                     EpisodeChip(
