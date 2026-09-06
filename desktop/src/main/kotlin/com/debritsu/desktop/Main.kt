@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -125,14 +126,27 @@ fun main() {
          */
         var playerKeys by remember { mutableStateOf<((androidx.compose.ui.input.key.KeyEvent) -> Boolean)?>(null) }
 
-        LaunchedEffect(fullscreen) {
-            windowState.placement =
-                if (fullscreen) WindowPlacement.Fullscreen else WindowPlacement.Floating
-        }
+        /**
+         * Whether the fullscreen window is actually up.
+         *
+         * Reported by the app rather than inferred from the fullscreen flag,
+         * which can be true with nothing playing — and hiding this window then
+         * would leave the program running with nothing on screen at all.
+         */
+        var fullscreenActive by remember { mutableStateOf(false) }
+
+        // No placement change here any more. Fullscreen is its own window, and
+        // maximising this one as well left it that size underneath and on
+        // return.
 
         Window(
             onCloseRequest = { ActivePlayer.release(); exitApplication() },
             title = "Debritsu",
+            // Hidden while the fullscreen window has the screen, so there is one
+            // window and one taskbar entry rather than two. Hidden rather than
+            // closed: the composition carries on, which is what keeps the shelf
+            // state and the player alive underneath.
+            visible = !fullscreenActive,
             // Not toggled. AWT will not change a window's decoration once it is
             // on screen — setting it throws — so making this depend on the
             // fullscreen flag killed the application outright every time
@@ -178,7 +192,8 @@ fun main() {
                         fullscreen = fullscreen,
                         onFullscreen = { fullscreen = it },
                         onPlayerKeys = { playerKeys = it },
-                        playerKeys = { event -> playerKeys?.invoke(event) ?: false }
+                        playerKeys = { event -> playerKeys?.invoke(event) ?: false },
+                        onFullscreenActive = { fullscreenActive = it }
                     )
                 }
             }
@@ -198,7 +213,9 @@ private fun App(
     fullscreen: Boolean,
     onFullscreen: (Boolean) -> Unit,
     onPlayerKeys: (((androidx.compose.ui.input.key.KeyEvent) -> Boolean)?) -> Unit,
-    playerKeys: (androidx.compose.ui.input.key.KeyEvent) -> Boolean
+    playerKeys: (androidx.compose.ui.input.key.KeyEvent) -> Boolean,
+    /** Tells the main window to stand aside while the fullscreen one is up. */
+    onFullscreenActive: (Boolean) -> Unit
 ) {
     var showSettings by remember { mutableStateOf(Settings.aniListToken.isEmpty()) }
     var watching by remember { mutableStateOf<List<Anime>>(emptyList()) }
@@ -407,25 +424,48 @@ private fun App(
         if (fullscreen) {
             // Created undecorated, which is legal; changing decoration on a
             // live window is not, and doing that killed the application.
+            //
+            // Held for exactly as long as this window exists, so the main
+            // window hides and returns with it rather than being guessed at
+            // from the flag — which can be true with nothing playing.
+            DisposableEffect(Unit) {
+                onFullscreenActive(true)
+                onDispose { onFullscreenActive(false) }
+            }
             with(appScope) {
-                val fullscreenState = rememberWindowState()
                 Window(
                     onCloseRequest = { onFullscreen(false) },
                     title = "Debritsu",
                     undecorated = true,
-                    resizable = false,
                     icon = painterResource("icon.png"),
-                    state = fullscreenState,
+                    state = rememberWindowState(),
                     onPreviewKeyEvent = playerKeys
                 ) {
-                    // Set here rather than passed to rememberWindowState.
-                    // Asking for fullscreen at construction is asking a window
-                    // that is not on screen yet, and it does not take — which
-                    // showed as an ordinary window on the first press and a
-                    // proper fullscreen on the second, once something was
-                    // already warm.
+                    // Sized to the screen by hand rather than asked for through
+                    // WindowPlacement.Fullscreen.
+                    //
+                    // That placement goes through skiko's FullscreenAdapter,
+                    // which stores the request when the window is not yet shown
+                    // and applies it on componentShown. It should work and did
+                    // not — first press gave an ordinary window, second gave
+                    // fullscreen, and moving where it was set made it never
+                    // work at all. Rather than keep guessing at somebody else's
+                    // state machine, an undecorated window covering the screen
+                    // is the same result by a route that can be reasoned about
+                    // completely.
+                    //
+                    // It is also what most players do: borderless fullscreen
+                    // rather than exclusive mode, so alt-tab and a second
+                    // monitor keep behaving.
                     LaunchedEffect(Unit) {
-                        fullscreenState.placement = WindowPlacement.Fullscreen
+                        val screen = window.graphicsConfiguration?.bounds
+                            ?: java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+                                .defaultScreenDevice.defaultConfiguration.bounds
+                        window.setBounds(screen.x, screen.y, screen.width, screen.height)
+                        BuildInfo.log(
+                            "DebritsuVlc",
+                            "fullscreen window ${screen.width}x${screen.height} at ${screen.x},${screen.y}"
+                        )
                     }
                     Surface(Modifier.fillMaxSize(), color = Color.Black) { player() }
                 }
