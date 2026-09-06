@@ -1,7 +1,9 @@
 package com.debritsu.desktop
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -299,6 +301,20 @@ private fun App(
     var detailOf by remember { mutableStateOf<Anime?>(null) }
     /** Whether the detail page changed a list entry, so the shelves are stale. */
     var listEdited by remember { mutableStateOf(false) }
+
+    /**
+     * Which discovery shelf is opened out into a grid, if either.
+     *
+     * A shelf shows a row — about eight posters on this window — out of forty
+     * fetched, and the rest were reachable only by dragging sideways. Expanded
+     * it becomes a page of its own and fetches more as you reach the end.
+     */
+    var expanded by remember { mutableStateOf<String?>(null) }
+    var trendingPage by remember { mutableStateOf(1) }
+    var trendingMore by remember { mutableStateOf(true) }
+    var recommendedPage by remember { mutableStateOf(1) }
+    var recommendedMore by remember { mutableStateOf(true) }
+    var fetchingMore by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
     /** Sources to choose from, when automatic selection is off. */
     var choosing by remember { mutableStateOf<Watch.State.Choose?>(null) }
@@ -653,6 +669,46 @@ private fun App(
     // the one thing these shelves should never suggest.
     val onMyList = listed + (watching + planning).map { it.id }
 
+    /**
+     * The next page of whichever shelf is open, ignored while one is in flight.
+     *
+     * Ids are de-duplicated on the way in: AniList pages by offset, so a title
+     * that moves between pages while you are reading arrives twice, and a grid
+     * with the same poster in it twice looks like a bug in the app rather than
+     * a race in somebody else's ranking.
+     */
+    val fetchMore: () -> Unit = {
+        val which = expanded
+        if (!fetchingMore && which != null) {
+            fetchingMore = true
+            scope.launch {
+                runCatching {
+                    if (which == "Trending" && trendingMore) {
+                        val next = trendingPage + 1
+                        val page = withContext(Dispatchers.IO) { AniList.trending(next) }
+                        val have = trending.mapTo(mutableSetOf()) { it.id }
+                        trending = trending + page.items.filter { have.add(it.id) }
+                        trendingMore = page.hasMore
+                        trendingPage = next
+                    } else if (which == "Recommended" && recommendedMore) {
+                        val next = recommendedPage + 1
+                        val page = withContext(Dispatchers.IO) { AniList.recommended(next) }
+                        val have = recommended.mapTo(mutableSetOf()) { it.id }
+                        recommended = recommended + page.items.filter { have.add(it.id) }
+                        recommendedMore = page.hasMore
+                        recommendedPage = next
+                    }
+                }.onFailure {
+                    // A failed page is not an empty shelf: stop asking rather
+                    // than clearing what is already on screen.
+                    BuildInfo.log("DebritsuList", "$which page failed: $it")
+                    if (which == "Trending") trendingMore = false else recommendedMore = false
+                }
+                fetchingMore = false
+            }
+        }
+    }
+
     val shelves = buildList {
         if (watching.isNotEmpty()) add("Continue watching" to watching)
         if (planning.isNotEmpty()) add("Plan to watch" to planning)
@@ -673,13 +729,74 @@ private fun App(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedTextField(
+                // Its own box rather than an OutlinedTextField.
+                //
+                // That control is 56dp tall before anything is typed in it and
+                // was taking the whole width, which gave a search field bigger
+                // than the posters it finds. Material's field cannot be made
+                // shorter — its padding is inside a decoration box — so this
+                // draws the same thing at the size it should be.
+                BasicTextField(
                     value = query,
                     onValueChange = { query = it },
-                    label = { Text("Search") },
                     singleLine = true,
-                    modifier = Modifier.weight(1f)
+                    textStyle = MaterialTheme.typography.bodySmall.copy(color = Paper),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Violet),
+                    modifier = Modifier.width(280.dp).height(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Panel)
+                        .border(1.dp, Muted.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp),
+                    decorationBox = { field ->
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                            if (query.isEmpty()) {
+                                Text(
+                                    "Search",
+                                    color = Muted,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            field()
+                        }
+                    }
                 )
+
+                // The room the search field gave up.
+                //
+                // AniList already tells us when the next episode of each show
+                // airs — it comes back with the list and was simply thrown
+                // away. The soonest one across everything being watched is the
+                // single most useful thing this bar could say, and it answers
+                // the question the shelves cannot: not what to watch now, but
+                // when there will be something new.
+                val soonest = (watching + planning)
+                    .filter { it.nextEpisode != null && (it.airingInSeconds ?: 0) > 0 }
+                    .minByOrNull { it.airingInSeconds ?: Int.MAX_VALUE }
+
+                if (soonest != null) {
+                    Row(
+                        Modifier.weight(1f).padding(start = 14.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { detailOf = soonest },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Airing next",
+                            color = Violet,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                        Text(
+                            "  ${soonest.title}  ·  ep ${soonest.nextEpisode}  " +
+                                airsIn(soonest.airingInSeconds ?: 0),
+                            color = Muted,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
+                } else {
+                    Box(Modifier.weight(1f))
+                }
                 TextButton(onClick = { showDownloads = true }) {
                     val kept = DownloadIndex.all().size
                     Text(if (kept > 0) "Downloads ($kept)" else "Downloads")
@@ -716,6 +833,18 @@ private fun App(
                     color = Muted,
                     modifier = Modifier.padding(28.dp)
                 )
+            } else if (expanded != null) {
+                val all = shelves.firstOrNull { it.first == expanded }?.second.orEmpty()
+                val more = if (expanded == "Trending") trendingMore else recommendedMore
+                ExpandedShelf(
+                    title = expanded!!,
+                    list = all,
+                    loading = fetchingMore,
+                    hasMore = more,
+                    onNearEnd = fetchMore,
+                    onCollapse = { expanded = null },
+                    onOpen = { detailOf = it }
+                )
             } else {
                 LazyColumn(
                     Modifier.fillMaxSize().padding(top = 12.dp),
@@ -723,7 +852,16 @@ private fun App(
                     contentPadding = PaddingValues(bottom = 28.dp)
                 ) {
                     items(shelves) { shelf ->
-                        Shelf(shelf.first, shelf.second) { detailOf = it }
+                        Shelf(
+                            title = shelf.first,
+                            list = shelf.second,
+                            // Only the two that go on for ever. Your own lists
+                            // are as long as they are and a row holds them.
+                            onExpand = if (shelf.first == "Trending" || shelf.first == "Recommended") {
+                                { expanded = shelf.first }
+                            } else null,
+                            onOpen = { detailOf = it }
+                        )
                     }
                 }
             }

@@ -297,7 +297,7 @@ fun DetailScreen(
                 }
 
             if (side.recommended.isNotEmpty()) {
-                Shelf("People who liked this", side.recommended, onOpenOther)
+                Shelf("People who liked this", side.recommended, onOpen = onOpenOther)
                 Box(Modifier.height(28.dp))
             }
         }
