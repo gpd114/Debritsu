@@ -390,7 +390,10 @@ fun PlayerScreen(
                 modifier = Modifier.align(Alignment.BottomEnd)
                     .padding(end = 28.dp, bottom = if (controlsShown) 132.dp else 40.dp)
             ) {
-                Text("${skippable.label}   ·   S")
+                // Just the label. It said "Skip intro · S" to advertise the
+                // key, and a shortcut printed on a button reads as part of its
+                // name rather than as a hint.
+                Text(skippable.label)
             }
         }
 
