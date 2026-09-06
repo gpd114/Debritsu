@@ -88,28 +88,24 @@ private fun ScoreColour(score: Int): Color = when {
  * is rarely a question about one show — and a strip that only ever names one
  * of six looks like it has nothing more to say.
  *
- * The scrollbar is drawn rather than left to be discovered. A row that runs off
- * the edge is only obviously scrollable once you have already tried, and on a
- * desktop a wheel does not scroll sideways, so without it the rest of the list
- * may as well not exist. Chevrons move it a card at a time for the same reason.
+ * It fades at whichever edge has more past it, the way the phone's does, and a
+ * chevron appears on that side to move it. Both are needed: a wheel does not
+ * scroll sideways on a desktop, so a fade alone would say there is more and
+ * leave no way to reach it.
  */
 @Composable
 fun AiringStrip(airing: List<Anime>, modifier: Modifier = Modifier, onOpen: (Anime) -> Unit) {
     val row = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    // A thumb that fills its track says "nothing hidden" as clearly as an empty
-    // one says the opposite, so the controls only appear when they mean
-    // something.
-    val scrollable by remember {
-        derivedStateOf {
-            val info = row.layoutInfo
-            info.totalItemsCount > info.visibleItemsInfo.size
-        }
-    }
-
-    // Each edge fades only while there is something past it, so a row that fits
-    // is drawn whole and a row scrolled to its end stops pretending otherwise.
+    // Whether there is anything past each edge. The fade and the chevron on a
+    // side both hang off the same answer.
+    //
+    // They did not, and it showed: the chevrons asked whether every item was
+    // visible, and an item half off the edge counts as visible — so a row that
+    // overflowed by less than one chip faded at the end and offered no way to
+    // reach what it was fading. Asking the list whether it can actually scroll
+    // is the same question the fade asks, and the only one that matters.
     val fadeStart by remember { derivedStateOf { row.canScrollBackward } }
     val fadeEnd by remember { derivedStateOf { row.canScrollForward } }
 
@@ -121,7 +117,7 @@ fun AiringStrip(airing: List<Anime>, modifier: Modifier = Modifier, onOpen: (Ani
                 style = MaterialTheme.typography.labelSmall
             )
 
-            if (scrollable) {
+            if (fadeStart) {
                 Text(
                     " ‹ ",
                     color = ShelfMuted,
@@ -206,7 +202,7 @@ fun AiringStrip(airing: List<Anime>, modifier: Modifier = Modifier, onOpen: (Ani
                 }
             }
 
-            if (scrollable) {
+            if (fadeEnd) {
                 Text(
                     " › ",
                     color = ShelfMuted,
