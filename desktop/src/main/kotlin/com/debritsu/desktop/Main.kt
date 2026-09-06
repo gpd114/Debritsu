@@ -336,7 +336,19 @@ private fun App(
         coroutineScope {
             launch { runCatching { AniList.watching() }.onSuccess { watching = it } }
             launch { runCatching { AniList.planning() }.onSuccess { planning = it } }
-            launch { runCatching { AniList.listedIds() }.onSuccess { listed = it } }
+            // Said out loud, because this one fails quietly and expensively.
+            // It is the only thing that knows about the lists the shelves do
+            // not show — completed, dropped, paused — so when it comes back
+            // empty the discovery shelves go on suggesting shows that were
+            // finished years ago, and nothing anywhere says why.
+            launch {
+                runCatching { AniList.listedIds() }
+                    .onSuccess {
+                        listed = it
+                        BuildInfo.log("DebritsuList", "${it.size} titles on the AniList lists")
+                    }
+                    .onFailure { BuildInfo.log("DebritsuList", "listed ids failed: $it") }
+            }
             // These two do not change while you watch something, so they are
             // asked for only while missing — which also gives a shelf that
             // failed on the way in another go on the next reload.
@@ -635,16 +647,21 @@ private fun App(
         return
     }
 
-    // Anything already on a list is not a discovery, so recommendations drop
-    // it — and that means the whole list, not just the two shelves above.
+    // Anything already on a list is not a discovery, so both discovery shelves
+    // drop it — and that means the whole list, not just the two shelves above.
     // Filtering on those alone let through shows finished years ago, which is
-    // the one thing this shelf should never suggest.
+    // the one thing these shelves should never suggest.
     val onMyList = listed + (watching + planning).map { it.id }
 
     val shelves = buildList {
         if (watching.isNotEmpty()) add("Continue watching" to watching)
         if (planning.isNotEmpty()) add("Plan to watch" to planning)
-        if (trending.isNotEmpty()) add("Trending" to trending)
+        // Trending was not filtered at all, which is why shows finished long
+        // ago kept turning up in it. What is popular this week is still not
+        // worth suggesting to somebody who has already watched it, and if they
+        // are watching it now it is in the first shelf already.
+        val popular = trending.filter { it.id !in onMyList }
+        if (popular.isNotEmpty()) add("Trending" to popular)
         val fresh = recommended.filter { it.id !in onMyList }
         if (fresh.isNotEmpty()) add("Recommended" to fresh)
     }
