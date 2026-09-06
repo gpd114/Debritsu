@@ -3,9 +3,7 @@ package com.debritsu.desktop
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,7 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -335,7 +332,7 @@ fun PlayerScreen(
     //
     // Deliberately does not wake the controls. These exist so playback can be
     // driven without anything appearing over the picture.
-    DisposableEffect(target.url, fullscreen, paused, sourcesOpen, skippable) {
+    DisposableEffect(target.url, fullscreen, paused, sourcesOpen, trackMenu, skippable) {
         onKeys { event ->
             if (event.type != KeyEventType.KeyDown) return@onKeys false
             when (event.key) {
@@ -361,6 +358,7 @@ fun PlayerScreen(
                 // The list first, then fullscreen. Escape closes the nearest
                 // thing that is open, which is what it does everywhere else.
                 Key.Escape -> when {
+                    trackMenu != null -> { trackMenu = null; true }
                     sourcesOpen -> { sourcesOpen = false; true }
                     fullscreen -> { onFullscreen(false); true }
                     else -> false
@@ -455,8 +453,22 @@ fun PlayerScreen(
                     paused = next
                 },
                 onSeek = { player.seekBy(it) },
-                onSubtitles = { trackMenu = if (trackMenu == "subtitles") null else "subtitles" },
-                onAudio = { trackMenu = if (trackMenu == "audio") null else "audio" },
+                // Opens, rather than toggling.
+                //
+                // Toggling asked the state what was open and did the opposite,
+                // so a press that read a stale value closed a menu that was
+                // already closed and looked like a dead button — which is what
+                // "press it, close it, and it stops working" was. Pressing it
+                // now always means open; closing is Close, Escape, or picking
+                // something.
+                onSubtitles = {
+                    BuildInfo.log("DebritsuVlc", "subtitles button, menu was $trackMenu")
+                    trackMenu = "subtitles"
+                },
+                onAudio = {
+                    BuildInfo.log("DebritsuVlc", "audio button, menu was $trackMenu")
+                    trackMenu = "audio"
+                },
                 onFullscreen = { onFullscreen(!fullscreen) },
                 onSources = { sourcesOpen = true },
                 onBack = onBack
@@ -708,7 +720,6 @@ private fun SourcesOverlay(
  * time, and this is what a hover says. It is also what a screen reader reads,
  * which is the same problem from the other side.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ControlIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -718,31 +729,31 @@ private fun ControlIcon(
     tint: Color = Paper,
     size: androidx.compose.ui.unit.Dp = 17.dp
 ) {
-    TooltipArea(tooltip = {
-        Surface(color = Color(0xF2231B38), shape = RoundedCornerShape(6.dp)) {
-            Text(
-                name,
-                color = Paper,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-            )
-        }
-    }) {
-        // A third off the stock 48dp. That size is a fingertip on a phone; this
-        // is a mouse pointer on a bar that should be a strip, and the default
-        // made the dock twice the height of the one VLC puts there.
-        IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(32.dp)) {
-            Icon(
-                imageVector = icon,
-                contentDescription = name,
-                // Dimmed rather than hidden when there is nowhere to go. A
-                // control that disappears at the last episode moves everything
-                // beside it, and a bar whose buttons shift is worse than one
-                // with a button that is plainly unavailable.
-                tint = if (enabled) tint else tint.copy(alpha = 0.3f),
-                modifier = Modifier.size(size)
-            )
-        }
+    // No TooltipArea any more.
+    //
+    // It was here to name each icon on hover, and it wrapped every button in a
+    // pointer-event handler whose job is to watch the mouse — which is the only
+    // unusual thing between the mouse and these buttons, and they have been
+    // dropping roughly two presses in three. Scoping the recompositions helped
+    // and did not cure it, so the other suspect goes too. The name stays as the
+    // content description, which is what a screen reader reads.
+    //
+    // If the presses are reliable now, this is why, and any tooltip that comes
+    // back has to be built so it cannot swallow a click.
+    //
+    // The button is a third off the stock 48dp: that size is a fingertip on a
+    // phone, this is a mouse pointer on a bar that should be a strip.
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(32.dp)) {
+        Icon(
+            imageVector = icon,
+            contentDescription = name,
+            // Dimmed rather than hidden when there is nowhere to go. A control
+            // that disappears at the last episode moves everything beside it,
+            // and a bar whose buttons shift is worse than one with a button
+            // that is plainly unavailable.
+            tint = if (enabled) tint else tint.copy(alpha = 0.3f),
+            modifier = Modifier.size(size)
+        )
     }
 }
 
