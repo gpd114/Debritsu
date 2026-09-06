@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -429,47 +430,9 @@ fun PlayerScreen(
         }
     }
 
-    Box(
-        Modifier.fillMaxSize().background(Color.Black)
-            // Only where it does something, and not on every single move.
-            // Windowed keeps its controls, so there is nothing to wake; and a
-            // state write per mouse event rebuilt this screen as fast as the
-            // mouse could report, for no visible gain.
-            .onPointerEvent(PointerEventType.Move) {
-                if (!fullscreen) return@onPointerEvent
-                val now = System.currentTimeMillis()
-                if (now - lastMoved > 200) lastMoved = now
-            }
-    ) {
-        VideoSurface(
-            player = player,
-            frames = frames,
-            aspect = aspect,
-            modifier = Modifier.align(Alignment.Center)
-        )
-
-        // Said over the picture while another episode is being found, because
-        // resolving one takes seconds and the current episode carries on
-        // playing throughout — so without this the button looks ignored.
-        switching?.let {
-            Text(
-                it,
-                color = Paper,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.align(Alignment.TopCenter)
-                    .padding(top = 24.dp)
-                    .background(Color(0xCC120E1C), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-        }
-
-        AnimatedVisibility(
-            visible = controlsShown,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            Controls(
+    // The bar, wherever it is going to sit.
+    val controls: @Composable () -> Unit = {
+        Controls(
                 target = target,
                 paused = paused,
                 positionMs = scrubbing?.let { (it * durationMs).toLong() } ?: positionMs,
@@ -500,15 +463,41 @@ fun PlayerScreen(
             )
         }
 
-        // Above the controls rather than beside them, and it moves up when they
-        // are showing so it never sits on the scrubber. Hidden while the source
-        // list is open, which covers that side of the screen anyway.
+    // The picture and everything that belongs over it, wherever it is put.
+    val overlays: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {
+        VideoSurface(
+            player = player,
+            frames = frames,
+            aspect = aspect,
+            modifier = Modifier.align(Alignment.Center)
+        )
+
+        // Said over the picture while another episode is being found, because
+        // resolving one takes seconds and the current episode carries on
+        // playing throughout — so without this the button looks ignored.
+        switching?.let {
+            Text(
+                it,
+                color = Paper,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.align(Alignment.TopCenter)
+                    .padding(top = 24.dp)
+                    .background(Color(0xCC120E1C), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+        }
+
+        // Clear of the bar wherever that is: above it while it floats over the
+        // picture, and just inside the corner when it sits below. Hidden while
+        // the source list is open, which covers that side anyway.
         if (skippable != null && !sourcesOpen) {
             Button(
                 onClick = { player.seekTo(skippable.endMs); positionMs = skippable.endMs },
                 colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Paper),
-                modifier = Modifier.align(Alignment.BottomEnd)
-                    .padding(end = 28.dp, bottom = if (controlsShown) 132.dp else 40.dp)
+                modifier = Modifier.align(Alignment.BottomEnd).padding(
+                    end = 24.dp,
+                    bottom = if (fullscreen && controlsShown) 96.dp else 24.dp
+                )
             ) {
                 // Just the label. It said "Skip intro · S" to advertise the
                 // key, and a shortcut printed on a button reads as part of its
@@ -594,6 +583,40 @@ fun PlayerScreen(
                     }
                 }
             )
+        }
+    }
+
+    // Two arrangements, because they are two different things.
+    //
+    // Fullscreen is the picture and nothing else, so the bar floats over it and
+    // goes away. A window is a program: the bar sits below the picture in its
+    // own strip, always there, and the video takes the room that is left. That
+    // is what every desktop player does, and putting the controls over the
+    // video in a window only means the video is behind the controls.
+    if (fullscreen) {
+        Box(
+            Modifier.fillMaxSize().background(Color.Black)
+                // Not on every single move: a state write per mouse event
+                // rebuilt this screen as fast as the mouse could report it.
+                .onPointerEvent(PointerEventType.Move) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastMoved > 200) lastMoved = now
+                }
+        ) {
+            overlays()
+            AnimatedVisibility(
+                visible = controlsShown,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
+                controls()
+            }
+        }
+    } else {
+        Column(Modifier.fillMaxSize().background(Color.Black)) {
+            Box(Modifier.fillMaxWidth().weight(1f)) { overlays() }
+            controls()
         }
     }
 }
@@ -693,7 +716,7 @@ private fun ControlIcon(
     onClick: () -> Unit,
     enabled: Boolean = true,
     tint: Color = Paper,
-    size: androidx.compose.ui.unit.Dp = 26.dp
+    size: androidx.compose.ui.unit.Dp = 17.dp
 ) {
     TooltipArea(tooltip = {
         Surface(color = Color(0xF2231B38), shape = RoundedCornerShape(6.dp)) {
@@ -705,7 +728,10 @@ private fun ControlIcon(
             )
         }
     }) {
-        IconButton(onClick = onClick, enabled = enabled) {
+        // A third off the stock 48dp. That size is a fingertip on a phone; this
+        // is a mouse pointer on a bar that should be a strip, and the default
+        // made the dock twice the height of the one VLC puts there.
+        IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(32.dp)) {
             Icon(
                 imageVector = icon,
                 contentDescription = name,
@@ -842,24 +868,29 @@ private fun Controls(
 ) {
     Column(
         Modifier.fillMaxWidth()
-            // A gradient rather than a panel: white text over a bright scene
-            // needs something behind it, and a hard edge across the picture is
-            // the thing the phone build spent four releases removing.
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color.Transparent, Color(0xCC120E1C))
+            // Over the picture: a gradient, because white text on a bright
+            // scene needs something behind it and a hard edge across the image
+            // is the thing the phone build spent four releases removing.
+            //
+            // Below it: a solid strip. There is no picture underneath to
+            // protect, and a gradient fading into the window's own background
+            // just looks like a smudge.
+            .then(
+                if (fullscreen) Modifier.background(
+                    Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC120E1C)))
                 )
+                else Modifier.background(Color(0xFF17121F))
             )
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+            .padding(horizontal = 10.dp, vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         // No source name here. It was tried and it did not answer the question:
         // the name is not unique — one episode came back with four rows all
         // called "[TB ⚡] Comet 1080p" — so reading it told you nothing you
         // could then find in the list. The list marks the row instead.
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(clock(positionMs), color = Paper, style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.width(56.dp))
+            Text(clock(positionMs), color = Paper, style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.width(44.dp))
             Slider(
                 value = fraction,
                 onValueChange = onScrub,
@@ -870,10 +901,10 @@ private fun Controls(
                     activeTrackColor = Violet,
                     inactiveTrackColor = Color(0x66FFFFFF)
                 ),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f).height(20.dp)
             )
-            Text(clock(durationMs), color = Paper, style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(start = 8.dp).width(56.dp))
+            Text(clock(durationMs), color = Paper, style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(start = 8.dp).width(44.dp))
         }
 
         Row(
@@ -891,7 +922,7 @@ private fun Controls(
                 if (paused) PlayerIcons.Play else PlayerIcons.Pause,
                 if (paused) "Play" else "Pause",
                 onPlayPause,
-                size = 34.dp
+                size = 22.dp
             )
             ControlIcon(PlayerIcons.Forward, "Forward 30 seconds", { onSeek(30) })
             ControlIcon(
