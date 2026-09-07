@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.lifecycle.Lifecycle
@@ -353,10 +354,9 @@ private fun airsIn(seconds: Int): String {
  * one.
  *
  * Which leaves the problem that anything past the edge cannot be reached, so it
- * comes to the viewer instead: it waits, creeps to the end slowly enough to
- * read, waits again, then slides back. Only when there is something off the
- * edge — a strip that fits sits still, because motion nobody needs is just
- * something moving in the corner of a room.
+ * comes to the viewer instead: it creeps left for ever, slowly enough to read.
+ * Only when there is something off the edge — a strip that fits sits still,
+ * because motion nobody needs is just something moving in the corner of a room.
  *
  * The fades are drawn through an offscreen layer so they fade the content
  * itself. Painted straight on they would be bands of background colour, which
@@ -371,56 +371,41 @@ private fun TvAiringStrip(airing: List<Anime>, modifier: Modifier = Modifier) {
     }
 
     val scroll = rememberScrollState()
+    var copyWidth by remember { mutableStateOf(0) }
+    var viewportWidth by remember { mutableStateOf(0) }
 
-    LaunchedEffect(airing) {
+    // Only worth moving when one copy does not fit.
+    val looping = viewportWidth > 0 && copyWidth > viewportWidth
+
+    LaunchedEffect(airing, looping, copyWidth) {
+        if (!looping) {
+            scroll.scrollTo(0)
+            return@LaunchedEffect
+        }
+        delay(2500)
         while (true) {
-            delay(4000)
-            val distance = scroll.maxValue
-            if (distance <= 0) continue
-            // About a hundred pixels a second. Faster is unreadable across a
-            // room; slower and the far end never arrives.
+            // To the start of the second copy, then back to zero without
+            // animating.
+            //
+            // That jump is the whole trick, and it cannot be seen: the list is
+            // drawn twice, so the instant the second copy reaches the left edge
+            // the screen is pixel for pixel what it was at zero. Running to the
+            // end and rewinding was honest and looked like a fault — a ticker
+            // should never be seen going backwards.
             scroll.animateScrollTo(
-                distance,
-                tween(durationMillis = distance * 10, easing = LinearEasing)
+                copyWidth,
+                // About a hundred pixels a second. Faster is unreadable across
+                // a room; slower and the far end never arrives.
+                tween(durationMillis = copyWidth * 10, easing = LinearEasing)
             )
-            delay(4000)
-            scroll.animateScrollTo(0, tween(durationMillis = 900))
+            scroll.scrollTo(0)
         }
     }
 
-    Row(
-        modifier
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .drawWithContent {
-                drawContent()
-                // DstIn keeps the content where the brush is opaque and erases
-                // it where the brush is clear, so alpha runs one to nothing.
-                if (scroll.value > 0) {
-                    drawRect(
-                        brush = Brush.horizontalGradient(
-                            0f to Color.Transparent,
-                            0.05f to Color.Black,
-                            startX = 0f,
-                            endX = size.width
-                        ),
-                        blendMode = BlendMode.DstIn
-                    )
-                }
-                if (scroll.value < scroll.maxValue) {
-                    drawRect(
-                        brush = Brush.horizontalGradient(
-                            0.88f to Color.Black,
-                            1f to Color.Transparent,
-                            startX = 0f,
-                            endX = size.width
-                        ),
-                        blendMode = BlendMode.DstIn
-                    )
-                }
-            }
-            .horizontalScroll(scroll, enabled = false),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        // Outside the scrolling part, so it stays put. It used to travel off
+        // with the first chip, leaving the row unlabelled for most of every
+        // pass.
         Text(
             "Airing next",
             style = androidx.tv.material3.MaterialTheme.typography.labelMedium,
@@ -428,31 +413,85 @@ private fun TvAiringStrip(airing: List<Anime>, modifier: Modifier = Modifier) {
         )
         Spacer(Modifier.width(12.dp))
 
-        // All of them, not the few that fit. The ticker is what makes the rest
-        // reachable, so capping the list would undo the point of it.
-        airing.forEach { show ->
+        Row(
+            Modifier.weight(1f)
+                .onGloballyPositioned { viewportWidth = it.size.width }
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    // DstIn keeps the content where the brush is opaque and
+                    // erases it where the brush is clear, so alpha runs one to
+                    // nothing.
+                    //
+                    // Both edges together and only while looping. Testing the
+                    // scroll offset instead made the left edge snap back to a
+                    // hard cut for one frame at every wrap, which is the one
+                    // moment the wrap must not be visible.
+                    if (looping) {
+                        drawRect(
+                            brush = Brush.horizontalGradient(
+                                0f to Color.Transparent,
+                                0.05f to Color.Black,
+                                startX = 0f,
+                                endX = size.width
+                            ),
+                            blendMode = BlendMode.DstIn
+                        )
+                        drawRect(
+                            brush = Brush.horizontalGradient(
+                                0.90f to Color.Black,
+                                1f to Color.Transparent,
+                                startX = 0f,
+                                endX = size.width
+                            ),
+                            blendMode = BlendMode.DstIn
+                        )
+                    }
+                }
+                .horizontalScroll(scroll, enabled = false),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Row(
-                Modifier.padding(end = 10.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Ink.Veil)
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                Modifier.onGloballyPositioned { copyWidth = it.size.width },
                 verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    show.title,
-                    style = androidx.tv.material3.MaterialTheme.typography.labelMedium,
-                    color = Ink.Bone,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 260.dp)
-                )
-                Text(
-                    "  ep ${show.nextEpisode}  ${airsIn(show.airingInSeconds ?: 0)}",
-                    style = androidx.tv.material3.MaterialTheme.typography.labelMedium,
-                    color = Ink.Mist,
-                    maxLines = 1
-                )
+            ) { AiringChips(airing) }
+
+            // The second copy exists only to be scrolled into. Without it the
+            // row runs out and shows empty space before the wrap.
+            if (looping) {
+                Row(verticalAlignment = Alignment.CenterVertically) { AiringChips(airing) }
             }
+        }
+    }
+}
+
+/** The chips themselves, drawn twice while the strip is looping. */
+@Composable
+private fun AiringChips(airing: List<Anime>) {
+    // All of them, not the few that fit. The ticker is what makes the rest
+    // reachable, so capping the list would undo the point of it.
+    airing.forEach { show ->
+        Row(
+            Modifier.padding(end = 10.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Ink.Veil)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                show.title,
+                style = androidx.tv.material3.MaterialTheme.typography.labelMedium,
+                color = Ink.Bone,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 260.dp)
+            )
+            Text(
+                "  ep ${show.nextEpisode}  ${airsIn(show.airingInSeconds ?: 0)}",
+                style = androidx.tv.material3.MaterialTheme.typography.labelMedium,
+                color = Ink.Mist,
+                maxLines = 1
+            )
         }
     }
 }
