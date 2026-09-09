@@ -3,7 +3,6 @@ package com.debritsu.app.ui
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Remove
@@ -57,11 +57,7 @@ private val STATUS_LABELS = listOf(
 private fun statusLabel(raw: String?) =
     STATUS_LABELS.firstOrNull { it.first == raw }?.second ?: "Not on list"
 
-@OptIn(
-    ExperimentalMaterial3Api::class,
-    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
-    androidx.compose.foundation.ExperimentalFoundationApi::class
-)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {}) {
 
@@ -565,16 +561,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                 Text(
                     "Episodes",
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 16.dp, top = 22.dp, bottom = 2.dp)
-                )
-                // Said rather than left to be found. A long press is invisible
-                // until somebody tries it, and nobody tries it on a grid of
-                // numbers that already does something when tapped.
-                Text(
-                    "Tap to play · hold to choose a source or download",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Ink.Mist,
-                    modifier = Modifier.padding(start = 16.dp, bottom = 10.dp)
+                    modifier = Modifier.padding(start = 16.dp, top = 22.dp, bottom = 10.dp)
                 )
             }
             // Nothing at all until the metadata arrives, rather than one
@@ -607,26 +594,35 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                         val resume = remember(ep, progressTick) { Progress.fraction(anilistId, ep) }
                         val meta = epMeta[ep]
                         val skippable = meta?.filler == true || meta?.recap == true
-                        Box(
+                        // Already on the device? Then the second half has
+                        // nothing left to offer and says so instead.
+                        val held = Downloads.get(anilistId, ep)
+                            ?.takeIf { Downloads.isComplete(it) } != null
+
+                        // Two halves, two jobs: the number plays, the arrow
+                        // opens that episode's sources, where every row has its
+                        // own download.
+                        //
+                        // Downloading one particular episode used to mean
+                        // tapping it, waiting for auto-play to find a source,
+                        // cancelling that, and only then pressing the download
+                        // button at the top — because that button acts on
+                        // whatever is selected, and selecting an episode is
+                        // exactly what starts the search. A long press was
+                        // tried first and is worse: invisible until somebody
+                        // guesses at it, on a grid that already does something
+                        // when tapped.
+                        Row(
                             Modifier
-                                .width(58.dp)
                                 .height(58.dp)
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(if (selected) Ink.Iris else Ink.Veil)
-                                // Tap plays, hold opens the sources for that
-                                // episode.
-                                //
-                                // Downloading one episode used to mean tapping
-                                // it, waiting for auto-play to find a source,
-                                // cancelling that, and only then pressing the
-                                // download button — which acts on whatever is
-                                // selected, and selecting is what starts the
-                                // search. Holding reaches the same sheet without
-                                // the round trip, and playing is still one tap.
-                                .combinedClickable(
-                                    onClick = { selectedEpisode = ep; findStreams(ep) },
-                                    onLongClick = { selectedEpisode = ep; manualSearch(ep) }
-                                ),
+                        ) {
+                        Box(
+                            Modifier
+                                .width(58.dp)
+                                .fillMaxHeight()
+                                .clickable { selectedEpisode = ep; findStreams(ep) },
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -676,6 +672,40 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                                         .background(Ink.Orchid)
                                 )
                             }
+                        }
+
+                        // A hairline rather than a gap: two targets that
+                        // clearly belong to one episode, not two chips.
+                        Box(
+                            Modifier
+                                .width(1.dp)
+                                .fillMaxHeight()
+                                .background(
+                                    if (selected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.25f)
+                                    else Ink.Edge
+                                )
+                        )
+
+                        Box(
+                            Modifier
+                                .width(34.dp)
+                                .fillMaxHeight()
+                                .clickable { selectedEpisode = ep; manualSearch(ep) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                if (held) Icons.Default.Check else Icons.Default.Download,
+                                contentDescription =
+                                    if (held) "Downloaded — choose another source"
+                                    else "Choose a source or download",
+                                modifier = Modifier.size(18.dp),
+                                tint = when {
+                                    held -> Ink.Orchid
+                                    selected -> MaterialTheme.colorScheme.onPrimary
+                                    else -> Ink.Mist
+                                }
+                            )
+                        }
                         }
                     }
                 }
