@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -133,6 +134,27 @@ fun TvDetailScreen(
         selectedEpisode = ((anime?.progress ?: 0) + 1)
             .coerceAtLeast(1)
             .let { if (known > 0) it.coerceAtMost(known) else it }
+    }
+
+    /**
+     * The episode row's own scroll, so it starts where you are.
+     *
+     * It always opened on episode one. On a phone that is a long swipe; here it
+     * is worse, because the only way along the row is the d-pad — reaching
+     * episode 900 of a long-running show would mean holding right until it
+     * arrived, every time the page was opened.
+     *
+     * Moved once, when the record lands. Moving it again would drag the row out
+     * from under a remote already travelling along it.
+     */
+    val episodeRow = rememberLazyListState()
+    var placedEpisodeRow by remember(anilistId) { mutableStateOf(false) }
+    LaunchedEffect(anilistId, anime, selectedEpisode) {
+        if (placedEpisodeRow || anime == null) return@LaunchedEffect
+        placedEpisodeRow = true
+        // A couple back from the one you want, so it is not jammed against the
+        // left edge with no sense of what came before it.
+        runCatching { episodeRow.scrollToItem((selectedEpisode - 3).coerceAtLeast(0)) }
     }
     LaunchedEffect(anilistId) {
         // Both rows come out of one request rather than two, and this is
@@ -606,6 +628,7 @@ fun TvDetailScreen(
             )
         } else {
         LazyRow(
+            state = episodeRow,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(horizontal = OVERSCAN, vertical = 10.dp)
         ) {
