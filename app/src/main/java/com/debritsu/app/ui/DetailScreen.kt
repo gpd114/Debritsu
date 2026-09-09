@@ -9,6 +9,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -119,6 +123,25 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
     var listed by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var epMeta by remember { mutableStateOf<Map<Int, Jikan.EpisodeMeta>>(emptyMap()) }
     var showListEditor by remember { mutableStateOf(false) }
+
+    /**
+     * The episode grid's own scroll, so it can be put where you are.
+     *
+     * It always opened at episode one, which is fine for a season and useless
+     * for a long-running show: episode 900 of One Piece was a very long scroll
+     * away, every single time the page was opened. Jumped once when the record
+     * lands, and never again — moving it under somebody who has started
+     * scrolling would be worse than not moving it at all.
+     */
+    val episodeGrid = rememberLazyGridState()
+    var jumpedToEpisode by remember(anilistId) { mutableStateOf(false) }
+    LaunchedEffect(anilistId, anime, selectedEpisode) {
+        if (jumpedToEpisode || anime == null) return@LaunchedEffect
+        jumpedToEpisode = true
+        // A row above where you are, so what is next has context above it
+        // rather than sitting jammed against the top edge.
+        runCatching { episodeGrid.scrollToItem((selectedEpisode - 5).coerceAtLeast(0)) }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val obs = LifecycleEventObserver { _, event ->
@@ -584,9 +607,27 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
             } else {
             item {
                 val total = (anime?.episodes ?: 1).coerceAtLeast(1)
-                LazyRow(
+
+                // Rows rather than one long row, four of them at most.
+                //
+                // A single scrolling row is fine for a season and hopeless for
+                // One Piece: a thousand chips in a line is a very long swipe
+                // and shows eight at a time. Four rows show thirty-odd at a
+                // glance, and the cap keeps the grid from pushing the
+                // description and the related shows off the screen entirely.
+                //
+                // heightIn rather than height, so a twelve episode show draws
+                // three rows and stops rather than leaving a hole. It must be
+                // bounded either way: a vertically scrolling grid inside a
+                // vertically scrolling column has no height to measure against
+                // and throws.
+                LazyVerticalGrid(
+                    state = episodeGrid,
+                    columns = GridCells.Adaptive(93.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.heightIn(max = 256.dp)
                 ) {
                     items((1..total).toList()) { ep ->
                         val selected = ep == selectedEpisode
