@@ -70,6 +70,17 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
 
     var anime by remember { mutableStateOf<Anime?>(null) }
     var selectedEpisode by remember { mutableStateOf(1) }
+
+    /**
+     * Whether the selection came from an episode's download half rather than
+     * its number.
+     *
+     * Either half has to select the episode — the download is filed under
+     * [selectedEpisode] — but selection used to colour the whole chip, so
+     * pressing the arrow lit both halves and its own press was lost under it.
+     * This says which half did it, and only that half lights.
+     */
+    var pickedByArrow by remember { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<Stremio.AddonResult>>(emptyList()) }
     // Whichever source automatic selection would have started, scored by the
     // very rules auto-play uses so the list and the automatic choice can never
@@ -171,6 +182,8 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
         selectedEpisode = ((anime?.progress ?: 0) + 1)
             .coerceAtLeast(1)
             .let { if (known > 0) it.coerceAtMost(known) else it }
+        // Chosen here as the next to play, so it is the number that lights.
+        pickedByArrow = false
     }
     LaunchedEffect(anilistId) {
         // Both rows come out of one request rather than two, and this one is
@@ -662,18 +675,28 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                         // row, so a 93dp chip sat in a 121dp cell with a gap
                         // beside it. Filling the cell and dividing it removes
                         // both at once.
+                        // Whichever half made the selection is the one that
+                        // lights. The chip's own ground stays neutral, so the
+                        // lit half reads as the thing that was pressed.
+                        val playLit = selected && !pickedByArrow
+                        val arrowLit = selected && pickedByArrow
                         Row(
                             Modifier
                                 .fillMaxWidth()
                                 .height(58.dp)
                                 .clip(RoundedCornerShape(14.dp))
-                                .background(if (selected) Ink.Iris else Ink.Veil)
+                                .background(Ink.Veil)
                         ) {
                         Box(
                             Modifier
                                 .weight(7f)
                                 .fillMaxHeight()
-                                .clickable { selectedEpisode = ep; findStreams(ep) },
+                                .background(if (playLit) Ink.Iris else Color.Transparent)
+                                .clickable {
+                                    selectedEpisode = ep
+                                    pickedByArrow = false
+                                    findStreams(ep)
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -681,7 +704,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                                     ep.toString().padStart(2, '0'),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = when {
-                                        selected -> MaterialTheme.colorScheme.onPrimary
+                                        playLit -> MaterialTheme.colorScheme.onPrimary
                                         watched -> Ink.Mist
                                         else -> Ink.Bone
                                     }
@@ -690,7 +713,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                                     Text(
                                         if (meta?.filler == true) "FILLER" else "RECAP",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (selected) MaterialTheme.colorScheme.onPrimary
+                                        color = if (playLit) MaterialTheme.colorScheme.onPrimary
                                         else Ink.Orchid
                                     )
                                 }
@@ -714,7 +737,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                                             .background(Ink.Orchid)
                                     )
                                 }
-                                watched && !selected -> Box(
+                                watched && !playLit -> Box(
                                     Modifier
                                         .align(Alignment.BottomCenter)
                                         .padding(bottom = 7.dp)
@@ -741,7 +764,12 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                             Modifier
                                 .weight(3f)
                                 .fillMaxHeight()
-                                .clickable { selectedEpisode = ep; manualSearch(ep) },
+                                .background(if (arrowLit) Ink.Iris else Color.Transparent)
+                                .clickable {
+                                    selectedEpisode = ep
+                                    pickedByArrow = true
+                                    manualSearch(ep)
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -751,8 +779,10 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                                     else "Choose a source or download",
                                 modifier = Modifier.size(18.dp),
                                 tint = when {
+                                    // Lit first: the tick's own colour on the
+                                    // violet ground would all but vanish.
+                                    arrowLit -> MaterialTheme.colorScheme.onPrimary
                                     held -> Ink.Orchid
-                                    selected -> MaterialTheme.colorScheme.onPrimary
                                     else -> Ink.Mist
                                 }
                             )
