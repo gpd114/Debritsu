@@ -218,5 +218,11 @@ private fun play(context: android.content.Context, d: Downloaded) {
             .putExtra(PlayerActivity.EXTRA_SERIES_TITLE, d.title)
             .putExtra(PlayerActivity.EXTRA_ANILIST_ID, d.anilistId)
             .putExtra(PlayerActivity.EXTRA_EPISODE, d.episode)
+            // How many episodes the show has, which the record kept when it was
+            // downloaded. Without it the player treats the count as unknown and
+            // shows the next button on the last episode too, where there is
+            // nowhere for it to go. Zero still means unknown, so a record from
+            // before this was stored behaves exactly as it always did.
+            .putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, d.totalEpisodes ?: 0)
     )
 }
