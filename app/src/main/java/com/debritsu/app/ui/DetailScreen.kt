@@ -653,15 +653,25 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                         // tried first and is worse: invisible until somebody
                         // guesses at it, on a grid that already does something
                         // when tapped.
+                        //
+                        // Split seventy-thirty by weight rather than in fixed
+                        // widths. The left half carries the number, the filler
+                        // tag and the progress bar; the right only ever holds
+                        // one small icon. Fixed widths also left the chip short
+                        // of its cell — the grid stretches cells to fill the
+                        // row, so a 93dp chip sat in a 121dp cell with a gap
+                        // beside it. Filling the cell and dividing it removes
+                        // both at once.
                         Row(
                             Modifier
+                                .fillMaxWidth()
                                 .height(58.dp)
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(if (selected) Ink.Iris else Ink.Veil)
                         ) {
                         Box(
                             Modifier
-                                .width(58.dp)
+                                .weight(7f)
                                 .fillMaxHeight()
                                 .clickable { selectedEpisode = ep; findStreams(ep) },
                             contentAlignment = Alignment.Center
@@ -729,7 +739,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
 
                         Box(
                             Modifier
-                                .width(34.dp)
+                                .weight(3f)
                                 .fillMaxHeight()
                                 .clickable { selectedEpisode = ep; manualSearch(ep) },
                             contentAlignment = Alignment.Center
