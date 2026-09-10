@@ -322,25 +322,36 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
         }
     }
 
+    /**
+     * Plays the copy on disk, if there is one, and says whether it did.
+     *
+     * Shared by the episode's number, which tries this before anything else,
+     * and the source sheet, which offers it by name — so both start the local
+     * file exactly the same way and cannot drift apart.
+     */
+    fun playDownloaded(episode: Int): Boolean {
+        val offline = Downloads.get(anilistId, episode)
+            ?.takeIf { Downloads.isComplete(it) }
+            ?: return false
+        context.startActivity(
+            Intent(context, PlayerActivity::class.java)
+                .putExtra(
+                    PlayerActivity.EXTRA_URL,
+                    android.net.Uri.fromFile(Downloads.fileFor(offline)).toString()
+                )
+                .putExtra(PlayerActivity.EXTRA_TITLE, "${anime?.title} — EP $episode")
+                .putExtra(PlayerActivity.EXTRA_SERIES_TITLE, anime?.title.orEmpty())
+                .putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, anime?.episodes ?: 0)
+                .putExtra(PlayerActivity.EXTRA_EPISODE_MINUTES, anime?.durationMins ?: 0)
+                .putExtra(PlayerActivity.EXTRA_ANILIST_ID, anilistId)
+                .putExtra(PlayerActivity.EXTRA_EPISODE, episode)
+        )
+        return true
+    }
+
     fun findStreams(episode: Int) {
         // Already on disk? Play it locally and never touch the network.
-        val offline = Downloads.get(anilistId, episode)?.takeIf { Downloads.isComplete(it) }
-        if (offline != null) {
-            context.startActivity(
-                Intent(context, PlayerActivity::class.java)
-                    .putExtra(
-                        PlayerActivity.EXTRA_URL,
-                        android.net.Uri.fromFile(Downloads.fileFor(offline)).toString()
-                    )
-                    .putExtra(PlayerActivity.EXTRA_TITLE, "${anime?.title} — EP $episode")
-                    .putExtra(PlayerActivity.EXTRA_SERIES_TITLE, anime?.title.orEmpty())
-                    .putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, anime?.episodes ?: 0)
-                .putExtra(PlayerActivity.EXTRA_EPISODE_MINUTES, anime?.durationMins ?: 0)
-                    .putExtra(PlayerActivity.EXTRA_ANILIST_ID, anilistId)
-                    .putExtra(PlayerActivity.EXTRA_EPISODE, episode)
-            )
-            return
-        }
+        if (playDownloaded(episode)) return
         if (Settings.autoPlay) {
             autoPlayEpisode(episode)
         } else {
@@ -1061,6 +1072,56 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                     color = Ink.Mist
                 )
                 Spacer(Modifier.height(10.dp))
+
+                // The copy already on the phone, above everything the addons
+                // offer.
+                //
+                // The tick opens this sheet, and that is mostly done to look at
+                // what else there is — but the one thing certain to play, with
+                // no network and no debrid, was reachable only by closing the
+                // sheet and pressing the number instead. Named by the release
+                // it came from, since the reason to be here is comparing it.
+                val onDisk = Downloads.get(anilistId, selectedEpisode)
+                    ?.takeIf { Downloads.isComplete(it) }
+                if (onDisk != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Ink.Iris)
+                            .clickable {
+                                showSheet = false
+                                playDownloaded(selectedEpisode)
+                            }
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Play the downloaded copy",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Text(
+                                buildString {
+                                    append(onDisk.sourceName.lineSequence().first().ifBlank { "On this phone" })
+                                    append("  ·  ${Downloads.fileFor(onDisk).length() / 1_048_576} MB")
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
 
                 if (searching) {
                     LinearProgressIndicator(
