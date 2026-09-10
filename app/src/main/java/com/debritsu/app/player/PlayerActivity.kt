@@ -343,6 +343,28 @@ class PlayerActivity : ComponentActivity() {
         switchingEpisode = true
         savePosition()
         exo.pause()
+
+        // A downloaded copy plays straight from disk, same as the detail
+        // screen does, and never touches the network.
+        //
+        // Checked before the "finding sources" panel goes up rather than after.
+        // It used to be the other way round, so a downloaded episode put that
+        // panel on screen and took it down again a frame later — claiming to
+        // search for something that was already on the phone.
+        val offline = Downloads.get(anilistId, target)
+            ?.takeIf { Downloads.isComplete(it) }
+        if (offline != null) {
+            startEpisode(
+                target,
+                Uri.fromFile(Downloads.fileFor(offline)).toString(),
+                emptyList(),
+                emptyList(),
+                -1
+            )
+            switchingEpisode = false
+            return
+        }
+
         val loading = panelDialog("Episode $target", "FINDING SOURCES", emptyList()) {}
         loading.show()
 
@@ -352,22 +374,6 @@ class PlayerActivity : ComponentActivity() {
             // is up and waiting on a choice.
             var handedOff = false
             try {
-                // A downloaded copy plays straight from disk, same as the
-                // detail screen does, and never touches the network.
-                val offline = Downloads.get(anilistId, target)
-                    ?.takeIf { Downloads.isComplete(it) }
-                if (offline != null) {
-                    startEpisode(
-                        target,
-                        Uri.fromFile(Downloads.fileFor(offline)).toString(),
-                        emptyList(),
-                        emptyList(),
-                        -1
-                    )
-                    handedOff = true
-                    return@launch
-                }
-
                 // The same rules as pressing play on the detail screen. Asking
                 // every time made sense before those rules existed; now that a
                 // quality ceiling and a size limit are enforced, stopping to
