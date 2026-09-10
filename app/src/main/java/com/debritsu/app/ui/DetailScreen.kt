@@ -634,13 +634,19 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                 // bounded either way: a vertically scrolling grid inside a
                 // vertically scrolling column has no height to measure against
                 // and throws.
+                //
+                // 80dp cells rather than 93: a 411dp phone fits three of the
+                // larger and four of these, and the extra column is a third
+                // more episodes on screen, which is the grid's whole point. The
+                // cap is four rows of 52dp chips and their gaps; left at the
+                // old figure it would show a sliver of a fifth.
                 LazyVerticalGrid(
                     state = episodeGrid,
-                    columns = GridCells.Adaptive(93.dp),
+                    columns = GridCells.Adaptive(80.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.heightIn(max = 256.dp)
+                    modifier = Modifier.heightIn(max = 232.dp)
                 ) {
                     items((1..total).toList()) { ep ->
                         val selected = ep == selectedEpisode
@@ -683,7 +689,7 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .height(58.dp)
+                                .height(52.dp)
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(Ink.Veil)
                         ) {
