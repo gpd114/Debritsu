@@ -309,7 +309,10 @@ internal fun HomeFeed(
         .sortedBy { it.airingInSeconds ?: Int.MAX_VALUE }
 
     val list = rememberLazyListState()
-    val solidAfter = with(LocalDensity.current) { 300.dp.toPx() }
+    // Roughly when the picture has gone under the bar and the words below it
+    // are about to. Later than that and the title slid under the icons and the
+    // clock with nothing behind them.
+    val solidAfter = with(LocalDensity.current) { 160.dp.toPx() }
     // The icons float over the picture until it has scrolled away, then sit on
     // a bar of their own so they stay legible over the rows.
     val solid by remember(heroShows.isEmpty()) {
@@ -347,7 +350,9 @@ internal fun HomeFeed(
             horizontalArrangement = Arrangement.End,
             modifier = Modifier
                 .fillMaxWidth()
-                .background(if (solid) Ink.palette.backdrop[0].copy(alpha = 0.94f) else Color.Transparent)
+                // Fully opaque: at 94% the title scrolling beneath showed through
+                // as a ghost behind the icons.
+                .background(if (solid) Ink.palette.backdrop[0] else Color.Transparent)
                 .statusBarsPadding()
                 .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
@@ -822,7 +827,8 @@ private fun ExpandedShelf(
 
 /**
  * A poster with its title under it. Shows under way carry their episode as a
- * badge; the rest carry AniList's score where it has one.
+ * badge; the rest carry AniList's score where it has one, in the periwinkle
+ * of everything else rather than a gold that stood apart from it.
  */
 @Composable
 internal fun PosterCard(anime: Anime, onOpen: (Int) -> Unit) {
@@ -840,10 +846,12 @@ internal fun PosterCard(anime: Anime, onOpen: (Int) -> Unit) {
                 // only when there is no episode badge: side by side on a poster
                 // this narrow the two ran into each other.
                 anime.averageScore?.let { score ->
+                    // Tinted glass: a deep periwinkle at a little over half
+                    // strength, so the poster shows through while the white
+                    // still reads on a bright one.
                     Pill(
                         "★ $score%",
-                        brush = SolidColor(Color(0xB30C0B1C)),
-                        color = Color(0xFFFFD86B),
+                        brush = SolidColor(Color(0x8C3A42C8)),
                         modifier = Modifier.align(Alignment.TopEnd).padding(7.dp)
                     )
                 }

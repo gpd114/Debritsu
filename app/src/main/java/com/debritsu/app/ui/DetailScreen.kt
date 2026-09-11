@@ -489,7 +489,7 @@ fun DetailScreen(
                     Text(
                         buildAnnotatedString {
                             anime?.averageScore?.let { avg ->
-                                withStyle(SpanStyle(color = Ink.Gold, fontWeight = FontWeight.ExtraBold)) { append("★ $avg%") }
+                                withStyle(SpanStyle(color = Ink.Candy, fontWeight = FontWeight.ExtraBold)) { append("★ $avg%") }
                                 append("  ·  ")
                             }
                             append(
@@ -880,7 +880,7 @@ fun DetailScreen(
                                 Text(
                                     rec.averageScore?.let { "★ $it%" } ?: " ",
                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
-                                    color = Ink.Gold,
+                                    color = Ink.Candy,
                                     modifier = Modifier.padding(top = 10.dp)
                                 )
                                 // Both lines reserved, for the same reason as
