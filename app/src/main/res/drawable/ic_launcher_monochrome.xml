@@ -1,15 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A crescent moon whose opening frames a play triangle: night + playback. -->
+<!--
+  The onigiri as one flat shape for themed icons, which the system tints. The
+  nori and the face are cut out of it — the nori leaving a thin rim of rice at
+  the flat edge — so it still reads as the rice ball, not a plain play button.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
 
     <path
         android:fillColor="#FFFFFFFF"
         android:fillType="evenOdd"
-        android:pathData="M54,26a28,28 0,1 0,0 56a28,28 0,1 0,0 -56zM64,26.5a23,23 0,1 1,0 55a23,23 0,1 1,0 -55z" />
-
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M55,41L55,67L75,54Z" />
+        android:pathData="M44.8,34.8Q59.4,39.4 71.2,49.2Q80,54 71.2,58.8Q59.4,68.6 44.8,73.2Q36,78 36,68Q33,54 36,40Q36,30 44.8,34.8zM40,43h5a2,2 0 0,1 2,2v18a2,2 0 0,1 -2,2h-5a2,2 0 0,1 -2,-2v-18a2,2 0 0,1 2,-2zM51,51.6Q55,45.2 59,51.6L57.2,51.9Q55,48.8 52.8,51.9zM60,51.6Q64,45.2 68,51.6L66.2,51.9Q64,48.8 61.8,51.9zM56.3,56.3Q58.8,60.4 61.3,56.3L60.1,56Q58.8,58.2 57.5,56z" />
 </vector>
