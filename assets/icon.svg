@@ -1,0 +1,57 @@
+<!--
+  Debritsu's icon, the master copy. An onigiri on its side is a play button.
+
+  This is the full 108-unit adaptive-icon canvas: a launcher shows only the
+  central 72 (a circle of radius 36 at 54,54 on round masks) and every part
+  that matters sits inside radius 33. The Android drawables in
+  app/src/main/res/drawable/ic_launcher_*.xml are hand translations of the two
+  groups below; the TV banner, Windows icon and README logo are rendered from
+  this file. Change it here first, then carry the change across.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="1080" height="1080">
+<defs>
+<linearGradient id="bg" x1="18" y1="18" x2="90" y2="90" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1E0F4A"/><stop offset="1" stop-color="#7C4DEB"/></linearGradient>
+<linearGradient id="rice" x1="36" y1="30" x2="72" y2="78" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.6" stop-color="#F4F0FC"/><stop offset="1" stop-color="#D6CCF0"/></linearGradient>
+<linearGradient id="nori" x1="28" y1="54" x2="47" y2="54" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#101A15"/><stop offset="1" stop-color="#2C4237"/></linearGradient>
+<path id="ob" d="M44.8 34.8Q59.4 39.4 71.2 49.2Q80 54 71.2 58.8Q59.4 68.6 44.8 73.2Q36 78 36 68Q33 54 36 40Q36 30 44.8 34.8Z"/>
+<clipPath id="obc"><use href="#ob"/></clipPath>
+<path id="spk" d="M0 -4Q0.6 -0.6 4 0Q0.6 0.6 0 4Q-0.6 0.6 -4 0Q-0.6 -0.6 0 -4Z"/>
+<ellipse id="grain" rx="1.6" ry="0.8"/>
+</defs>
+
+<g id="background">
+<rect width="108" height="108" fill="url(#bg)"/>
+<g fill="#FFFFFF" fill-opacity="0.85">
+<use href="#spk" transform="translate(29 35) scale(0.9)"/>
+<use href="#spk" transform="translate(81 70) scale(0.7)"/>
+<use href="#spk" transform="translate(78 31) scale(0.5)"/>
+</g>
+</g>
+
+<g id="foreground">
+<ellipse cx="57" cy="84.5" rx="20" ry="3.2" fill="#000" fill-opacity="0.35"/>
+<use href="#ob" fill="#9C8BC9" transform="translate(0 5)"/>
+<use href="#ob" fill="url(#rice)"/>
+<g clip-path="url(#obc)">
+<g fill="#CFC3EE" fill-opacity="0.55">
+<use href="#grain" transform="translate(52 42) rotate(25)"/>
+<use href="#grain" transform="translate(60 47) rotate(-15)"/>
+<use href="#grain" transform="translate(67 53) rotate(40)"/>
+<use href="#grain" transform="translate(55 51) rotate(-35)"/>
+<use href="#grain" transform="translate(62 60) rotate(10)"/>
+<use href="#grain" transform="translate(53 65) rotate(55)"/>
+<use href="#grain" transform="translate(57 70) rotate(-20)"/>
+<use href="#grain" transform="translate(50 58) rotate(70)"/>
+<use href="#grain" transform="translate(66 63) rotate(-50)"/>
+<use href="#grain" transform="translate(49 46) rotate(-60)"/>
+</g>
+<rect x="28" y="41.5" width="19" height="25" rx="2.2" fill="url(#nori)"/>
+<path d="M44.5 43.5L44.5 64.5" stroke="#FFFFFF" stroke-opacity="0.14" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M38 41.5L38 66.5M41.5 41.5L41.5 66.5" stroke="#000000" stroke-opacity="0.12" stroke-width="0.5"/>
+</g>
+<path d="M52 51q3 -4 6 0M61 51q3 -4 6 0" stroke="#2A1466" stroke-width="2.3" stroke-linecap="round" fill="none"/>
+<path d="M56.5 56.5q2.3 2.6 4.6 0" stroke="#E0457B" stroke-width="2" stroke-linecap="round" fill="none"/>
+<circle cx="51.5" cy="57" r="2.2" fill="#FF6B8B" fill-opacity="0.7"/>
+<circle cx="66.5" cy="57" r="2.2" fill="#FF6B8B" fill-opacity="0.7"/>
+</g>
+</svg>
