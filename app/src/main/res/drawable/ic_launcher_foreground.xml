@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   An onigiri lying on its side, which makes it a play button: glossy rice on a
-  thicker lavender edge, a shadow on the ground, nori wrapped round the flat
-  side, and a happy face — a sibling to IPTerebi's Terebi-kun. Everything sits
-  inside the 66-unit safe circle of the 108-unit canvas, so no launcher mask
-  clips it. Source artwork: assets/icon.svg.
+  thicker lavender edge, a shadow on the ground, nori on the flat side, a happy
+  face and a scatter of light sesame — a sibling to IPTerebi's Terebi-kun.
+  Everything sits inside the 66-unit safe circle of the 108-unit canvas, so no
+  launcher mask clips it. Source artwork: assets/icon.svg.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
@@ -16,105 +16,80 @@
     <!-- Shadow on the ground. -->
     <path
         android:fillColor="#000000"
-        android:fillAlpha="0.35"
-        android:pathData="M37,84.5a20,3.2 0 1,0 40,0a20,3.2 0 1,0 -40,0z" />
+        android:fillAlpha="0.32"
+        android:pathData="M37,84a20,3.2 0 1,0 40,0a20,3.2 0 1,0 -40,0z" />
 
     <!-- The rice ball's thick edge, then its face. -->
     <group android:translateY="5">
         <path
             android:fillColor="#9C8BC9"
-            android:pathData="M44.8,34.8Q59.4,39.4 71.2,49.2Q80,54 71.2,58.8Q59.4,68.6 44.8,73.2Q36,78 36,68Q33,54 36,40Q36,30 44.8,34.8z" />
+            android:pathData="M44.8,34.8L71.2,49.2Q80,54 71.2,58.8L44.8,73.2Q36,78 36,68L36,40Q36,30 44.8,34.8z" />
     </group>
-    <path android:pathData="M44.8,34.8Q59.4,39.4 71.2,49.2Q80,54 71.2,58.8Q59.4,68.6 44.8,73.2Q36,78 36,68Q33,54 36,40Q36,30 44.8,34.8z">
+    <path android:pathData="M44.8,34.8L71.2,49.2Q80,54 71.2,58.8L44.8,73.2Q36,78 36,68L36,40Q36,30 44.8,34.8z">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:type="linear"
-                android:startX="36"
-                android:startY="30"
-                android:endX="72"
-                android:endY="78">
+                android:startX="54"
+                android:startY="33.24"
+                android:endX="54"
+                android:endY="74.76">
                 <item android:offset="0" android:color="#FFFFFFFF" />
-                <item android:offset="0.6" android:color="#FFF4F0FC" />
-                <item android:offset="1" android:color="#FFD6CCF0" />
+                <item android:offset="1" android:color="#FFDCD3F2" />
             </gradient>
         </aapt:attr>
     </path>
 
-    <!-- Everything cut to the rice ball's outline: grains, then the nori. -->
+    <!-- Nori, cut to the rice ball's outline. -->
     <group>
-        <clip-path android:pathData="M44.8,34.8Q59.4,39.4 71.2,49.2Q80,54 71.2,58.8Q59.4,68.6 44.8,73.2Q36,78 36,68Q33,54 36,40Q36,30 44.8,34.8z" />
-
-        <group android:rotation="25" android:pivotX="52" android:pivotY="42">
-            <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M50.4,42a1.6,0.8 0 1,0 3.2,0a1.6,0.8 0 1,0 -3.2,0z" />
-        </group>
-        <group android:rotation="-15" android:pivotX="60" android:pivotY="47">
-            <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M58.4,47a1.6,0.8 0 1,0 3.2,0a1.6,0.8 0 1,0 -3.2,0z" />
-        </group>
-        <group android:rotation="40" android:pivotX="67" android:pivotY="53">
-            <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M65.4,53a1.6,0.8 0 1,0 3.2,0a1.6,0.8 0 1,0 -3.2,0z" />
-        </group>
-        <group android:rotation="-35" android:pivotX="55" android:pivotY="51">
-            <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M53.4,51a1.6,0.8 0 1,0 3.2,0a1.6,0.8 0 1,0 -3.2,0z" />
-        </group>
-        <group android:rotation="10" android:pivotX="62" android:pivotY="60">
-            <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M60.4,60a1.6,0.8 0 1,0 3.2,0a1.6,0.8 0 1,0 -3.2,0z" />
-        </group>
-        <group android:rotation="55" android:pivotX="53" android:pivotY="65">
-            <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M51.4,65a1.6,0.8 0 1,0 3.2,0a1.6,0.8 0 1,0 -3.2,0z" />
-        </group>
-        <group android:rotation="-20" android:pivotX="57" android:pivotY="70">
-            <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M55.4,70a1.6,0.8 0 1,0 3.2,0a1.6,0.8 0 1,0 -3.2,0z" />
-        </group>
-        <group android:rotation="70" android:pivotX="50" android:pivotY="58">
-            <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M48.4,58a1.6,0.8 0 1,0 3.2,0a1.6,0.8 0 1,0 -3.2,0z" />
-        </group>
-        <group android:rotation="-50" android:pivotX="66" android:pivotY="63">
-            <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M64.4,63a1.6,0.8 0 1,0 3.2,0a1.6,0.8 0 1,0 -3.2,0z" />
-        </group>
-        <group android:rotation="-60" android:pivotX="49" android:pivotY="46">
-            <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M47.4,46a1.6,0.8 0 1,0 3.2,0a1.6,0.8 0 1,0 -3.2,0z" />
-        </group>
-
-        <!-- Nori, with a sheen down its edge and two faint seams. -->
-        <path android:pathData="M30.2,41.5h14.6a2.2,2.2 0 0,1 2.2,2.2v20.6a2.2,2.2 0 0,1 -2.2,2.2h-14.6a2.2,2.2 0 0,1 -2.2,-2.2v-20.6a2.2,2.2 0 0,1 2.2,-2.2z">
+        <clip-path android:pathData="M44.8,34.8L71.2,49.2Q80,54 71.2,58.8L44.8,73.2Q36,78 36,68L36,40Q36,30 44.8,34.8z" />
+        <path android:pathData="M30,41h13.5v26h-13.5z">
             <aapt:attr name="android:fillColor">
                 <gradient
                     android:type="linear"
-                    android:startX="28"
+                    android:startX="30"
                     android:startY="54"
-                    android:endX="47"
+                    android:endX="43.5"
                     android:endY="54">
-                    <item android:offset="0" android:color="#FF101A15" />
-                    <item android:offset="1" android:color="#FF2C4237" />
+                    <item android:offset="0" android:color="#FF15201B" />
+                    <item android:offset="1" android:color="#FF2E4238" />
                 </gradient>
             </aapt:attr>
         </path>
-        <path
-            android:strokeColor="#FFFFFF"
-            android:strokeAlpha="0.14"
-            android:strokeWidth="1.2"
-            android:strokeLineCap="round"
-            android:pathData="M44.5,43.5L44.5,64.5" />
-        <path
-            android:strokeColor="#000000"
-            android:strokeAlpha="0.12"
-            android:strokeWidth="0.5"
-            android:pathData="M38,41.5L38,66.5M41.5,41.5L41.5,66.5" />
+    </group>
+
+    <!-- Light sesame, kept clear of the face: three above, three below. -->
+    <group android:rotation="30" android:pivotX="50" android:pivotY="43.5">
+        <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M49.2,43.5a0.8,1.5 0 1,0 1.6,0a0.8,1.5 0 1,0 -1.6,0z" />
+    </group>
+    <group android:rotation="-25" android:pivotX="56.5" android:pivotY="45">
+        <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M55.7,45a0.8,1.5 0 1,0 1.6,0a0.8,1.5 0 1,0 -1.6,0z" />
+    </group>
+    <group android:rotation="65" android:pivotX="62" android:pivotY="47.5">
+        <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M61.2,47.5a0.8,1.5 0 1,0 1.6,0a0.8,1.5 0 1,0 -1.6,0z" />
+    </group>
+    <group android:rotation="10" android:pivotX="49.5" android:pivotY="64">
+        <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M48.7,64a0.8,1.5 0 1,0 1.6,0a0.8,1.5 0 1,0 -1.6,0z" />
+    </group>
+    <group android:rotation="-40" android:pivotX="55.5" android:pivotY="65.5">
+        <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M54.7,65.5a0.8,1.5 0 1,0 1.6,0a0.8,1.5 0 1,0 -1.6,0z" />
+    </group>
+    <group android:rotation="70" android:pivotX="60" android:pivotY="61.5">
+        <path android:fillColor="#CFC3EE" android:fillAlpha="0.55" android:pathData="M59.2,61.5a0.8,1.5 0 1,0 1.6,0a0.8,1.5 0 1,0 -1.6,0z" />
     </group>
 
     <!-- The face: happy eyes, a smile, blushing cheeks. -->
     <path
         android:strokeColor="#2A1466"
-        android:strokeWidth="2.3"
+        android:strokeWidth="2.4"
         android:strokeLineCap="round"
-        android:pathData="M52,51q3,-4 6,0M61,51q3,-4 6,0" />
+        android:pathData="M49,51q3,-4 6,0M58,51q3,-4 6,0" />
     <path
         android:strokeColor="#E0457B"
-        android:strokeWidth="2"
+        android:strokeWidth="2.2"
         android:strokeLineCap="round"
-        android:pathData="M56.5,56.5q2.3,2.6 4.6,0" />
+        android:pathData="M53.5,56.5q2.5,2.8 5,0" />
     <path
         android:fillColor="#FF6B8B"
         android:fillAlpha="0.7"
-        android:pathData="M49.3,57a2.2,2.2 0 1,0 4.4,0a2.2,2.2 0 1,0 -4.4,0zM64.3,57a2.2,2.2 0 1,0 4.4,0a2.2,2.2 0 1,0 -4.4,0z" />
+        android:pathData="M46.2,57a2.3,2.3 0 1,0 4.6,0a2.3,2.3 0 1,0 -4.6,0zM61.7,57a2.3,2.3 0 1,0 4.6,0a2.3,2.3 0 1,0 -4.6,0z" />
 </vector>

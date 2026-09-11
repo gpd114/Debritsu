@@ -27,19 +27,19 @@
     </path>
 
     <!-- Sparkles. -->
-    <group android:translateX="29" android:translateY="35" android:scaleX="0.9" android:scaleY="0.9">
+    <group android:translateX="29" android:translateY="36" android:scaleX="0.9" android:scaleY="0.9">
         <path
             android:fillColor="#FFFFFF"
             android:fillAlpha="0.85"
             android:pathData="M0,-4Q0.6,-0.6 4,0Q0.6,0.6 0,4Q-0.6,0.6 -4,0Q-0.6,-0.6 0,-4z" />
     </group>
-    <group android:translateX="81" android:translateY="70" android:scaleX="0.7" android:scaleY="0.7">
+    <group android:translateX="81" android:translateY="68" android:scaleX="0.7" android:scaleY="0.7">
         <path
             android:fillColor="#FFFFFF"
             android:fillAlpha="0.85"
             android:pathData="M0,-4Q0.6,-0.6 4,0Q0.6,0.6 0,4Q-0.6,0.6 -4,0Q-0.6,-0.6 0,-4z" />
     </group>
-    <group android:translateX="78" android:translateY="31" android:scaleX="0.5" android:scaleY="0.5">
+    <group android:translateX="77" android:translateY="32" android:scaleX="0.5" android:scaleY="0.5">
         <path
             android:fillColor="#FFFFFF"
             android:fillAlpha="0.85"
