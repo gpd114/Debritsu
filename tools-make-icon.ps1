@@ -1,31 +1,26 @@
-# Builds the Windows icon from the Android launcher artwork.
+# Builds the Windows icon from assets/icon-desktop.png.
 #
-# The phone's icon is a single full-bleed PNG — the adaptive foreground layer is
-# deliberately empty — so there is nothing to composite, only to resize. Kept as
-# a script rather than done once by hand so the icon can be regenerated when the
-# artwork changes, and so it is obvious where the .ico came from.
+# That PNG is the icon master (assets/icon.svg) rendered at 1024: the central 72
+# units of the 108-unit adaptive canvas — the part a phone launcher shows — as a
+# rounded tile with transparent corners. Windows shows the whole square, so it
+# arrives already framed and there is nothing left to do here but resize. The
+# SVG itself can't be read from PowerShell, which is why the render is kept.
 #
-# Android masks its 108dp icon down to roughly the central 72dp, so the phone
-# never shows the outer edge. Windows shows the whole square, so the artwork is
-# cropped slightly here to frame it the way the phone does rather than revealing
-# margin nobody designed.
+# Kept as a script rather than done once by hand so the icon can be regenerated
+# when the artwork changes, and so it is obvious where the .ico came from.
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Drawing
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$source = Join-Path $root "app\src\main\res\mipmap-xxxhdpi\ic_launcher_background.png"
+$source = Join-Path $root "assets\icon-desktop.png"
 $target = Join-Path $root "desktop\icon.ico"
 $png = Join-Path $root "desktop\src\main\resources\icon.png"
 
 $sizes = @(16, 24, 32, 48, 64, 128, 256)
 
 $src = [System.Drawing.Image]::FromFile($source)
-
-# 8% off each edge: enough to lose the margin the phone's mask hides, not so
-# much that the artwork is cut into.
-$inset = [int]($src.Width * 0.08)
-$crop = New-Object System.Drawing.Rectangle($inset, $inset, ($src.Width - 2 * $inset), ($src.Height - 2 * $inset))
+$crop = New-Object System.Drawing.Rectangle(0, 0, $src.Width, $src.Height)
 
 function Resize-To([int]$size) {
     $bmp = New-Object System.Drawing.Bitmap($size, $size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)

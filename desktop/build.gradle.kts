@@ -125,7 +125,7 @@ compose.desktop {
             description = "Anime player. Stremio addons, a debrid provider, AniList."
             vendor = "Debritsu"
             windows {
-                // Built from the Android launcher artwork by tools-make-icon.ps1.
+                // Built from assets/icon-desktop.png by tools-make-icon.ps1.
                 // Without this the executable carries Compose's own stock icon,
                 // which says nothing about what the program is.
                 iconFile.set(project.file("icon.ico"))
