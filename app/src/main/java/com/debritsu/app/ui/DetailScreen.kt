@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,6 +79,9 @@ fun DetailScreen(
     anilistId: Int,
     onBack: () -> Unit,
     onOpen: (Int) -> Unit = {},
+    // Start the next episode as soon as the show has loaded — how Resume on
+    // the home screen gets from a card to playing.
+    autoPlay: Boolean = false,
     // A show to draw instead of asking AniList for one. Only the debug-build
     // preview passes it, so the look can be checked with AniList unreachable;
     // the app itself never does.
@@ -415,9 +419,20 @@ fun DetailScreen(
         }
     }
 
-    // No app bar. The banner runs up under the status bar with a glass back
-    // button over it, and the title sits beside the poster below — in full, at
-    // a size worth reading. An app bar title had a single line and a back
+    // Opened by Resume on the home screen: play once the show has loaded, as
+    // though its play button had been pressed. Once only — saved, so coming
+    // back from the player does not set it off again.
+    var autoPlayed by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(anime) {
+        if (autoPlay && !autoPlayed && anime != null) {
+            autoPlayed = true
+            findStreams(selectedEpisode)
+        }
+    }
+
+    // No app bar. The show's art runs across the top under the status bar with
+    // a back button over it, and the title sits below it on the fade — in full,
+    // at a size worth reading. An app bar title had a single line and a back
     // button's width taken out of it, so it truncated the long titles that
     // most need showing, to repeat something already on screen.
     Scaffold(containerColor = Color.Transparent) { pad ->
@@ -426,183 +441,98 @@ fun DetailScreen(
             contentPadding = PaddingValues(bottom = pad.calculateBottomPadding())
         ) {
             item {
-                // 170dp, status bar included: cropped, but only a little.
+                // The art at close to its own shape rather than a band cut
+                // across it. TVDB's fanart where ani.zip has it — 1920x1080, so
+                // it shows nearly whole — else AniList's banner or cover.
                 //
-                // The band's height decides how much of a banner is lost,
-                // because cropping to cover scales by whichever side needs it
-                // more, and for a 1900x400 banner in a band this wide that is
-                // always the height. On a 411dp screen:
-                //
-                //   220dp  39% of the width shows, magnified 1.45x and soft
-                //   170dp  51% shows, at 1.1x — barely enlarged
-                //   150dp  58% shows, at 1.0x
-                //
-                // It was 150 below an app bar. With the bar gone the band also
-                // sits under the status bar, and the poster overlaps its
-                // lower edge, so a little more height keeps as much picture in
-                // view as before without softening it noticeably.
-                //
-                // Showing all of it inside a full 220dp band was tried — the
-                // banner laid sharp over a blurred enlargement of itself to
-                // fill the space around it — and looked muddy.
-                Box(Modifier.fillMaxWidth().height(170.dp)) {
-                    AsyncImage(
-                        model = anime?.banner ?: anime?.cover,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    // Dimmed at the top so the clock and the back button read
-                    // over any picture, then faded into the page so nothing
-                    // has a hard edge.
-                    Box(
-                        Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(
-                                0f to Color(0x8C110B24),
-                                0.32f to Color(0x00110B24),
-                                0.62f to Color(0x59180E36),
-                                1f to Color(0xFF180E36)
-                            )
-                        )
-                    )
-                    GlassIconButton(
+                // A band was the right call for the banner alone: cropping to
+                // cover scales by whichever side needs it more, and for a
+                // 1900x400 banner that is always the height, so every extra dp
+                // of band cost width and sharpness (220dp showed 39% of it at
+                // 1.45x). Fanart is the shape of a screen, and a banner at this
+                // height is still only enlarged by about half — while the words
+                // no longer sit on the picture at all but below it.
+                Box {
+                    WideArt(anime?.let { rememberArt(it) }, Modifier.fillMaxWidth().aspectRatio(1.6f))
+                    OverlayIconButton(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         "Back",
                         onBack,
-                        Modifier.statusBarsPadding().padding(start = 16.dp, top = 6.dp)
+                        Modifier.statusBarsPadding().padding(start = 12.dp, top = 6.dp)
                     )
                 }
             }
             item {
-                // Poster and title, the poster lifted over the banner's edge.
-                Row(
-                    verticalAlignment = Alignment.Bottom,
-                    // 60dp: far enough to overlap the banner, short of the
-                    // back button, which a deeper lift ran into.
-                    modifier = Modifier.pullUp(60.dp).padding(horizontal = 18.dp)
-                ) {
-                    GlossyPoster(anime?.cover, anime?.title, Modifier.width(108.dp))
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f).padding(bottom = 2.dp)) {
-                        Text(
-                            anime?.title ?: "",
-                            style = MaterialTheme.typography.displaySmall.copy(
-                                fontSize = 23.sp,
-                                lineHeight = 27.sp,
-                                shadow = Shadow(Color(0xFF1B0E3F), Offset(0f, 5f), 0f)
-                            ),
-                            maxLines = 4,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            listOfNotNull(
-                                anime?.format?.let { if (it.length <= 3) it else it.titleCase() },
-                                anime?.episodes?.let { if (it == 1) "1 ep" else "$it eps" },
-                                anime?.durationMins?.let { "${it}m" },
-                                anime?.seasonLabel?.titleCase()
-                            ).forEach { Pill(it) }
-                            anime?.airingStatus?.let { Pill(it, brush = Gloss.Pink) }
-                        }
+                Column(Modifier.pullUp(56.dp).padding(horizontal = 20.dp)) {
+                    val kicker = when {
+                        (anime?.progress ?: 0) > 0 -> "CONTINUE WATCHING"
+                        anime?.airingStatus == "Releasing" -> "AIRING NOW"
+                        else -> null
                     }
-                }
-            }
-            item {
-                Column(Modifier.padding(horizontal = 18.dp)) {
+                    kicker?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp),
+                            color = Ink.Candy,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                    }
+                    Text(
+                        anime?.title ?: "",
+                        style = MaterialTheme.typography.displaySmall.copy(fontSize = 28.sp, lineHeight = 31.sp),
+                        color = Ink.Bone,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
                     // Score first — it is the thing that decides whether to
-                    // bother — with your own place on the list opposite it.
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 16.dp)
-                    ) {
-                        anime?.averageScore?.let { avg ->
-                            val badge = RoundedCornerShape(16.dp)
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .raised(badge)
-                                    .clip(badge)
-                                    .background(
-                                        Brush.verticalGradient(
-                                            listOf(Color(0xFF3A2A1A), Color(0xFF2A1F12))
-                                        )
-                                    )
-                                    .border(1.dp, Gloss.TopLight, badge)
-                                    .padding(start = 11.dp, end = 13.dp, top = 7.dp, bottom = 7.dp)
-                            ) {
-                                Text(
-                                    "★ $avg%",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 17.sp),
-                                    color = Ink.Gold
-                                )
-                                val extra = listOfNotNull(
-                                    anime?.popularity?.let { "#$it by popularity" },
-                                    anime?.favourites?.takeIf { it > 0 }?.let { "%,d ♥".format(it) }
+                    // bother — then the facts, on one line.
+                    Text(
+                        buildAnnotatedString {
+                            anime?.averageScore?.let { avg ->
+                                withStyle(SpanStyle(color = Ink.Gold, fontWeight = FontWeight.ExtraBold)) { append("★ $avg%") }
+                                append("  ·  ")
+                            }
+                            append(
+                                listOfNotNull(
+                                    anime?.format?.let { if (it.length <= 3) it else it.titleCase() },
+                                    anime?.episodes?.let { if (it == 1) "1 episode" else "$it episodes" },
+                                    anime?.durationMins?.let { "${it}m" },
+                                    anime?.seasonLabel?.titleCase(),
+                                    anime?.airingStatus
                                 ).joinToString("  ·  ")
-                                if (extra.isNotEmpty()) {
-                                    Text(
-                                        "  $extra",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color(0xFFE6CF96),
-                                        maxLines = 1
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(Modifier.weight(1f).widthIn(min = 10.dp))
-                        if (Settings.aniListToken.isNotEmpty()) {
-                            val onList = anime?.listStatus != null
-                            val pill = RoundedCornerShape(16.dp)
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .raised(pill, if (onList) Gloss.VioletEdge else Gloss.Edge)
-                                    .clip(pill)
-                                    .background(if (onList) Gloss.Violet else Gloss.Glass)
-                                    .border(1.dp, Gloss.TopLight, pill)
-                                    .clickable { showListEditor = true }
-                                    .padding(horizontal = 13.dp, vertical = 8.dp)
-                            ) {
-                                Text(
-                                    statusLabel(anime?.listStatus) +
-                                        if ((anime?.score ?: 0.0) > 0) " · ${anime?.score?.toInt()}/10" else "",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
-                                    color = if (onList) Color.White else Ink.Mist
-                                )
-                                Icon(
-                                    Icons.Default.Edit,
-                                    contentDescription = "Edit list entry",
-                                    tint = if (onList) Color.White else Ink.Mist,
-                                    modifier = Modifier.padding(start = 7.dp).size(14.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    if (!anime?.genres.isNullOrEmpty()) {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.padding(top = 14.dp)
+                            )
+                        },
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                        color = Ink.Mist,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    if (Settings.aniListToken.isNotEmpty()) {
+                        // Your own place on the list, and the way to change it.
+                        val onList = anime?.listStatus != null
+                        val shape = RoundedCornerShape(14.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .padding(top = 12.dp)
+                                .then(if (onList) Modifier.raised(shape, Gloss.SelectedEdge) else Modifier)
+                                .clip(shape)
+                                .background(if (onList) Gloss.Selected else SolidColor(Ink.Quiet))
+                                .clickable { showListEditor = true }
+                                .padding(horizontal = 13.dp, vertical = 7.dp)
                         ) {
-                            anime?.genres?.take(5)?.forEach { Pill(it, color = Color(0xFFCFC6EA)) }
+                            Text(
+                                statusLabel(anime?.listStatus) +
+                                    if ((anime?.score ?: 0.0) > 0) " · ${anime?.score?.toInt()}/10" else "",
+                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
+                                color = if (onList) Color.White else Ink.QuietText
+                            )
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Edit list entry",
+                                tint = if (onList) Color.White else Ink.QuietText,
+                                modifier = Modifier.padding(start = 7.dp).size(14.dp)
+                            )
                         }
-                    }
-                    anime?.studio?.let {
-                        Text(
-                            buildAnnotatedString {
-                                append("Studio · ")
-                                withStyle(SpanStyle(color = Color(0xFFDCD4F5), fontWeight = FontWeight.Bold)) {
-                                    append(it)
-                                }
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF9C94B8),
-                            modifier = Modifier.padding(top = 10.dp)
-                        )
                     }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -613,7 +543,7 @@ fun DetailScreen(
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.width(6.dp))
                             val resumeFrac = remember(selectedEpisode, progressTick) {
                                 Progress.fraction(anilistId, selectedEpisode)
                             }
@@ -632,12 +562,7 @@ fun DetailScreen(
                         // past it — which left downloading unreachable for
                         // anyone on the default settings. This always opens it,
                         // whatever auto-play is set to.
-                        GlassIconButton(
-                            Icons.Default.Download,
-                            "Choose a source or download",
-                            { manualSearch(selectedEpisode) },
-                            size = 54.dp
-                        )
+                        GlassButton("Sources", { manualSearch(selectedEpisode) })
                     }
                     Text(
                         anime?.description?.take(400) ?: "",
@@ -645,6 +570,28 @@ fun DetailScreen(
                         color = Ink.Mist,
                         modifier = Modifier.padding(top = 16.dp)
                     )
+                    if (!anime?.genres.isNullOrEmpty()) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(top = 12.dp)
+                        ) {
+                            anime?.genres?.take(5)?.forEach { Pill(it) }
+                        }
+                    }
+                    val small = listOfNotNull(
+                        anime?.studio,
+                        anime?.popularity?.let { "#$it by popularity" },
+                        anime?.favourites?.takeIf { it > 0 }?.let { "%,d ♥".format(it) }
+                    )
+                    if (small.isNotEmpty()) {
+                        Text(
+                            small.joinToString("  ·  "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Ink.Mist,
+                            modifier = Modifier.padding(top = 10.dp)
+                        )
+                    }
                 }
             }
             item {
@@ -752,7 +699,7 @@ fun DetailScreen(
                             Modifier
                                 .weight(7f)
                                 .fillMaxHeight()
-                                .then(if (playLit) Modifier.background(Gloss.Violet) else Modifier)
+                                .then(if (playLit) Modifier.background(Gloss.Selected) else Modifier)
                                 .clickable {
                                     selectedEpisode = ep
                                     pickedByArrow = false
@@ -766,7 +713,7 @@ fun DetailScreen(
                                     style = MaterialTheme.typography.labelLarge,
                                     color = when {
                                         playLit -> Color.White
-                                        watched -> Color(0xFF8C84A8)
+                                        watched -> Ink.Dim
                                         else -> Ink.Bone
                                     }
                                 )
@@ -812,7 +759,7 @@ fun DetailScreen(
                                 .fillMaxHeight()
                                 .background(
                                     if (selected) Color.White.copy(alpha = 0.25f)
-                                    else Color(0x14FFFFFF)
+                                    else Ink.Hairline
                                 )
                         )
 
@@ -820,7 +767,7 @@ fun DetailScreen(
                             Modifier
                                 .weight(3f)
                                 .fillMaxHeight()
-                                .then(if (arrowLit) Modifier.background(Gloss.Violet) else Modifier)
+                                .then(if (arrowLit) Modifier.background(Gloss.Selected) else Modifier)
                                 .clickable {
                                     selectedEpisode = ep
                                     pickedByArrow = true
@@ -839,7 +786,7 @@ fun DetailScreen(
                                     // violet ground would all but vanish.
                                     arrowLit -> Color.White
                                     held -> Ink.Candy
-                                    else -> Color(0xFF9C94B8)
+                                    else -> Ink.Dim
                                 }
                             )
                         }
@@ -985,7 +932,7 @@ fun DetailScreen(
     if (showSheet) {
         ModalBottomSheet(
             onDismissRequest = { showSheet = false },
-            containerColor = Color(0xFF1A1133)
+            containerColor = Ink.Sheet
         ) {
             Column(
                 Modifier
@@ -996,7 +943,7 @@ fun DetailScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Sources", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.width(10.dp))
-                    Pill("Episode $selectedEpisode", brush = Gloss.Pink)
+                    Pill("Episode $selectedEpisode", brush = Gloss.Tag)
                     if (streams.isNotEmpty()) {
                         Text(
                             "  ${streams.size} found",
@@ -1023,9 +970,9 @@ fun DetailScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .raised(card, Gloss.VioletEdge, 4.dp)
+                            .raised(card, Gloss.SelectedEdge, 4.dp)
                             .clip(card)
-                            .background(Gloss.Violet)
+                            .background(Gloss.Selected)
                             .border(1.dp, Gloss.TopLight, card)
                             .clickable {
                                 showSheet = false
@@ -1059,7 +1006,7 @@ fun DetailScreen(
                 if (searching) {
                     LinearProgressIndicator(
                         color = Ink.Candy,
-                        trackColor = Color(0x1AFFFFFF),
+                        trackColor = Ink.Edge,
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(2.dp))
                     )
                 }
@@ -1087,9 +1034,9 @@ fun DetailScreen(
                                 .clip(RoundedCornerShape(2.dp))
                                 .background(
                                     when {
-                                        s === bestStream -> Gloss.Pink
-                                        s.isDirect -> Gloss.Violet
-                                        else -> SolidColor(Color(0x1FFFFFFF))
+                                        s === bestStream -> Gloss.Tag
+                                        s.isDirect -> Gloss.Selected
+                                        else -> SolidColor(Ink.Edge)
                                     }
                                 )
                         )
@@ -1112,8 +1059,8 @@ fun DetailScreen(
                         }
                         Spacer(Modifier.width(10.dp))
                         when {
-                            s === bestStream -> Pill("Best", brush = Gloss.Pink)
-                            s.isDirect -> Pill("Direct", brush = Gloss.Violet)
+                            s === bestStream -> Pill("Best", brush = Gloss.Tag)
+                            s.isDirect -> Pill("Direct", brush = Gloss.Selected)
                             else -> Pill("Debrid", color = Ink.Mist)
                         }
                         IconButton(onClick = { download(s) }) {
@@ -1125,7 +1072,7 @@ fun DetailScreen(
                             )
                         }
                     }
-                    HorizontalDivider(color = Color(0x12FFFFFF))
+                    HorizontalDivider(color = Ink.Hairline)
                 }
             }
         }
@@ -1138,7 +1085,7 @@ fun DetailScreen(
 
         ModalBottomSheet(
             onDismissRequest = { showListEditor = false },
-            containerColor = Color(0xFF1A1133)
+            containerColor = Ink.Sheet
         ) {
             Column(
                 Modifier
@@ -1167,9 +1114,9 @@ fun DetailScreen(
                         val chip = RoundedCornerShape(14.dp)
                         Box(
                             Modifier
-                                .raised(chip, if (on) Gloss.VioletEdge else Gloss.Edge)
+                                .raised(chip, if (on) Gloss.SelectedEdge else Gloss.Edge)
                                 .clip(chip)
-                                .background(if (on) Gloss.Violet else Gloss.Chip)
+                                .background(if (on) Gloss.Selected else Gloss.Chip)
                                 .border(1.dp, Gloss.TopLight, chip)
                                 .clickable {
                                     scope.launch {
@@ -1227,13 +1174,7 @@ fun DetailScreen(
                     onValueChange = { pendingScore = it.toDouble() },
                     valueRange = 0f..10f,
                     steps = 9,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Ink.Candy,
-                        activeTrackColor = Ink.Iris,
-                        inactiveTrackColor = Color(0x26FFFFFF),
-                        activeTickColor = Color(0x66FFFFFF),
-                        inactiveTickColor = Color(0x33FFFFFF)
-                    )
+                    colors = glossySliderColors()
                 )
 
                 Spacer(Modifier.height(12.dp))
@@ -1308,7 +1249,7 @@ private fun WaitCard(
         modifier = Modifier
             .raised(shape, depth = 5.dp)
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(Color(0xFF2A1B55), Color(0xFF1A1133))))
+            .background(Gloss.Chip)
             .border(1.dp, Gloss.TopLight, shape)
             .padding(horizontal = 28.dp, vertical = 24.dp)
     ) {
@@ -1322,11 +1263,11 @@ private fun WaitCard(
             overflow = TextOverflow.Ellipsis
         )
         Spacer(Modifier.height(8.dp))
-        Pill("Episode $episode", brush = Gloss.Pink)
+        Pill("Episode $episode", brush = Gloss.Tag)
         Spacer(Modifier.height(18.dp))
         LinearProgressIndicator(
             color = Ink.Candy,
-            trackColor = Color(0x1AFFFFFF),
+            trackColor = Ink.Edge,
             modifier = Modifier.width(140.dp).clip(RoundedCornerShape(2.dp))
         )
         Spacer(Modifier.height(12.dp))
@@ -1346,15 +1287,6 @@ private fun WaitCard(
             Spacer(Modifier.height(14.dp))
             Pill("Cancel", color = Ink.Mist, onClick = it)
         }
-    }
-}
-
-/** Lifts content up over whatever is above it, giving the space back below. */
-private fun Modifier.pullUp(by: androidx.compose.ui.unit.Dp) = layout { measurable, constraints ->
-    val placeable = measurable.measure(constraints)
-    val px = by.roundToPx()
-    layout(placeable.width, (placeable.height - px).coerceAtLeast(0)) {
-        placeable.place(0, -px)
     }
 }
 

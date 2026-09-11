@@ -49,6 +49,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     var showAdvanced by remember { mutableStateOf(DEFAULT_ANILIST_CLIENT_ID.isEmpty()) }
     var newAddon by remember { mutableStateOf("") }
     var addons by remember { mutableStateOf(Settings.addons) }
+    var theme by remember { mutableStateOf(Settings.theme) }
     val signedIn = Settings.aniListToken.isNotEmpty()
     val fieldShape = RoundedCornerShape(16.dp)
 
@@ -65,10 +66,20 @@ fun SettingsScreen(onBack: () -> Unit) {
         ) {
 
             GlossyCard {
+                SectionTitle("Appearance")
+                ChoiceRow(
+                    listOf("pastel" to "Pastel", "night" to "Night"),
+                    theme,
+                    { theme = it; Settings.theme = it; applyTheme(it) }
+                )
+                Hint("Pastel is light lavender; Night is the dark theme. Both change at once.")
+            }
+
+            GlossyCard {
                 SectionTitle("AniList")
                 if (DEFAULT_ANILIST_CLIENT_ID.isNotEmpty() && !showAdvanced) {
                     Hint("Tap Sign in and approve access — nothing else to set up.")
-                    Pill("Use my own API client", color = Color(0xFFCDBBFF), onClick = { showAdvanced = true })
+                    Pill("Use my own API client", color = Ink.Link, onClick = { showAdvanced = true })
                 } else {
                     Hint(
                         "Create an API client at anilist.co/settings/developer with redirect URL " +
@@ -101,7 +112,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                         )
                     }
                     if (signedIn) {
-                        GlassButton("Sign out", color = Ink.Orchid) { Settings.aniListToken = "" }
+                        GlassButton("Sign out", { Settings.aniListToken = "" }, height = 46.dp, color = Ink.Orchid)
                     }
                 }
                 Hint(
@@ -144,7 +155,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0x12FFFFFF))
+                            .background(Ink.Quiet)
                             .padding(start = 12.dp)
                     ) {
                         Text(
@@ -218,7 +229,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     trailingIcon = {
                         Pill(
                             if (showDebridToken) "Hide" else "Show",
-                            color = Color(0xFFCDBBFF),
+                            color = Ink.Link,
                             onClick = { showDebridToken = !showDebridToken },
                             modifier = Modifier.padding(end = 10.dp)
                         )
@@ -348,23 +359,4 @@ private fun SectionTitle(text: String) {
 @Composable
 private fun Label(text: String) {
     Text(text, style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp), color = Ink.Bone)
-}
-
-/** A quiet frosted button for the secondary action beside a jelly one. */
-@Composable
-private fun GlassButton(text: String, color: Color = Ink.Bone, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(16.dp)
-    Box(
-        Modifier
-            .height(46.dp)
-            .raised(shape)
-            .clip(shape)
-            .background(Gloss.Glass)
-            .border(1.dp, Gloss.TopLight, shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text, style = MaterialTheme.typography.labelLarge, color = color)
-    }
 }

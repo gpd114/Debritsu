@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -55,60 +56,59 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 
 /**
- * The launcher icon's finish, carried into the app: things sit on a thicker
- * edge of a darker colour, catch light along their top, and the important ones
- * are jelly — a pink-to-violet sweep with a sheen across it.
+ * The launcher icon's finish, carried into the app: things sit on a slightly
+ * darker edge, catch light along their top, and the one action a screen is for
+ * is jelly — a periwinkle sweep with a sheen across it.
  *
- * Kept to a handful of modifiers and components so every screen draws the same
- * edge, the same highlight and the same jelly rather than approximating them.
+ * Every brush here is built from the current [Palette], so the same pieces
+ * serve both themes. Kept to a handful of modifiers and components so every
+ * screen draws the same edge, highlight and jelly rather than approximating.
  */
 object Gloss {
-    /** Pink into violet: the primary action, and progress. */
-    val Jelly = Brush.verticalGradient(
-        0f to Color(0xFFFFA6DA), 0.55f to Color(0xFFC45CF2), 1f to Color(0xFF8B3FE0)
-    )
-    val JellyEdge = Color(0xFF4A1896)
+    private val p get() = Ink.palette
 
-    /** Violet: selected things, badges, the list-status control. */
-    val Violet = Brush.verticalGradient(listOf(Color(0xFFA47BFF), Color(0xFF6D3FE0)))
-    val VioletEdge = Color(0xFF2A1466)
+    /** The primary action. */
+    val Jelly get() = Brush.verticalGradient(0f to p.jelly[0], 0.55f to p.jelly[1], 1f to p.jelly[2])
+    val JellyEdge get() = p.jellyEdge
 
-    /** Pink: "episode N" tags, airing status. */
-    val Pink = Brush.verticalGradient(listOf(Color(0xFFFF9BD5), Color(0xFFD9468F)))
+    /** Selected things: the lit episode, the chosen option, the list status. */
+    val Selected get() = Brush.verticalGradient(p.selected)
+    val SelectedEdge get() = p.selectedEdge
 
-    /** Raised chips and tiles. */
-    val Chip = Brush.verticalGradient(listOf(Color(0xFF2F1F5E), Color(0xFF241749)))
+    /** Tags: "Episode N", airing status, the best source. */
+    val Tag get() = Brush.verticalGradient(p.tag)
 
-    /** Frosted: icon buttons, the search field, quiet pills. */
-    val Glass = Brush.verticalGradient(listOf(Color(0x29FFFFFF), Color(0x0FFFFFFF)))
+    /** Raised chips, tiles and cards. */
+    val Chip get() = Brush.verticalGradient(p.chip)
+
+    /** Frosted: icon buttons and secondary buttons. */
+    val Glass get() = Brush.verticalGradient(p.glass)
 
     /** Progress bars, left to right. */
-    val Progress = Brush.horizontalGradient(listOf(Color(0xFFFF8CCB), Color(0xFF9B6BFF)))
+    val Progress get() = Brush.horizontalGradient(p.progress)
 
     /** What everything raised stands on. */
-    val Edge = Color(0xFF0C0720)
+    val Edge get() = p.raise
 
     /** Light catching the top rim, fading out a third of the way down. */
-    val TopLight = Brush.verticalGradient(0f to Color(0x40FFFFFF), 0.4f to Color(0x00FFFFFF))
+    val TopLight get() = Brush.verticalGradient(0f to p.topLight, 0.4f to p.topLight.copy(alpha = 0f))
 
-    /**
-     * The page: deep violet at the top, a glow off the top-left corner, near
-     * black by the bottom — the icon's background, stretched to a screen.
-     */
-    val Backdrop = Brush.verticalGradient(
-        0f to Color(0xFF1C1040), 0.45f to Color(0xFF110B24), 1f to Color(0xFF0B0816)
-    )
+    /** The page, top to bottom. */
+    val Backdrop get() = Brush.verticalGradient(0f to p.backdrop[0], 0.45f to p.backdrop[1], 1f to p.backdrop[2])
 }
 
-/** The page backdrop, glow included. */
-fun Modifier.glossyBackdrop() = background(Gloss.Backdrop).drawBehind {
-    drawRect(
-        Brush.radialGradient(
-            listOf(Color(0xCC34197A), Color(0x0034197A)),
-            center = Offset.Zero,
-            radius = size.width * 1.1f
+/** The page backdrop, with a soft glow off the top-left corner. */
+fun Modifier.glossyBackdrop(): Modifier {
+    val glow = Ink.palette.glow
+    return background(Gloss.Backdrop).drawBehind {
+        drawRect(
+            Brush.radialGradient(
+                listOf(glow, glow.copy(alpha = 0f)),
+                center = Offset.Zero,
+                radius = size.width * 1.1f
+            )
         )
-    )
+    }
 }
 
 /**
@@ -120,6 +120,15 @@ fun Modifier.raised(shape: Shape, edge: Color = Gloss.Edge, depth: Dp = 3.dp) = 
     val outline = shape.createOutline(size, layoutDirection, this)
     translate(top = depth.toPx()) { drawOutline(outline, edge) }
 }
+
+/**
+ * A soft coloured shadow under a card, for the pastel theme, where an edge
+ * alone reads flat against a light page. Nothing on Night, where it would
+ * not show. Put it before `clip`.
+ */
+fun Modifier.softShadow(shape: Shape, elevation: Dp = 10.dp): Modifier =
+    if (Ink.palette.dark) this
+    else shadow(elevation, shape, clip = false, ambientColor = Color(0x335E69EA), spotColor = Color(0x405E69EA))
 
 /**
  * A diagonal sheen from the top-left corner, over whatever is underneath —
@@ -147,36 +156,66 @@ fun JellyButton(
     modifier: Modifier = Modifier,
     brush: Brush = Gloss.Jelly,
     edge: Color = Gloss.JellyEdge,
-    height: Dp = 54.dp,
-    shape: Shape = RoundedCornerShape(20.dp),
+    height: Dp = 52.dp,
+    shape: Shape = RoundedCornerShape(26.dp),
     content: @Composable RowScope.() -> Unit
 ) {
     Row(
         modifier
             .height(height)
-            .raised(shape, edge, 5.dp)
+            .softShadow(shape, 12.dp)
+            .raised(shape, edge, 4.dp)
             .clip(shape)
             .background(brush)
             .drawBehind {
-                val inset = 14.dp.toPx()
+                val inset = 16.dp.toPx()
                 drawRoundRect(
                     Brush.verticalGradient(
-                        listOf(Color(0x4DFFFFFF), Color(0x00FFFFFF)),
+                        listOf(Color(0x59FFFFFF), Color(0x00FFFFFF)),
                         startY = 4.dp.toPx(),
-                        endY = 16.dp.toPx()
+                        endY = 15.dp.toPx()
                     ),
                     topLeft = Offset(inset, 4.dp.toPx()),
-                    size = Size(size.width - inset * 2, 12.dp.toPx()),
+                    size = Size(size.width - inset * 2, 11.dp.toPx()),
                     cornerRadius = CornerRadius(8.dp.toPx())
                 )
             }
-            .border(1.5.dp, Gloss.TopLight, shape)
+            .border(1.5.dp, Brush.verticalGradient(0f to Color(0x66FFFFFF), 0.4f to Color(0x00FFFFFF)), shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
         CompositionLocalProvider(LocalContentColor provides Color.White) { content() }
+    }
+}
+
+/**
+ * A frosted secondary button with a label — Details, Sources, Sign out. Sits
+ * beside a [JellyButton] without competing with it.
+ */
+@Composable
+fun GlassButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    height: Dp = 52.dp,
+    color: Color = Ink.Link
+) {
+    val shape = RoundedCornerShape(height / 2)
+    Box(
+        modifier
+            .height(height)
+            .softShadow(shape, 6.dp)
+            .raised(shape)
+            .clip(shape)
+            .background(Gloss.Glass)
+            .border(1.dp, Gloss.TopLight, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 22.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp), color = color)
     }
 }
 
@@ -188,16 +227,16 @@ fun GlassIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     size: Dp = 42.dp,
-    tint: Color = Color(0xFFE9E2FF)
+    tint: Color = Ink.GlassIcon
 ) {
     val shape = RoundedCornerShape(size * 0.34f)
     Box(
         modifier
             .size(size)
+            .softShadow(shape, 6.dp)
             .raised(shape)
             .clip(shape)
             .background(Gloss.Glass)
-            .background(Color(0x33140C2E))
             .border(1.dp, Gloss.TopLight, shape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -207,23 +246,51 @@ fun GlassIconButton(
 }
 
 /**
+ * A round icon button for laying over artwork — the hero's search, downloads
+ * and settings, a show's back arrow. On a frosted wash so it reads on any
+ * picture: pale with a periwinkle icon on Pastel, dark with a white one on
+ * Night, matching the haze along the top of the art.
+ */
+@Composable
+fun OverlayIconButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    wash: Boolean = true,
+    tint: Color = if (Ink.palette.dark) Color.White else Ink.GlassIcon
+) {
+    val washColour = if (Ink.palette.dark) Color(0x4D0B0A14) else Color(0xB3FFFFFF)
+    Box(
+        modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .then(if (wash) Modifier.background(washColour) else Modifier)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(21.dp))
+    }
+}
+
+/**
  * A small rounded label. Quiet by default; given a [brush] it becomes one of
- * the glossy tags — pink for an episode or airing, violet for a badge.
+ * the glossy tags.
  */
 @Composable
 fun Pill(
     text: String,
     modifier: Modifier = Modifier,
     brush: Brush? = null,
-    color: Color = if (brush != null) Color.White else Color(0xFFDCD4F5),
+    color: Color = if (brush != null) Color.White else Ink.QuietText,
     onClick: (() -> Unit)? = null
 ) {
     val shape = RoundedCornerShape(11.dp)
     Box(
         modifier
             .clip(shape)
-            .background(brush ?: SolidColor(Color(0x17FFFFFF)))
-            .border(1.dp, Gloss.TopLight, shape)
+            .background(brush ?: SolidColor(Ink.Quiet))
+            .then(if (brush != null) Modifier.border(1.dp, Brush.verticalGradient(0f to Color(0x59FFFFFF), 0.5f to Color(0x00FFFFFF)), shape) else Modifier)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 10.dp, vertical = 4.dp)
     ) {
@@ -232,26 +299,30 @@ fun Pill(
 }
 
 /**
- * Poster art standing on its edge, with the sheen across it. Everything that
- * shows a cover — shelves, related shows, the detail header — draws it with
- * this, so they are all the same object. [overlay] is for badges on top.
+ * Poster art on its edge, with the sheen across it — a white border and a soft
+ * shadow on Pastel. Everything that shows a cover draws it with this, so they
+ * are all the same object. [overlay] is for badges on top.
  */
 @Composable
 fun GlossyPoster(
     model: Any?,
     contentDescription: String?,
     modifier: Modifier = Modifier,
+    corner: Dp = 16.dp,
+    aspect: Float = 2f / 3f,
     overlay: @Composable BoxScope.() -> Unit = {}
 ) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(corner)
+    val dark = Ink.palette.dark
     Box(
         modifier
-            .aspectRatio(2f / 3f)
-            .raised(shape, Color(0xFF0A0619), 5.dp)
+            .aspectRatio(aspect)
+            .softShadow(shape, 10.dp)
+            .raised(shape, if (dark) Color(0xFF07060E) else Gloss.Edge, 4.dp)
             .clip(shape)
             .background(Ink.Veil)
-            .gloss()
-            .border(1.5.dp, Color(0x24FFFFFF), shape)
+            .gloss(if (dark) 0.22f else 0.3f)
+            .border(if (dark) 1.dp else 2.dp, if (dark) Color(0x1FFFFFFF) else Color.White, shape)
     ) {
         AsyncImage(
             model = model,
@@ -263,17 +334,23 @@ fun GlossyPoster(
     }
 }
 
-/** A progress bar: dark track, jelly fill. [fraction] is 0..1. */
+/** A progress bar: a track and a periwinkle fill. [fraction] is 0..1. */
 @Composable
-fun JellyBar(fraction: Float, modifier: Modifier = Modifier, height: Dp = 6.dp) {
+fun JellyBar(
+    fraction: Float,
+    modifier: Modifier = Modifier,
+    height: Dp = 6.dp,
+    track: Color = Ink.Edge
+) {
+    val fill = Gloss.Progress
     Box(
         modifier
             .height(height)
             .clip(RoundedCornerShape(height / 2))
-            .background(Color(0xB30A0619))
+            .background(track)
             .drawBehind {
                 drawRoundRect(
-                    Gloss.Progress,
+                    fill,
                     size = Size(size.width * fraction.coerceIn(0f, 1f), size.height),
                     cornerRadius = CornerRadius(size.height / 2)
                 )
@@ -296,9 +373,10 @@ fun GlossyCard(
     Column(
         modifier
             .fillMaxWidth()
-            .raised(shape, depth = 4.dp)
+            .softShadow(shape, 8.dp)
+            .raised(shape, depth = 3.dp)
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(Color(0xFF231652), Color(0xFF1B1140))))
+            .background(Gloss.Chip)
             .border(1.dp, Gloss.TopLight, shape)
             .padding(padding),
         verticalArrangement = Arrangement.spacedBy(spacing),
@@ -308,8 +386,8 @@ fun GlossyCard(
 
 /**
  * One choice out of a few, as a row of chips of equal width — the chosen one
- * violet and raised, the rest flat. In place of Material's segmented buttons,
- * whose outlined look belonged to a different app.
+ * periwinkle and raised, the rest flat. In place of Material's segmented
+ * buttons, whose outlined look belonged to a different app.
  */
 @Composable
 fun <T> ChoiceRow(
@@ -326,10 +404,9 @@ fun <T> ChoiceRow(
                 Modifier
                     .weight(1f)
                     .height(40.dp)
-                    .then(if (on) Modifier.raised(shape, Gloss.VioletEdge) else Modifier)
+                    .then(if (on) Modifier.raised(shape, Gloss.SelectedEdge) else Modifier)
                     .clip(shape)
-                    .background(if (on) Gloss.Violet else SolidColor(Color(0x14FFFFFF)))
-                    .border(1.dp, Gloss.TopLight, shape)
+                    .background(if (on) Gloss.Selected else SolidColor(Ink.Quiet))
                     .clickable { onSelect(value) },
                 contentAlignment = Alignment.Center
             ) {
@@ -357,39 +434,41 @@ fun GlossySwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit
                 checkedTrackColor = Ink.Iris,
                 checkedBorderColor = Color.Transparent,
                 uncheckedThumbColor = Ink.Mist,
-                uncheckedTrackColor = Color(0xFF2A1F4C),
+                uncheckedTrackColor = Ink.Edge,
                 uncheckedBorderColor = Color.Transparent
             )
         )
     }
 }
 
-/** Sliders in the app's colours: candy thumb, violet run. */
+/** Sliders in the app's colours. */
 @Composable
 fun glossySliderColors() = SliderDefaults.colors(
-    thumbColor = Ink.Candy,
+    thumbColor = Ink.Iris,
     activeTrackColor = Ink.Iris,
-    inactiveTrackColor = Color(0x26FFFFFF),
-    activeTickColor = Color(0x59FFFFFF),
-    inactiveTickColor = Color(0x33FFFFFF)
+    inactiveTrackColor = Ink.Edge,
+    activeTickColor = Color.White.copy(alpha = 0.5f),
+    inactiveTickColor = Ink.Mist.copy(alpha = 0.35f)
 )
 
-/** Text fields: a dark well with a faint rim that turns violet when typing. */
+/** Text fields: a well with a faint rim that turns periwinkle when typing. */
 @Composable
 fun glossyFieldColors() = OutlinedTextFieldDefaults.colors(
-    unfocusedBorderColor = Color(0x1FFFFFFF),
+    unfocusedBorderColor = Ink.Edge,
     focusedBorderColor = Ink.Iris,
-    unfocusedContainerColor = Color(0xFF150E30),
-    focusedContainerColor = Color(0xFF181033),
-    cursorColor = Ink.Candy,
-    focusedLabelColor = Color(0xFFCDBBFF),
-    unfocusedLabelColor = Ink.Mist
+    unfocusedContainerColor = Ink.Field,
+    focusedContainerColor = Ink.Field,
+    cursorColor = Ink.Iris,
+    focusedLabelColor = Ink.Link,
+    unfocusedLabelColor = Ink.Mist,
+    focusedTextColor = Ink.Bone,
+    unfocusedTextColor = Ink.Bone
 )
 
 /** Small print under a control: what it does, in a sentence or two. */
 @Composable
 fun Hint(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = Color(0xFF9C94B8))
+    Text(text, style = MaterialTheme.typography.bodySmall, color = Ink.Mist)
 }
 
 /**
@@ -408,7 +487,7 @@ fun GlossyTopBar(title: String, onBack: () -> Unit) {
     ) {
         GlassIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack)
         Spacer(Modifier.width(14.dp))
-        Text(title, style = MaterialTheme.typography.displaySmall.copy(fontSize = 26.sp))
+        Text(title, style = MaterialTheme.typography.displaySmall.copy(fontSize = 26.sp), color = Ink.Bone)
     }
 }
 
@@ -427,8 +506,8 @@ val Sparkle: ImageVector by lazy {
 }
 
 /**
- * A shelf's heading: the title, a gold sparkle, and a quiet pill on the right
- * for whatever the shelf offers — See all, Close.
+ * A row's heading: the title, an optional count, and a quiet link on the
+ * right for whatever the row offers — See all, Close.
  */
 @Composable
 fun GlossyHeader(
@@ -439,26 +518,24 @@ fun GlossyHeader(
     count: Int? = null
 ) {
     Row(
-        modifier.padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 10.dp),
+        modifier.padding(start = 20.dp, end = 12.dp, top = 22.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(title, style = MaterialTheme.typography.titleLarge, color = Ink.Bone)
+        Text(title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp), color = Ink.Bone)
         count?.let {
-            Text(
-                "  $it",
-                style = MaterialTheme.typography.labelMedium,
-                color = Color(0xFF8C84A8)
-            )
+            Text("  $it", style = MaterialTheme.typography.labelMedium, color = Ink.Dim)
         }
-        Icon(
-            Sparkle,
-            contentDescription = null,
-            tint = Ink.Gold,
-            modifier = Modifier.padding(start = 7.dp).size(14.dp)
-        )
         Box(Modifier.weight(1f))
         trailing?.let {
-            Pill(it, color = Color(0xFFCDBBFF), onClick = onTrailing)
+            Text(
+                it,
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
+                color = Ink.Mist,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClick = onTrailing)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            )
         }
     }
 }

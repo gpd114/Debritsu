@@ -148,13 +148,13 @@ fun DownloadsScreen(onBack: () -> Unit) {
                             when {
                                 complete -> Pill(
                                     "Ready  ·  ${Downloads.fileFor(d).length() / 1_000_000} MB",
-                                    brush = Gloss.Violet
+                                    brush = Gloss.Selected
                                 )
-                                failed -> Pill("Failed", brush = Gloss.Pink)
+                                failed -> Pill("Failed", brush = Gloss.Tag)
                                 progress >= 0f -> JellyBar(progress, Modifier.fillMaxWidth())
                                 else -> LinearProgressIndicator(
                                     color = Ink.Candy,
-                                    trackColor = Color(0x1AFFFFFF),
+                                    trackColor = Ink.Edge,
                                     modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
                                 )
                             }

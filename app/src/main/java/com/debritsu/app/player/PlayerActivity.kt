@@ -499,7 +499,7 @@ class PlayerActivity : ComponentActivity() {
         hud = findViewById<TextView>(R.id.gesture_hud).apply {
             background = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(0xE62A1B55.toInt(), 0xE61A1133.toInt())
+                intArrayOf(0xE6201F44.toInt(), 0xE616152B.toInt())
             ).apply {
                 cornerRadius = 18 * resources.displayMetrics.density
                 setStroke((1 * resources.displayMetrics.density).toInt(), 0x33FFFFFF)
@@ -593,7 +593,7 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun styleBufferingSpinner() {
         val spinner = findViewById<ProgressBar>(androidx.media3.ui.R.id.exo_buffering) ?: return
-        spinner.indeterminateTintList = ColorStateList.valueOf(0xFFFF8CCB.toInt())
+        spinner.indeterminateTintList = ColorStateList.valueOf(0xFF8A94FA.toInt())
         val size = (64 * resources.displayMetrics.density).toInt()
         spinner.layoutParams = spinner.layoutParams.apply {
             width = size
@@ -611,10 +611,10 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun installSkipButton() {
         val button = findViewById<TextView>(R.id.skip_segment)
-        // The app's jelly: pink into violet, with a light rim along the top.
+        // The app's jelly, in periwinkle, with a light rim along the top.
         button.background = GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xF2FFA6DA.toInt(), 0xF2C45CF2.toInt(), 0xF28B3FE0.toInt())
+            intArrayOf(0xF2C3C9FF.toInt(), 0xF28A94FA.toInt(), 0xF25E69EA.toInt())
         ).apply {
             cornerRadius = 26 * resources.displayMetrics.density
             setStroke((1.5f * resources.displayMetrics.density).toInt(), 0x59FFFFFF)
@@ -794,7 +794,7 @@ class PlayerActivity : ComponentActivity() {
             setPadding(px(20), px(18), px(20), px(24))
             background = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(0xFF2A1B55.toInt(), 0xFF1A1133.toInt())
+                intArrayOf(0xFF201F44.toInt(), 0xFF16152B.toInt())
             ).apply {
                 cornerRadius = px(24).toFloat()
                 setStroke(px(1), 0x29FFFFFF)
@@ -842,11 +842,11 @@ class PlayerActivity : ComponentActivity() {
                 maxLines = 2
             })
             row.tag?.let { tag ->
-                // The same tags as the sheet on the detail screen: pink for
-                // what is playing, violet for a direct link, quiet otherwise.
+                // The same tags as the sheet on the detail screen: periwinkle for
+                // what is playing, a deeper blue for a direct link, quiet otherwise.
                 val (from, to) = when (tag) {
-                    "PLAYING" -> 0xFFFF9BD5.toInt() to 0xFFD9468F.toInt()
-                    "DIRECT" -> 0xFFA47BFF.toInt() to 0xFF6D3FE0.toInt()
+                    "PLAYING" -> 0xFFAEB6FF.toInt() to 0xFF6B76EC.toInt()
+                    "DIRECT" -> 0xFF9AA3FF.toInt() to 0xFF525EE0.toInt()
                     else -> 0x1FFFFFFF to 0x1FFFFFFF
                 }
                 item.addView(TextView(this@PlayerActivity).apply {

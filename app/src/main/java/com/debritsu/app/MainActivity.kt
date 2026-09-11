@@ -14,8 +14,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.LaunchedEffect
 import com.debritsu.app.ui.Ink
+import com.debritsu.app.ui.applyTheme
 import com.debritsu.app.ui.glossyBackdrop
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -35,19 +39,23 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Light status and navigation icons whatever the phone's own theme:
-        // the app is dark throughout, and with the system on its light theme
-        // the clock and battery were drawn dark on dark.
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
-        )
+        applyTheme(Settings.theme)
         handleAuth(intent)
 
         // Replay anything watched offline as soon as we're up.
         lifecycleScope.launch { runCatching { SyncQueue.flush() } }
 
         setContent {
+            // Status and navigation icons follow the app's theme rather than the
+            // phone's: dark on Pastel, light on Night. Following the phone drew
+            // them dark on dark whenever the two disagreed. Re-applied whenever
+            // the theme is switched in Settings.
+            val dark = Ink.palette.dark
+            LaunchedEffect(dark) {
+                val bars = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
+            }
             DebritsuTheme {
                 // One backdrop behind every screen; each screen's own scaffold
                 // is transparent so it shows through.
@@ -61,16 +69,25 @@ class MainActivity : ComponentActivity() {
                         composable("home") {
                             HomeScreen(
                                 onOpen = { nav.navigate("detail/$it") },
+                                // Resume opens the show and plays its next
+                                // episode straight away.
+                                onResume = { nav.navigate("detail/$it?play=true") },
                                 onSettings = { nav.navigate("settings") },
                                 onDownloads = { nav.navigate("downloads") },
                                 authFlash = authFlash
                             )
                         }
-                        composable("detail/{id}") { entry ->
+                        composable(
+                            "detail/{id}?play={play}",
+                            arguments = listOf(
+                                navArgument("play") { type = NavType.BoolType; defaultValue = false }
+                            )
+                        ) { entry ->
                             DetailScreen(
                                 anilistId = entry.arguments?.getString("id")?.toIntOrNull() ?: 0,
                                 onBack = { nav.popBackStack() },
-                                onOpen = { nav.navigate("detail/$it") }
+                                onOpen = { nav.navigate("detail/$it") },
+                                autoPlay = entry.arguments?.getBoolean("play") == true
                             )
                         }
                         composable("downloads") {
