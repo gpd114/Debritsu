@@ -28,8 +28,9 @@
         android:paddingEnd="22dp"
         android:paddingTop="13dp"
         android:paddingBottom="13dp"
-        android:textColor="#FFF1EEF8"
-        android:textSize="14sp"
+        android:textColor="#FFFFFFFF"
+        android:textSize="15sp"
+        android:fontFamily="@font/mplus_rounded_extrabold"
         android:visibility="gone" />
 
     <!-- Readout for the swipe and double-tap gestures. Sits above the video but

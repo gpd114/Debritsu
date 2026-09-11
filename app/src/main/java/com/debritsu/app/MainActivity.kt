@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +13,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import com.debritsu.app.ui.Ink
+import com.debritsu.app.ui.glossyBackdrop
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -31,7 +35,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Light status and navigation icons whatever the phone's own theme:
+        // the app is dark throughout, and with the system on its light theme
+        // the clock and battery were drawn dark on dark.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        )
         handleAuth(intent)
 
         // Replay anything watched offline as soon as we're up.
@@ -39,7 +49,13 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DebritsuTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
+                // One backdrop behind every screen; each screen's own scaffold
+                // is transparent so it shows through.
+                Surface(
+                    color = Color.Transparent,
+                    contentColor = Ink.Bone,
+                    modifier = Modifier.fillMaxSize().glossyBackdrop()
+                ) {
                     val nav = rememberNavController()
                     NavHost(navController = nav, startDestination = "home") {
                         composable("home") {

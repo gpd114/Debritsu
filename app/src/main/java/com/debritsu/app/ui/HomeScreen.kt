@@ -2,6 +2,7 @@ package com.debritsu.app.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -139,39 +141,10 @@ fun HomeScreen(
             }
     }
 
-    Scaffold { pad ->
+    Scaffold(containerColor = Color.Transparent) { pad ->
         Column(Modifier.padding(pad)) {
 
-            // Search sits where the wordmark used to, alongside the actions.
-            // Two rows of chrome before any content was a row too many, and the
-            // app's name is not something anyone needs reminding of while
-            // they're using it.
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp)
-            ) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    singleLine = true,
-                    placeholder = { Text("Search anime") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        unfocusedBorderColor = Ink.Edge,
-                        focusedBorderColor = Ink.Iris,
-                        unfocusedContainerColor = Ink.Veil,
-                        focusedContainerColor = Ink.Veil
-                    ),
-                    modifier = Modifier.weight(1f).padding(vertical = 6.dp)
-                )
-                IconButton(onClick = onDownloads) {
-                    Icon(Icons.Default.Download, contentDescription = "Downloads")
-                }
-                IconButton(onClick = onSettings) {
-                    Icon(Icons.Default.Settings, contentDescription = "Settings")
-                }
-            }
+            HomeTopBar(query, { query = it }, onDownloads, onSettings)
 
             // Only for shows still airing, and only while searching isn't in
             // the way. Someone who watches finished series will never see it,
@@ -184,27 +157,37 @@ fun HomeScreen(
             }
 
             if (Settings.addons.isEmpty()) {
-                Surface(
-                    onClick = onSettings,
-                    color = Ink.Veil,
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
+                val cardShape = RoundedCornerShape(18.dp)
+                Column(
+                    Modifier
+                        .padding(horizontal = 18.dp, vertical = 8.dp)
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .raised(cardShape)
+                        .clip(cardShape)
+                        .background(Gloss.Chip)
+                        .border(1.dp, Gloss.TopLight, cardShape)
+                        .clickable(onClick = onSettings)
+                        .padding(16.dp)
                 ) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text("Add a source", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "Debritsu plays what your Stremio addons return. Paste an addon URL to start.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Ink.Mist
-                        )
-                    }
+                    Text("Add a source", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Everything here plays from your Stremio addons. Paste an addon URL in Settings to start.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Ink.Mist,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
                 }
             }
 
             if (loading) {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
+                LinearProgressIndicator(
+                    color = Ink.Candy,
+                    trackColor = Color(0x1AFFFFFF),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                )
             }
 
             // Anything already on a list is not a discovery, so the
@@ -230,9 +213,9 @@ fun HomeScreen(
                 searching -> LazyVerticalGrid(
                     state = gridState,
                     columns = GridCells.Adaptive(112.dp),
-                    contentPadding = PaddingValues(16.dp),
+                    contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
                     items(browse) { PosterCard(it, onOpen) }
                     if (loadingMore) {
@@ -298,22 +281,73 @@ fun HomeScreen(
     }
 }
 
+/**
+ * Search, with Downloads and Settings beside it.
+ *
+ * Search sits where the wordmark used to, alongside the actions. Two rows of
+ * chrome before any content was a row too many, and the app's name is not
+ * something anyone needs reminding of while they're using it.
+ */
+@Composable
+internal fun HomeTopBar(
+    query: String,
+    onQuery: (String) -> Unit,
+    onDownloads: () -> Unit,
+    onSettings: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 12.dp)
+    ) {
+        val searchShape = RoundedCornerShape(24.dp)
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQuery,
+            singleLine = true,
+            placeholder = { Text("Search anime", color = Ink.Mist) },
+            leadingIcon = {
+                Icon(Icons.Default.Search, contentDescription = null, tint = Ink.Mist)
+            },
+            shape = searchShape,
+            textStyle = MaterialTheme.typography.bodyMedium,
+            colors = OutlinedTextFieldDefaults.colors(
+                unfocusedBorderColor = Color(0x1FFFFFFF),
+                focusedBorderColor = Ink.Iris,
+                unfocusedContainerColor = Color(0xFF1B1238),
+                focusedContainerColor = Color(0xFF1F1541),
+                cursorColor = Ink.Candy
+            ),
+            modifier = Modifier.weight(1f).raised(searchShape)
+        )
+        GlassIconButton(Icons.Default.Download, "Downloads", onDownloads)
+        GlassIconButton(Icons.Default.Settings, "Settings", onSettings)
+    }
+}
+
 /** One side-scrolling row of posters. */
 @Composable
-private fun Shelf(
+internal fun Shelf(
     title: String,
     list: List<Anime>,
     onOpen: (Int) -> Unit,
     onExpand: () -> Unit
 ) {
-    Column(Modifier.padding(top = 14.dp)) {
-        SectionHeader(title, list.size, Icons.Default.OpenInFull, "Expand $title", onExpand)
+    // Only the shelf of shows under way carries "8 of 25" and a bar. Every
+    // card in it has progress, so the extra line never makes one card in a
+    // row taller than its neighbours.
+    val underway = title == "Continue watching"
+    Column {
+        GlossyHeader(title, trailing = "See all", onTrailing = onExpand)
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
+            // Bottom padding leaves room for the raised edge under each poster.
+            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(list) { anime ->
-                Box(Modifier.width(112.dp)) { PosterCard(anime, onOpen) }
+                Box(Modifier.width(118.dp)) { PosterCard(anime, onOpen, showProgress = underway) }
             }
         }
     }
@@ -340,15 +374,15 @@ private fun ExpandedShelf(
     }
 
     Column {
-        SectionHeader(title, list.size, Icons.Default.CloseFullscreen, "Collapse $title", onCollapse)
+        GlossyHeader(title, trailing = "Close", onTrailing = onCollapse, count = list.size)
         LazyVerticalGrid(
             state = grid,
             columns = GridCells.Adaptive(112.dp),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            items(list) { PosterCard(it, onOpen) }
+            items(list) { PosterCard(it, onOpen, showProgress = title == "Continue watching") }
             if (loadingMore) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(
@@ -363,92 +397,44 @@ private fun ExpandedShelf(
     }
 }
 
+/**
+ * A poster standing on its edge, with the icon's sheen across it. Shows under
+ * way carry their episode as a violet badge; [showProgress] adds a bar through
+ * the series and an "8 of 25" line, for the shelf where that is the point.
+ */
 @Composable
-private fun SectionHeader(
-    text: String,
-    count: Int,
-    actionIcon: androidx.compose.ui.graphics.vector.ImageVector,
-    actionLabel: String,
-    onAction: () -> Unit
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        // Starts level with the posters, which are inset by the same amount.
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 2.dp)
-    ) {
-        Text(text, style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.width(8.dp))
-        Text(
-            count.toString().padStart(2, '0'),
-            style = MaterialTheme.typography.labelSmall,
-            color = Ink.Mist
-        )
-        Spacer(Modifier.weight(1f))
-        IconButton(onClick = onAction) {
-            Icon(actionIcon, contentDescription = actionLabel, tint = Ink.Mist)
-        }
-    }
-}
-
-@Composable
-private fun PosterCard(anime: Anime, onOpen: (Int) -> Unit) {
+internal fun PosterCard(anime: Anime, onOpen: (Int) -> Unit, showProgress: Boolean = false) {
     Column(Modifier.clickable { onOpen(anime.id) }) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(2f / 3f)
-                .clip(RoundedCornerShape(14.dp))
-                .background(Ink.Veil)
-        ) {
-            AsyncImage(
-                model = anime.cover,
-                contentDescription = anime.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            // In-progress shows get a violet spine and an episode readout.
+        GlossyPoster(anime.cover, anime.title, Modifier.fillMaxWidth()) {
             if (anime.progress > 0) {
-                Box(
-                    Modifier
-                        .fillMaxHeight()
-                        .width(3.dp)
-                        .background(Ink.Iris)
+                Pill(
+                    "EP ${anime.progress}",
+                    brush = Gloss.Violet,
+                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp)
                 )
-                Box(
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(6.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xCC08070D))
-                        .padding(horizontal = 6.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        "EP ${anime.progress.toString().padStart(2, '0')}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Ink.Bone
-                    )
-                }
             }
-            // Opposite corner to the episode badge, and only when AniList has a
-            // score — a new or obscure title often has none, and an empty pill
-            // reads worse than no pill.
-            anime.averageScore?.let { score ->
-                Box(
+            // Only when AniList has a score — a new or obscure title often has
+            // none, and an empty pill reads worse than no pill — and only when
+            // there is no episode badge: side by side on a poster this narrow
+            // the two ran into each other, and for a show already under way
+            // the episode is the more useful of the two.
+            if (anime.progress == 0) anime.averageScore?.let { score ->
+                Pill(
+                    "★ $score%",
+                    brush = SolidColor(Color(0xC70C081C)),
+                    color = Ink.Gold,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                )
+            }
+            val total = anime.episodes ?: 0
+            if (showProgress && anime.progress > 0 && total > 0) {
+                JellyBar(
+                    anime.progress.toFloat() / total,
                     Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(6.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xCC08070D))
-                        .padding(horizontal = 6.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        "$score%",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (score >= 75) Ink.Iris else Ink.Bone
-                    )
-                }
+                        .align(Alignment.BottomCenter)
+                        .padding(10.dp)
+                        .fillMaxWidth()
+                )
             }
         }
         // Both lines are reserved whether the title needs them or not, so every
@@ -461,12 +447,20 @@ private fun PosterCard(anime: Anime, onOpen: (Int) -> Unit) {
         // to the right on the very same row.
         Text(
             anime.title,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
+            color = Ink.Bone,
             minLines = 2,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 7.dp)
+            modifier = Modifier.padding(top = 11.dp)
         )
+        if (showProgress) {
+            Text(
+                if (anime.progress > 0) "${anime.progress} of ${anime.episodes ?: "?"}" else " ",
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                color = Ink.Mist
+            )
+        }
     }
 }
 
@@ -477,12 +471,14 @@ private fun PosterCard(anime: Anime, onOpen: (Int) -> Unit) {
  * once is normal, and showing only the nearest would quietly hide the rest.
  */
 @Composable
-private fun AiringStrip(airing: List<Anime>, onOpen: (Int) -> Unit) {
+internal fun AiringStrip(airing: List<Anime>, onOpen: (Int) -> Unit) {
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        // The bottom padding keeps each chip's raised edge inside the layer
+        // below, which is offscreen and so cuts off anything past its bounds.
+        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
-            .padding(vertical = 2.dp)
+            .padding(bottom = 2.dp)
             // Fades the last chip into the edge rather than cutting it off, so
             // a row with more in it than fits says so without a scrollbar or a
             // count to read. Drawn with the layer so it fades the content
@@ -504,33 +500,35 @@ private fun AiringStrip(airing: List<Anime>, onOpen: (Int) -> Unit) {
             }
     ) {
         items(airing) { anime ->
+            val chip = RoundedCornerShape(19.dp)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Ink.Veil)
+                    .height(38.dp)
+                    .raised(chip)
+                    .clip(chip)
+                    .background(Gloss.Chip)
+                    .border(1.dp, Gloss.TopLight, chip)
                     .clickable { onOpen(anime.id) }
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(start = 14.dp, end = 6.dp)
             ) {
                 Text(
                     anime.title,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
+                    color = Ink.Bone,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 160.dp)
+                    modifier = Modifier.widthIn(max = 150.dp)
                 )
                 Spacer(Modifier.width(8.dp))
-                Text(
-                    "EP ${anime.nextEpisode}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Ink.Orchid
-                )
+                Pill("EP ${anime.nextEpisode}", brush = Gloss.Pink)
                 Spacer(Modifier.width(6.dp))
                 Text(
                     countdown(anime.airingInSeconds ?: 0),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                     color = Ink.Mist,
-                    maxLines = 1
+                    maxLines = 1,
+                    modifier = Modifier.padding(end = 8.dp)
                 )
             }
         }

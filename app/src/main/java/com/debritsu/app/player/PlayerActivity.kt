@@ -11,6 +11,7 @@ import android.util.TypedValue
 import android.app.Dialog
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import androidx.core.content.res.ResourcesCompat
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
@@ -76,6 +77,12 @@ class PlayerActivity : ComponentActivity() {
 
     /** The centred readout, shared by the touch gestures and the remote. */
     private var hud: TextView? = null
+
+    // The app's rounded face, for the views drawn here in code rather than
+    // Compose. Lazily, because resources are not ready until onCreate.
+    private val roundedMedium by lazy { ResourcesCompat.getFont(this, R.font.mplus_rounded_medium) }
+    private val roundedBold by lazy { ResourcesCompat.getFont(this, R.font.mplus_rounded_bold) }
+    private val roundedHeavy by lazy { ResourcesCompat.getFont(this, R.font.mplus_rounded_extrabold) }
     private val hideHud = Runnable { hud?.visibility = View.GONE }
 
     private fun readout(text: String) {
@@ -490,10 +497,14 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun installGestures(view: PlayerView) {
         hud = findViewById<TextView>(R.id.gesture_hud).apply {
-            background = GradientDrawable().apply {
-                setColor(0xCC171226.toInt())
-                cornerRadius = 14 * resources.displayMetrics.density
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0xE62A1B55.toInt(), 0xE61A1133.toInt())
+            ).apply {
+                cornerRadius = 18 * resources.displayMetrics.density
+                setStroke((1 * resources.displayMetrics.density).toInt(), 0x33FFFFFF)
             }
+            typeface = roundedBold
         }
 
         val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -582,7 +593,7 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun styleBufferingSpinner() {
         val spinner = findViewById<ProgressBar>(androidx.media3.ui.R.id.exo_buffering) ?: return
-        spinner.indeterminateTintList = ColorStateList.valueOf(0xFF8B5CF6.toInt())
+        spinner.indeterminateTintList = ColorStateList.valueOf(0xFFFF8CCB.toInt())
         val size = (64 * resources.displayMetrics.density).toInt()
         spinner.layoutParams = spinner.layoutParams.apply {
             width = size
@@ -600,10 +611,15 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun installSkipButton() {
         val button = findViewById<TextView>(R.id.skip_segment)
-        button.background = GradientDrawable().apply {
-            setColor(0xE68B5CF6.toInt())
+        // The app's jelly: pink into violet, with a light rim along the top.
+        button.background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(0xF2FFA6DA.toInt(), 0xF2C45CF2.toInt(), 0xF28B3FE0.toInt())
+        ).apply {
             cornerRadius = 26 * resources.displayMetrics.density
+            setStroke((1.5f * resources.displayMetrics.density).toInt(), 0x59FFFFFF)
         }
+        button.typeface = roundedHeavy
 
         lifecycleScope.launch {
             while (true) {
@@ -776,22 +792,26 @@ class PlayerActivity : ComponentActivity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(px(20), px(18), px(20), px(24))
-            background = GradientDrawable().apply {
-                setColor(0xFF171226.toInt())
-                cornerRadius = px(20).toFloat()
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0xFF2A1B55.toInt(), 0xFF1A1133.toInt())
+            ).apply {
+                cornerRadius = px(24).toFloat()
+                setStroke(px(1), 0x29FFFFFF)
             }
         }
         content.addView(TextView(this).apply {
             text = heading
             setTextColor(0xFFF1EEF8.toInt())
-            textSize = 16f
-            setTypeface(Typeface.DEFAULT_BOLD)
+            textSize = 18f
+            typeface = roundedHeavy
         })
         content.addView(TextView(this).apply {
             text = subheading
             setTextColor(0xFFB9B3CC.toInt())
             textSize = 10.5f
-            typeface = Typeface.MONOSPACE
+            typeface = roundedBold
+            letterSpacing = 0.06f
             setPadding(0, px(2), 0, px(12))
             // Tagged so a long-running panel can narrate what it is doing
             // rather than sitting on one line of text.
@@ -810,26 +830,38 @@ class PlayerActivity : ComponentActivity() {
             item.addView(TextView(this).apply {
                 text = row.title
                 setTextColor(0xFFF1EEF8.toInt())
-                textSize = 12f
-                typeface = Typeface.MONOSPACE
+                textSize = 13f
+                typeface = roundedBold
                 maxLines = 1
             })
             item.addView(TextView(this).apply {
                 text = row.subtitle
                 setTextColor(0xFFB9B3CC.toInt())
                 textSize = 11.5f
+                typeface = roundedMedium
                 maxLines = 2
             })
             row.tag?.let { tag ->
+                // The same tags as the sheet on the detail screen: pink for
+                // what is playing, violet for a direct link, quiet otherwise.
+                val (from, to) = when (tag) {
+                    "PLAYING" -> 0xFFFF9BD5.toInt() to 0xFFD9468F.toInt()
+                    "DIRECT" -> 0xFFA47BFF.toInt() to 0xFF6D3FE0.toInt()
+                    else -> 0x1FFFFFFF to 0x1FFFFFFF
+                }
                 item.addView(TextView(this@PlayerActivity).apply {
-                    text = tag
-                    setTextColor(
-                        if (tag == "DIRECT" || tag == "PLAYING") 0xFF8B5CF6.toInt()
-                        else 0xFFB9B3CC.toInt()
-                    )
-                    textSize = 9.5f
-                    typeface = Typeface.MONOSPACE
-                    setPadding(0, px(3), 0, 0)
+                    text = tag.lowercase().replaceFirstChar { it.uppercase() }
+                    setTextColor(if (from == 0x1FFFFFFF) 0xFFB9B3CC.toInt() else 0xFFFFFFFF.toInt())
+                    textSize = 10f
+                    typeface = roundedBold
+                    setPadding(px(9), px(2), px(9), px(3))
+                    background = GradientDrawable(
+                        GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(from, to)
+                    ).apply { cornerRadius = px(10).toFloat() }
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = px(5) }
                 })
             }
             content.addView(item)
@@ -837,7 +869,7 @@ class PlayerActivity : ComponentActivity() {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, px(1)
                 )
-                setBackgroundColor(0xFF221A36.toInt())
+                setBackgroundColor(0x12FFFFFF)
             })
         }
 

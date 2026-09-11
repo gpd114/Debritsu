@@ -2,17 +2,22 @@ package com.debritsu.app.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -45,341 +50,321 @@ fun SettingsScreen(onBack: () -> Unit) {
     var newAddon by remember { mutableStateOf("") }
     var addons by remember { mutableStateOf(Settings.addons) }
     val signedIn = Settings.aniListToken.isNotEmpty()
+    val fieldShape = RoundedCornerShape(16.dp)
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Settings") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
-        }
+        containerColor = Color.Transparent,
+        topBar = { GlossyTopBar("Settings", onBack) }
     ) { pad ->
         Column(
             Modifier
                 .padding(pad)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
 
-            Text("AniList", fontWeight = FontWeight.SemiBold)
-            if (DEFAULT_ANILIST_CLIENT_ID.isNotEmpty() && !showAdvanced) {
-                Text(
-                    "Tap Sign in and approve Debritsu — nothing else to set up.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                TextButton(onClick = { showAdvanced = true }) {
-                    Text("Use my own API client", fontSize = 12.sp)
+            GlossyCard {
+                SectionTitle("AniList")
+                if (DEFAULT_ANILIST_CLIENT_ID.isNotEmpty() && !showAdvanced) {
+                    Hint("Tap Sign in and approve access — nothing else to set up.")
+                    Pill("Use my own API client", color = Color(0xFFCDBBFF), onClick = { showAdvanced = true })
+                } else {
+                    Hint(
+                        "Create an API client at anilist.co/settings/developer with redirect URL " +
+                            "debritsu://auth, then paste the client ID here."
+                    )
+                    OutlinedTextField(
+                        value = clientId,
+                        onValueChange = { clientId = it; Settings.aniListClientId = it },
+                        label = { Text("Client ID") },
+                        singleLine = true,
+                        shape = fieldShape,
+                        colors = glossyFieldColors(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
-            } else {
-                Text(
-                    "Create an API client at anilist.co/settings/developer with redirect URL " +
-                        "debritsu://auth, then paste the client ID here.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedTextField(
-                    value = clientId,
-                    onValueChange = { clientId = it; Settings.aniListClientId = it },
-                    label = { Text("Client ID") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    enabled = clientId.isNotBlank(),
-                    onClick = {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(AniList.authUrl(clientId)))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    JellyButton(
+                        onClick = {
+                            if (clientId.isNotBlank()) context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(AniList.authUrl(clientId)))
+                            )
+                        },
+                        height = 46.dp,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            if (signedIn) "Re-authorise" else "Sign in",
+                            style = MaterialTheme.typography.labelLarge
                         )
                     }
-                ) { Text(if (signedIn) "Re-authorise" else "Sign in") }
-
-                if (signedIn) {
-                    OutlinedButton(onClick = { Settings.aniListToken = "" }) { Text("Sign out") }
+                    if (signedIn) {
+                        GlassButton("Sign out", color = Ink.Orchid) { Settings.aniListToken = "" }
+                    }
                 }
-            }
-            Text(
-                if (signedIn) "Signed in — progress syncs after each episode."
-                else "Not signed in. Browsing and playback still work without an account.",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            HorizontalDivider()
-
-            Text("Stremio addons", fontWeight = FontWeight.SemiBold)
-            Text(
-                "Paste an addon URL (manifest.json or stremio:// link). Use a debrid-backed " +
-                    "addon such as AIOStreams, Comet, MediaFusion or Torrentio configured with " +
-                    "your Real-Debrid key — those return cached, direct links.",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = newAddon,
-                    onValueChange = { newAddon = it },
-                    label = { Text("Addon URL") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
+                Hint(
+                    if (signedIn) "Signed in — progress syncs after each episode."
+                    else "Not signed in. Browsing and playback still work without an account."
                 )
-                Spacer(Modifier.width(8.dp))
-                Button(onClick = {
-                    Settings.addAddon(newAddon)
-                    addons = Settings.addons
-                    newAddon = ""
-                }) { Text("Add") }
             }
-            addons.forEach { a ->
-                ListItem(
-                    headlineContent = { Text(a, fontSize = 12.sp) },
-                    trailingContent = {
+
+            GlossyCard {
+                SectionTitle("Stremio addons")
+                Hint(
+                    "Paste an addon URL (manifest.json or stremio:// link). Use a debrid-backed " +
+                        "addon such as AIOStreams, Comet, MediaFusion or Torrentio configured with " +
+                        "your debrid key — those return cached, direct links."
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = newAddon,
+                        onValueChange = { newAddon = it },
+                        label = { Text("Addon URL") },
+                        singleLine = true,
+                        shape = fieldShape,
+                        colors = glossyFieldColors(),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    JellyButton(
+                        onClick = {
+                            Settings.addAddon(newAddon)
+                            addons = Settings.addons
+                            newAddon = ""
+                        },
+                        height = 50.dp,
+                        shape = RoundedCornerShape(16.dp)
+                    ) { Text("Add", style = MaterialTheme.typography.labelLarge) }
+                }
+                addons.forEach { a ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0x12FFFFFF))
+                            .padding(start = 12.dp)
+                    ) {
+                        Text(
+                            a,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Ink.Bone,
+                            maxLines = 2,
+                            modifier = Modifier.weight(1f).padding(vertical = 8.dp)
+                        )
                         IconButton(onClick = {
                             Settings.removeAddon(a)
                             addons = Settings.addons
-                        }) { Icon(Icons.Default.Delete, contentDescription = "Remove") }
+                        }) { Icon(Icons.Default.Delete, contentDescription = "Remove", tint = Ink.Mist) }
                     }
-                )
+                }
             }
 
-            HorizontalDivider()
-
-            Text("Debrid provider", fontWeight = FontWeight.SemiBold)
-            Text(
-                "Optional. Only used for addons that return a bare infoHash instead " +
-                    "of a ready link — if your addon already holds your debrid key, leave this blank.",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            ExposedDropdownMenuBox(
-                expanded = providerMenu,
-                onExpandedChange = { providerMenu = !providerMenu }
-            ) {
-                OutlinedTextField(
-                    value = provider.label,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Service") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = providerMenu) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+            GlossyCard {
+                SectionTitle("Debrid provider")
+                Hint(
+                    "Optional. Only used for addons that return a bare infoHash instead " +
+                        "of a ready link — if your addon already holds your debrid key, leave this blank."
                 )
-                ExposedDropdownMenu(
+
+                ExposedDropdownMenuBox(
                     expanded = providerMenu,
-                    onDismissRequest = { providerMenu = false }
+                    onExpandedChange = { providerMenu = !providerMenu }
                 ) {
-                    DebridProvider.entries.forEach { p ->
-                        DropdownMenuItem(
-                            text = { Text(p.label) },
-                            onClick = {
-                                provider = p
-                                Settings.debridProvider = p
-                                debridToken = Settings.debridToken
-                                providerMenu = false
-                            }
-                        )
-                    }
-                }
-            }
-
-            // Hidden by default. It is a key to a paid account, it is long
-            // enough that nobody reads it back to check it, and a settings
-            // screen is exactly the sort of thing that gets shown to somebody
-            // else while asking why something will not play.
-            OutlinedTextField(
-                value = debridToken,
-                onValueChange = { debridToken = it; Settings.debridToken = it },
-                label = { Text("${provider.label} API key") },
-                singleLine = true,
-                visualTransformation =
-                    if (showDebridToken) VisualTransformation.None
-                    else PasswordVisualTransformation(),
-                trailingIcon = {
-                    TextButton(onClick = { showDebridToken = !showDebridToken }) {
-                        Text(if (showDebridToken) "Hide" else "Show", fontSize = 12.sp)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            )
-            Text(
-                // Says whether it is set without showing it, which is the
-                // question being asked when this screen is opened.
-                if (debridToken.isEmpty()) "Not set. Get it from ${provider.tokenHint}"
-                else "Set — ${debridToken.length} characters. From ${provider.tokenHint}",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            HorizontalDivider()
-
-            Text("Playback", fontWeight = FontWeight.SemiBold)
-            Text(
-                "With this on, pressing play searches your addons, picks the best " +
-                    "source matching the rules below and starts it. When nothing " +
-                    "matches, the source list opens instead so you choose — it will " +
-                    "not quietly play something over your limits.",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Row(
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Play automatically", Modifier.weight(1f), fontSize = 14.sp)
-                Switch(
-                    checked = autoPlay,
-                    onCheckedChange = { autoPlay = it; Settings.autoPlay = it }
-                )
-            }
-
-            if (autoPlay) {
-                Text("Highest quality", fontSize = 13.sp)
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    listOf(720 to "720p", 1080 to "1080p", 2160 to "4K", 0 to "Any")
-                        .forEachIndexed { i, (value, label) ->
-                            SegmentedButton(
-                                selected = maxRes == value,
-                                onClick = { maxRes = value; Settings.maxResolution = value },
-                                shape = SegmentedButtonDefaults.itemShape(i, 4)
-                            ) { Text(label, fontSize = 12.sp) }
+                    OutlinedTextField(
+                        value = provider.label,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Service") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = providerMenu) },
+                        shape = fieldShape,
+                        colors = glossyFieldColors(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                    )
+                    ExposedDropdownMenu(
+                        expanded = providerMenu,
+                        onDismissRequest = { providerMenu = false }
+                    ) {
+                        DebridProvider.entries.forEach { p ->
+                            DropdownMenuItem(
+                                text = { Text(p.label) },
+                                onClick = {
+                                    provider = p
+                                    Settings.debridProvider = p
+                                    debridToken = Settings.debridToken
+                                    providerMenu = false
+                                }
+                            )
                         }
+                    }
                 }
-                Text(
-                    "A ceiling, not a target — the best source at or below this wins.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
 
-                Text(
-                    if (maxSize == 0) "Size limit — none"
-                    else "Size limit — ${maxSize}MB per episode",
-                    fontSize = 13.sp
-                )
-                Slider(
-                    value = maxSize.toFloat(),
-                    onValueChange = { maxSize = it.toInt(); Settings.maxSizeMb = it.toInt() },
-                    valueRange = 0f..4000f,
-                    steps = 39
-                )
-                Text(
-                    "A hard limit. Sources that don't say how big they are can't be " +
-                        "checked against it, so they're skipped too.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Row(
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                // Hidden by default. It is a key to a paid account, it is long
+                // enough that nobody reads it back to check it, and a settings
+                // screen is exactly the sort of thing that gets shown to somebody
+                // else while asking why something will not play.
+                OutlinedTextField(
+                    value = debridToken,
+                    onValueChange = { debridToken = it; Settings.debridToken = it },
+                    label = { Text("${provider.label} API key") },
+                    singleLine = true,
+                    visualTransformation =
+                        if (showDebridToken) VisualTransformation.None
+                        else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        Pill(
+                            if (showDebridToken) "Hide" else "Show",
+                            color = Color(0xFFCDBBFF),
+                            onClick = { showDebridToken = !showDebridToken },
+                            modifier = Modifier.padding(end = 10.dp)
+                        )
+                    },
+                    shape = fieldShape,
+                    colors = glossyFieldColors(),
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Prefer English", Modifier.weight(1f), fontSize = 14.sp)
-                    Switch(
-                        checked = preferEnglish,
-                        onCheckedChange = { preferEnglish = it; Settings.preferEnglish = it }
+                )
+                Hint(
+                    // Says whether it is set without showing it, which is the
+                    // question being asked when this screen is opened.
+                    if (debridToken.isEmpty()) "Not set. Get it from ${provider.tokenHint}"
+                    else "Set — ${debridToken.length} characters. From ${provider.tokenHint}"
+                )
+            }
+
+            GlossyCard {
+                SectionTitle("Playback")
+                Hint(
+                    "With this on, pressing play searches your addons, picks the best " +
+                        "source matching the rules below and starts it. When nothing " +
+                        "matches, the source list opens instead so you choose — it will " +
+                        "not quietly play something over your limits."
+                )
+                GlossySwitchRow("Play automatically", autoPlay) { autoPlay = it; Settings.autoPlay = it }
+
+                if (autoPlay) {
+                    Label("Highest quality")
+                    ChoiceRow(
+                        listOf(720 to "720p", 1080 to "1080p", 2160 to "4K", 0 to "Any"),
+                        maxRes,
+                        { maxRes = it; Settings.maxResolution = it }
+                    )
+                    Hint("A ceiling, not a target — the best source at or below this wins.")
+
+                    Label(
+                        if (maxSize == 0) "Size limit — none"
+                        else "Size limit — ${maxSize}MB per episode"
+                    )
+                    Slider(
+                        value = maxSize.toFloat(),
+                        onValueChange = { maxSize = it.toInt(); Settings.maxSizeMb = it.toInt() },
+                        valueRange = 0f..4000f,
+                        steps = 39,
+                        colors = glossySliderColors()
+                    )
+                    Hint(
+                        "A hard limit. Sources that don't say how big they are can't be " +
+                            "checked against it, so they're skipped too."
+                    )
+
+                    GlossySwitchRow("Prefer English", preferEnglish) {
+                        preferEnglish = it; Settings.preferEnglish = it
+                    }
+                    Hint(
+                        "Skips releases that name another language and never mention " +
+                            "English. Most releases say nothing either way, so this ranks " +
+                            "more than it excludes — turn it off if you watch in another " +
+                            "language."
                     )
                 }
-                Text(
-                    "Skips releases that name another language and never mention " +
-                        "English. Most releases say nothing either way, so this ranks " +
-                        "more than it excludes — turn it off if you watch in another " +
-                        "language.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            }
+
+            GlossyCard {
+                SectionTitle("Audio")
+                Hint(
+                    "Which track to pick when a release carries more than one. Most " +
+                        "anime ships Japanese audio; a dub adds an English track " +
+                        "alongside it. Device follows your phone's language, which on " +
+                        "an English phone means the dub."
+                )
+                ChoiceRow(
+                    listOf("ja" to "Japanese", "en" to "English", "" to "Device"),
+                    audioLang,
+                    { audioLang = it; Settings.preferredAudioLanguage = it }
+                )
+                Hint(
+                    "Applies to the next episode you start, and only when the release " +
+                        "actually has that track. Switch per-episode from the settings " +
+                        "button in the player."
                 )
             }
 
-            HorizontalDivider()
-
-            Text("Audio", fontWeight = FontWeight.SemiBold)
-            Text(
-                "Which track to pick when a release carries more than one. Most " +
-                    "anime ships Japanese audio; a dub adds an English track " +
-                    "alongside it. Device follows your phone's language, which on " +
-                    "an English phone means the dub.",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                listOf("ja" to "Japanese", "en" to "English", "" to "Device")
-                    .forEachIndexed { i, (code, label) ->
-                        SegmentedButton(
-                            selected = audioLang == code,
-                            onClick = { audioLang = code; Settings.preferredAudioLanguage = code },
-                            shape = SegmentedButtonDefaults.itemShape(i, 3)
-                        ) { Text(label, fontSize = 12.sp) }
-                    }
-            }
-            Text(
-                "Applies to the next episode you start, and only when the release " +
-                    "actually has that track. Switch per-episode from the settings " +
-                    "button in the player.",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            HorizontalDivider()
-
-            Text("Subtitles", fontWeight = FontWeight.SemiBold)
-            Text(
-                "Track selection lives on the CC button in the player. These control " +
-                    "how the text looks.",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Text("Text size — ${subSize.toInt()}sp", fontSize = 13.sp)
-            Slider(
-                value = subSize,
-                onValueChange = { subSize = it; Settings.subtitleSizeSp = it },
-                valueRange = 12f..40f,
-                steps = 13
-            )
-
-            Text("Colour", fontSize = 13.sp)
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                listOf("White", "Yellow", "Cyan").forEachIndexed { i, label ->
-                    SegmentedButton(
-                        selected = subColour == i,
-                        onClick = { subColour = i; Settings.subtitleColour = i },
-                        shape = SegmentedButtonDefaults.itemShape(i, 3)
-                    ) { Text(label, fontSize = 12.sp) }
-                }
-            }
-
-            Text("Background", fontSize = 13.sp)
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                listOf("None", "Shaded", "Solid").forEachIndexed { i, label ->
-                    SegmentedButton(
-                        selected = subBg == i,
-                        onClick = { subBg = i; Settings.subtitleBackground = i },
-                        shape = SegmentedButtonDefaults.itemShape(i, 3)
-                    ) { Text(label, fontSize = 12.sp) }
-                }
-            }
-
-            Row(
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Outline text", Modifier.weight(1f), fontSize = 14.sp)
-                Switch(
-                    checked = subOutline,
-                    onCheckedChange = { subOutline = it; Settings.subtitleOutline = it }
+            GlossyCard {
+                SectionTitle("Subtitles")
+                Hint(
+                    "Track selection lives on the CC button in the player. These control " +
+                        "how the text looks."
                 )
+
+                Label("Text size — ${subSize.toInt()}sp")
+                Slider(
+                    value = subSize,
+                    onValueChange = { subSize = it; Settings.subtitleSizeSp = it },
+                    valueRange = 12f..40f,
+                    steps = 13,
+                    colors = glossySliderColors()
+                )
+
+                Label("Colour")
+                ChoiceRow(
+                    listOf(0 to "White", 1 to "Yellow", 2 to "Cyan"),
+                    subColour,
+                    { subColour = it; Settings.subtitleColour = it }
+                )
+
+                Label("Background")
+                ChoiceRow(
+                    listOf(0 to "None", 1 to "Shaded", 2 to "Solid"),
+                    subBg,
+                    { subBg = it; Settings.subtitleBackground = it }
+                )
+
+                GlossySwitchRow("Outline text", subOutline) {
+                    subOutline = it; Settings.subtitleOutline = it
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(text, style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp), color = Ink.Bone)
+}
+
+@Composable
+private fun Label(text: String) {
+    Text(text, style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp), color = Ink.Bone)
+}
+
+/** A quiet frosted button for the secondary action beside a jelly one. */
+@Composable
+private fun GlassButton(text: String, color: Color = Ink.Bone, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Box(
+        Modifier
+            .height(46.dp)
+            .raised(shape)
+            .clip(shape)
+            .background(Gloss.Glass)
+            .border(1.dp, Gloss.TopLight, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, style = MaterialTheme.typography.labelLarge, color = color)
     }
 }

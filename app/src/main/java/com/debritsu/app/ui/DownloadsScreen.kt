@@ -3,6 +3,7 @@ package com.debritsu.app.ui
 import android.app.DownloadManager
 import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,6 +18,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,48 +66,37 @@ fun DownloadsScreen(onBack: () -> Unit) {
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Downloads") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
-        }
+        containerColor = Color.Transparent,
+        topBar = { GlossyTopBar("Downloads", onBack) }
     ) { pad ->
         Column(Modifier.padding(pad)) {
 
             syncNote?.let {
                 Text(
                     it,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Ink.Orchid,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Ink.Candy,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp)
                 )
             }
 
             if (items.isEmpty()) {
-                Column(Modifier.padding(24.dp)) {
+                GlossyCard(Modifier.padding(18.dp), spacing = 6.dp) {
                     Text("Nothing downloaded yet", style = MaterialTheme.typography.titleMedium)
-                    Text(
+                    Hint(
                         "Open a show, pick an episode, then tap the download button " +
                             "beside Play to bring up its sources — each one has a download " +
                             "icon of its own. Downloaded episodes play with no connection " +
-                            "at all, and your progress syncs the next time you're online.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Ink.Mist,
-                        modifier = Modifier.padding(top = 6.dp)
+                            "at all, and your progress syncs the next time you're online."
                     )
                 }
                 return@Column
             }
 
-            LazyColumn(contentPadding = PaddingValues(16.dp)) {
+            LazyColumn(
+                contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
                 items(items, key = { it.key }) { d ->
                     val complete = remember(tick, d.key) { Downloads.isComplete(d) }
                     val progress = remember(tick, d.key) { Downloads.progressOf(d.downloadId) }
@@ -112,58 +104,58 @@ fun DownloadsScreen(onBack: () -> Unit) {
                         Downloads.statusOf(d.downloadId) == DownloadManager.STATUS_FAILED && !complete
                     }
 
+                    val card = RoundedCornerShape(20.dp)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .raised(card)
+                            .clip(card)
+                            .background(Gloss.Chip)
+                            .border(1.dp, Gloss.TopLight, card)
                             .clickable(enabled = complete) { play(context, d) }
-                            .padding(vertical = 10.dp)
+                            .padding(10.dp)
                     ) {
+                        val poster = RoundedCornerShape(12.dp)
                         AsyncImage(
                             model = d.coverPath?.let { File(it) },
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
-                                .width(52.dp)
-                                .height(78.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .width(54.dp)
+                                .height(80.dp)
+                                .clip(poster)
                                 .background(Ink.Veil)
+                                .gloss()
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
                                 d.title,
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
+                                color = Ink.Bone,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                "EP ${d.episode.toString().padStart(2, '0')}  ·  ${d.sourceName.take(28)}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Ink.Mist
+                                "Episode ${d.episode}  ·  ${d.sourceName.take(28)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Ink.Mist,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            Spacer(Modifier.height(6.dp))
+                            Spacer(Modifier.height(8.dp))
                             when {
-                                complete -> Text(
-                                    "READY  ·  ${Downloads.fileFor(d).length() / 1_000_000} MB",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Ink.Iris
+                                complete -> Pill(
+                                    "Ready  ·  ${Downloads.fileFor(d).length() / 1_000_000} MB",
+                                    brush = Gloss.Violet
                                 )
-                                failed -> Text(
-                                    "FAILED",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Ink.Orchid
-                                )
-                                progress >= 0f -> LinearProgressIndicator(
-                                    progress = { progress },
-                                    color = Ink.Iris,
-                                    trackColor = Ink.Edge,
-                                    modifier = Modifier.fillMaxWidth().height(3.dp)
-                                )
+                                failed -> Pill("Failed", brush = Gloss.Pink)
+                                progress >= 0f -> JellyBar(progress, Modifier.fillMaxWidth())
                                 else -> LinearProgressIndicator(
-                                    color = Ink.Iris,
-                                    trackColor = Ink.Edge,
-                                    modifier = Modifier.fillMaxWidth().height(3.dp)
+                                    color = Ink.Candy,
+                                    trackColor = Color(0x1AFFFFFF),
+                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
                                 )
                             }
                         }
@@ -203,7 +195,6 @@ fun DownloadsScreen(onBack: () -> Unit) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Ink.Mist)
                         }
                     }
-                    HorizontalDivider(color = Ink.Edge)
                 }
             }
         }
