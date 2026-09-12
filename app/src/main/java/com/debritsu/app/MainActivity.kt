@@ -16,8 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.LaunchedEffect
 import com.debritsu.app.ui.Ink
-import com.debritsu.app.ui.applyTheme
-import com.debritsu.app.ui.glossyBackdrop
+import com.debritsu.app.ui.pageBackground
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
@@ -39,7 +38,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        applyTheme(Settings.theme)
         handleAuth(intent)
 
         // Replay anything watched offline as soon as we're up.
@@ -47,9 +45,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             // Status and navigation icons follow the app's theme rather than the
-            // phone's: dark on Pastel, light on Night. Following the phone drew
-            // them dark on dark whenever the two disagreed. Re-applied whenever
-            // the theme is switched in Settings.
+            // phone's: dark on Pastel, light on Night and Plum. Following the
+            // phone drew them dark on dark whenever the two disagreed.
+            // Re-applied whenever the theme is switched in Settings.
             val dark = Ink.palette.dark
             LaunchedEffect(dark) {
                 val bars = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
@@ -62,7 +60,7 @@ class MainActivity : ComponentActivity() {
                 Surface(
                     color = Color.Transparent,
                     contentColor = Ink.Bone,
-                    modifier = Modifier.fillMaxSize().glossyBackdrop()
+                    modifier = Modifier.fillMaxSize().pageBackground()
                 ) {
                     val nav = rememberNavController()
                     NavHost(navController = nav, startDestination = "home") {

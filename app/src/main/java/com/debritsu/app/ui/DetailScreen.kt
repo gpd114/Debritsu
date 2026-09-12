@@ -514,9 +514,8 @@ fun DetailScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .padding(top = 12.dp)
-                                .then(if (onList) Modifier.raised(shape, Gloss.SelectedEdge) else Modifier)
                                 .clip(shape)
-                                .background(if (onList) Gloss.Selected else SolidColor(Ink.Quiet))
+                                .background(if (onList) Fills.Selected else SolidColor(Ink.Quiet))
                                 .clickable { showListEditor = true }
                                 .padding(horizontal = 13.dp, vertical = 7.dp)
                         ) {
@@ -538,7 +537,7 @@ fun DetailScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(top = 18.dp)
                     ) {
-                        JellyButton(
+                        PrimaryButton(
                             onClick = { findStreams(selectedEpisode) },
                             modifier = Modifier.weight(1f)
                         ) {
@@ -562,7 +561,7 @@ fun DetailScreen(
                         // past it — which left downloading unreachable for
                         // anyone on the default settings. This always opens it,
                         // whatever auto-play is set to.
-                        GlassButton("Sources", { manualSearch(selectedEpisode) })
+                        SecondaryButton("Sources", { manualSearch(selectedEpisode) })
                     }
                     Text(
                         anime?.description?.take(400) ?: "",
@@ -595,7 +594,7 @@ fun DetailScreen(
                 }
             }
             item {
-                GlossyHeader("Episodes", count = anime?.episodes)
+                RowHeader("Episodes", count = anime?.episodes)
             }
             // Nothing at all until the metadata arrives, rather than one
             // invented episode.
@@ -690,16 +689,14 @@ fun DetailScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .height(52.dp)
-                                .raised(chip)
                                 .clip(chip)
-                                .background(Gloss.Chip)
-                                .border(1.dp, Gloss.TopLight, chip)
+                                .background(Fills.Chip)
                         ) {
                         Box(
                             Modifier
                                 .weight(7f)
                                 .fillMaxHeight()
-                                .then(if (playLit) Modifier.background(Gloss.Selected) else Modifier)
+                                .then(if (playLit) Modifier.background(Fills.Selected) else Modifier)
                                 .clickable {
                                     selectedEpisode = ep
                                     pickedByArrow = false
@@ -732,7 +729,7 @@ fun DetailScreen(
                             when {
                                 // Part-watched wins over the watched dot: it is
                                 // the more actionable state.
-                                resume > 0f -> JellyBar(
+                                resume > 0f -> ProgressLine(
                                     resume,
                                     Modifier
                                         .align(Alignment.BottomCenter)
@@ -767,7 +764,7 @@ fun DetailScreen(
                             Modifier
                                 .weight(3f)
                                 .fillMaxHeight()
-                                .then(if (arrowLit) Modifier.background(Gloss.Selected) else Modifier)
+                                .then(if (arrowLit) Modifier.background(Fills.Selected) else Modifier)
                                 .clickable {
                                     selectedEpisode = ep
                                     pickedByArrow = true
@@ -811,7 +808,7 @@ fun DetailScreen(
                 }
             }
             if (relations.isNotEmpty()) {
-                item { GlossyHeader("Related") }
+                item { RowHeader("Related") }
                 item {
                     LazyRow(
                         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 6.dp),
@@ -823,7 +820,7 @@ fun DetailScreen(
                                     .width(112.dp)
                                     .clickable { onOpen(rel.anime.id) }
                             ) {
-                                GlossyPoster(rel.anime.cover, rel.anime.title, Modifier.fillMaxWidth())
+                                PosterArt(rel.anime.cover, rel.anime.title, Modifier.fillMaxWidth())
                                 Text(
                                     rel.type.uppercase(),
                                     style = MaterialTheme.typography.labelSmall.copy(
@@ -862,7 +859,7 @@ fun DetailScreen(
             // leaves nothing, which is the honest outcome.
             val unseen = recommended.filter { it.id !in listed }
             if (unseen.isNotEmpty()) {
-                item { GlossyHeader("Recommended") }
+                item { RowHeader("Recommended") }
                 item {
                     LazyRow(
                         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 6.dp),
@@ -874,7 +871,7 @@ fun DetailScreen(
                                     .width(112.dp)
                                     .clickable { onOpen(rec.id) }
                             ) {
-                                GlossyPoster(rec.cover, rec.title, Modifier.fillMaxWidth())
+                                PosterArt(rec.cover, rec.title, Modifier.fillMaxWidth())
                                 // Where Related names the kind of relation, the
                                 // useful thing here is whether it is any good.
                                 Text(
@@ -943,7 +940,7 @@ fun DetailScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Sources", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.width(10.dp))
-                    Pill("Episode $selectedEpisode", brush = Gloss.Tag)
+                    Pill("Episode $selectedEpisode", brush = Fills.Tag)
                     if (streams.isNotEmpty()) {
                         Text(
                             "  ${streams.size} found",
@@ -970,10 +967,8 @@ fun DetailScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .raised(card, Gloss.SelectedEdge, 4.dp)
                             .clip(card)
-                            .background(Gloss.Selected)
-                            .border(1.dp, Gloss.TopLight, card)
+                            .background(Fills.Selected)
                             .clickable {
                                 showSheet = false
                                 playDownloaded(selectedEpisode)
@@ -1034,8 +1029,8 @@ fun DetailScreen(
                                 .clip(RoundedCornerShape(2.dp))
                                 .background(
                                     when {
-                                        s === bestStream -> Gloss.Tag
-                                        s.isDirect -> Gloss.Selected
+                                        s === bestStream -> Fills.Tag
+                                        s.isDirect -> Fills.Selected
                                         else -> SolidColor(Ink.Edge)
                                     }
                                 )
@@ -1059,8 +1054,8 @@ fun DetailScreen(
                         }
                         Spacer(Modifier.width(10.dp))
                         when {
-                            s === bestStream -> Pill("Best", brush = Gloss.Tag)
-                            s.isDirect -> Pill("Direct", brush = Gloss.Selected)
+                            s === bestStream -> Pill("Best", brush = Fills.Tag)
+                            s.isDirect -> Pill("Direct", brush = Fills.Selected)
                             else -> Pill("Debrid", color = Ink.Mist)
                         }
                         IconButton(onClick = { download(s) }) {
@@ -1114,10 +1109,8 @@ fun DetailScreen(
                         val chip = RoundedCornerShape(14.dp)
                         Box(
                             Modifier
-                                .raised(chip, if (on) Gloss.SelectedEdge else Gloss.Edge)
                                 .clip(chip)
-                                .background(if (on) Gloss.Selected else Gloss.Chip)
-                                .border(1.dp, Gloss.TopLight, chip)
+                                .background(if (on) Fills.Selected else Fills.Chip)
                                 .clickable {
                                     scope.launch {
                                         runCatching { AniList.saveEntry(anilistId, status = value) }
@@ -1143,7 +1136,7 @@ fun DetailScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    GlassIconButton(
+                    SquareIconButton(
                         Icons.Default.Remove,
                         "One fewer",
                         { if (pendingProgress > 0) pendingProgress-- }
@@ -1153,7 +1146,7 @@ fun DetailScreen(
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.padding(horizontal = 18.dp)
                     )
-                    GlassIconButton(
+                    SquareIconButton(
                         Icons.Default.Add,
                         "One more",
                         {
@@ -1174,7 +1167,7 @@ fun DetailScreen(
                     onValueChange = { pendingScore = it.toDouble() },
                     valueRange = 0f..10f,
                     steps = 9,
-                    colors = glossySliderColors()
+                    colors = sliderColors()
                 )
 
                 Spacer(Modifier.height(12.dp))
@@ -1182,7 +1175,7 @@ fun DetailScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    JellyButton(
+                    PrimaryButton(
                         onClick = {
                             scope.launch {
                                 runCatching {
@@ -1206,10 +1199,8 @@ fun DetailScreen(
                         Box(
                             Modifier
                                 .height(48.dp)
-                                .raised(glass)
                                 .clip(glass)
-                                .background(Gloss.Glass)
-                                .border(1.dp, Gloss.TopLight, glass)
+                                .background(Fills.Glass)
                                 .clickable {
                                     scope.launch {
                                         runCatching { AniList.deleteEntry(id) }
@@ -1247,13 +1238,11 @@ private fun WaitCard(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .raised(shape, depth = 5.dp)
             .clip(shape)
-            .background(Gloss.Chip)
-            .border(1.dp, Gloss.TopLight, shape)
+            .background(Fills.Chip)
             .padding(horizontal = 28.dp, vertical = 24.dp)
     ) {
-        GlossyPoster(cover, null, Modifier.width(104.dp))
+        PosterArt(cover, null, Modifier.width(104.dp))
         Spacer(Modifier.height(16.dp))
         Text(
             title,
@@ -1263,7 +1252,7 @@ private fun WaitCard(
             overflow = TextOverflow.Ellipsis
         )
         Spacer(Modifier.height(8.dp))
-        Pill("Episode $episode", brush = Gloss.Tag)
+        Pill("Episode $episode", brush = Fills.Tag)
         Spacer(Modifier.height(18.dp))
         LinearProgressIndicator(
             color = Ink.Candy,

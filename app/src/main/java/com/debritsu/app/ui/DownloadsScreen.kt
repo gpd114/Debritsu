@@ -67,7 +67,7 @@ fun DownloadsScreen(onBack: () -> Unit) {
 
     Scaffold(
         containerColor = Color.Transparent,
-        topBar = { GlossyTopBar("Downloads", onBack) }
+        topBar = { ScreenTopBar("Downloads", onBack) }
     ) { pad ->
         Column(Modifier.padding(pad)) {
 
@@ -81,7 +81,7 @@ fun DownloadsScreen(onBack: () -> Unit) {
             }
 
             if (items.isEmpty()) {
-                GlossyCard(Modifier.padding(18.dp), spacing = 6.dp) {
+                Panel(Modifier.padding(18.dp), spacing = 6.dp) {
                     Text("Nothing downloaded yet", style = MaterialTheme.typography.titleMedium)
                     Hint(
                         "Open a show, pick an episode, then tap the download button " +
@@ -109,10 +109,8 @@ fun DownloadsScreen(onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .raised(card)
                             .clip(card)
-                            .background(Gloss.Chip)
-                            .border(1.dp, Gloss.TopLight, card)
+                            .background(Fills.Chip)
                             .clickable(enabled = complete) { play(context, d) }
                             .padding(10.dp)
                     ) {
@@ -126,7 +124,6 @@ fun DownloadsScreen(onBack: () -> Unit) {
                                 .height(80.dp)
                                 .clip(poster)
                                 .background(Ink.Veil)
-                                .gloss()
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
@@ -148,10 +145,10 @@ fun DownloadsScreen(onBack: () -> Unit) {
                             when {
                                 complete -> Pill(
                                     "Ready  ·  ${Downloads.fileFor(d).length() / 1_000_000} MB",
-                                    brush = Gloss.Selected
+                                    brush = Fills.Selected
                                 )
-                                failed -> Pill("Failed", brush = Gloss.Tag)
-                                progress >= 0f -> JellyBar(progress, Modifier.fillMaxWidth())
+                                failed -> Pill("Failed", brush = Fills.Tag)
+                                progress >= 0f -> ProgressLine(progress, Modifier.fillMaxWidth())
                                 else -> LinearProgressIndicator(
                                     color = Ink.Candy,
                                     trackColor = Ink.Edge,

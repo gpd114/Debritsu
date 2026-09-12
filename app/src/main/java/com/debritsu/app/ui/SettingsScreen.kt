@@ -55,7 +55,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     Scaffold(
         containerColor = Color.Transparent,
-        topBar = { GlossyTopBar("Settings", onBack) }
+        topBar = { ScreenTopBar("Settings", onBack) }
     ) { pad ->
         Column(
             Modifier
@@ -65,17 +65,17 @@ fun SettingsScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
 
-            GlossyCard {
+            Panel {
                 SectionTitle("Appearance")
                 ChoiceRow(
-                    listOf("pastel" to "Pastel", "night" to "Night"),
+                    listOf("pastel" to "Pastel", "night" to "Night", "plum" to "Plum"),
                     theme,
                     { theme = it; Settings.theme = it; applyTheme(it) }
                 )
-                Hint("Pastel is light lavender; Night is the dark theme. Both change at once.")
+                Hint("Pastel is light and Night is near-black, both with a dark purple accent; Plum is a dark purple page with a periwinkle accent.")
             }
 
-            GlossyCard {
+            Panel {
                 SectionTitle("AniList")
                 if (DEFAULT_ANILIST_CLIENT_ID.isNotEmpty() && !showAdvanced) {
                     Hint("Tap Sign in and approve access — nothing else to set up.")
@@ -91,12 +91,12 @@ fun SettingsScreen(onBack: () -> Unit) {
                         label = { Text("Client ID") },
                         singleLine = true,
                         shape = fieldShape,
-                        colors = glossyFieldColors(),
+                        colors = fieldColors(),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    JellyButton(
+                    PrimaryButton(
                         onClick = {
                             if (clientId.isNotBlank()) context.startActivity(
                                 Intent(Intent.ACTION_VIEW, Uri.parse(AniList.authUrl(clientId)))
@@ -112,7 +112,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                         )
                     }
                     if (signedIn) {
-                        GlassButton("Sign out", { Settings.aniListToken = "" }, height = 46.dp, color = Ink.Orchid)
+                        SecondaryButton("Sign out", { Settings.aniListToken = "" }, height = 46.dp, color = Ink.Orchid)
                     }
                 }
                 Hint(
@@ -121,7 +121,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
             }
 
-            GlossyCard {
+            Panel {
                 SectionTitle("Stremio addons")
                 Hint(
                     "Paste an addon URL (manifest.json or stremio:// link). Use a debrid-backed " +
@@ -135,11 +135,11 @@ fun SettingsScreen(onBack: () -> Unit) {
                         label = { Text("Addon URL") },
                         singleLine = true,
                         shape = fieldShape,
-                        colors = glossyFieldColors(),
+                        colors = fieldColors(),
                         modifier = Modifier.weight(1f)
                     )
                     Spacer(Modifier.width(10.dp))
-                    JellyButton(
+                    PrimaryButton(
                         onClick = {
                             Settings.addAddon(newAddon)
                             addons = Settings.addons
@@ -173,7 +173,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
 
-            GlossyCard {
+            Panel {
                 SectionTitle("Debrid provider")
                 Hint(
                     "Optional. Only used for addons that return a bare infoHash instead " +
@@ -191,7 +191,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                         label = { Text("Service") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = providerMenu) },
                         shape = fieldShape,
-                        colors = glossyFieldColors(),
+                        colors = fieldColors(),
                         modifier = Modifier
                             .fillMaxWidth()
                             .menuAnchor(MenuAnchorType.PrimaryNotEditable)
@@ -235,7 +235,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                         )
                     },
                     shape = fieldShape,
-                    colors = glossyFieldColors(),
+                    colors = fieldColors(),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Hint(
@@ -246,7 +246,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
             }
 
-            GlossyCard {
+            Panel {
                 SectionTitle("Playback")
                 Hint(
                     "With this on, pressing play searches your addons, picks the best " +
@@ -254,7 +254,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                         "matches, the source list opens instead so you choose — it will " +
                         "not quietly play something over your limits."
                 )
-                GlossySwitchRow("Play automatically", autoPlay) { autoPlay = it; Settings.autoPlay = it }
+                SwitchRow("Play automatically", autoPlay) { autoPlay = it; Settings.autoPlay = it }
 
                 if (autoPlay) {
                     Label("Highest quality")
@@ -274,14 +274,14 @@ fun SettingsScreen(onBack: () -> Unit) {
                         onValueChange = { maxSize = it.toInt(); Settings.maxSizeMb = it.toInt() },
                         valueRange = 0f..4000f,
                         steps = 39,
-                        colors = glossySliderColors()
+                        colors = sliderColors()
                     )
                     Hint(
                         "A hard limit. Sources that don't say how big they are can't be " +
                             "checked against it, so they're skipped too."
                     )
 
-                    GlossySwitchRow("Prefer English", preferEnglish) {
+                    SwitchRow("Prefer English", preferEnglish) {
                         preferEnglish = it; Settings.preferEnglish = it
                     }
                     Hint(
@@ -293,7 +293,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
 
-            GlossyCard {
+            Panel {
                 SectionTitle("Audio")
                 Hint(
                     "Which track to pick when a release carries more than one. Most " +
@@ -313,7 +313,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
             }
 
-            GlossyCard {
+            Panel {
                 SectionTitle("Subtitles")
                 Hint(
                     "Track selection lives on the CC button in the player. These control " +
@@ -326,7 +326,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     onValueChange = { subSize = it; Settings.subtitleSizeSp = it },
                     valueRange = 12f..40f,
                     steps = 13,
-                    colors = glossySliderColors()
+                    colors = sliderColors()
                 )
 
                 Label("Colour")
@@ -343,7 +343,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     { subBg = it; Settings.subtitleBackground = it }
                 )
 
-                GlossySwitchRow("Outline text", subOutline) {
+                SwitchRow("Outline text", subOutline) {
                     subOutline = it; Settings.subtitleOutline = it
                 }
             }

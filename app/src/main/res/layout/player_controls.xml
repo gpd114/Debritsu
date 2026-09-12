@@ -115,8 +115,8 @@
                 style="@style/ExoStyledControls.TimeText.Position"
                 android:fontFamily="@font/mplus_rounded_bold" />
 
-            <!-- The app's jelly in two solid colours, since the bar takes no
-                 gradient: periwinkle for what has played, a paler knob on top. -->
+            <!-- Played and knob colours are the theme's, set in
+                 PlayerActivity.styleTimeBar; these are only what shows first. -->
             <androidx.media3.ui.DefaultTimeBar
                 android:id="@+id/exo_progress"
                 android:layout_width="0dp"
@@ -124,8 +124,8 @@
                 android:layout_height="26dp"
                 app:bar_height="5dp"
                 app:scrubber_enabled_size="16dp"
-                app:played_color="#FF8A94FA"
-                app:scrubber_color="#FFC3C9FF"
+                app:played_color="#FFA884FF"
+                app:scrubber_color="#FFD6C6FF"
                 app:buffered_color="#66FFFFFF"
                 app:unplayed_color="#33FFFFFF" />
 

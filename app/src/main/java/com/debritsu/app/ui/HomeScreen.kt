@@ -334,11 +334,11 @@ internal fun HomeFeed(
             if (needsSource) item { AddSourceCard(onSettings) }
             if (loading && heroShows.isEmpty()) item { LoadingLine() }
             if (airing.isNotEmpty()) {
-                item { GlossyHeader("Airing this week", trailing = "${airing.size} ${if (airing.size == 1) "show" else "shows"}") }
+                item { RowHeader("Airing this week", trailing = "${airing.size} ${if (airing.size == 1) "show" else "shows"}") }
                 item { AiringRow(airing, onOpen) }
             }
             if (watching.isNotEmpty()) {
-                item { GlossyHeader("Continue watching", trailing = "See all", onTrailing = { onExpand("Continue watching") }) }
+                item { RowHeader("Continue watching", trailing = "See all", onTrailing = { onExpand("Continue watching") }) }
                 item { ContinueRow(watching, onOpen) }
             }
             if (planning.isNotEmpty()) item { Shelf("Plan to watch", planning, onOpen) { onExpand("Plan to watch") } }
@@ -352,11 +352,11 @@ internal fun HomeFeed(
                 .fillMaxWidth()
                 // Fully opaque: at 94% the title scrolling beneath showed through
                 // as a ghost behind the icons.
-                .background(if (solid) Ink.palette.backdrop[0] else Color.Transparent)
+                .background(if (solid) Ink.Base else Color.Transparent)
                 .statusBarsPadding()
                 .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
-            val tint = if (solid) Ink.GlassIcon else if (Ink.palette.dark) Color.White else Ink.GlassIcon
+            val tint = if (solid || !Ink.palette.dark) Ink.GlassIcon else Color.White
             OverlayIconButton(Icons.Default.Search, "Search", onSearch, wash = !solid, tint = tint)
             Spacer(Modifier.width(6.dp))
             OverlayIconButton(Icons.Default.Download, "Downloads", onDownloads, wash = !solid, tint = tint)
@@ -466,7 +466,7 @@ private fun HeroPage(
                 color = Ink.Mist
             )
             if (underway && total > 0) {
-                JellyBar(
+                ProgressLine(
                     anime.progress.toFloat() / total,
                     Modifier.padding(top = 10.dp).fillMaxWidth(),
                     height = 5.dp
@@ -476,13 +476,13 @@ private fun HeroPage(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(top = 16.dp)
             ) {
-                JellyButton(onClick = { onResume(anime.id) }, modifier = Modifier.weight(1f)) {
+                PrimaryButton(onClick = { onResume(anime.id) }, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
                     Text(if (underway) "Resume" else "Play", style = MaterialTheme.typography.labelLarge)
                 }
                 Spacer(Modifier.width(10.dp))
-                GlassButton("Details", { onOpen(anime.id) })
+                SecondaryButton("Details", { onOpen(anime.id) })
             }
         }
     }
@@ -513,11 +513,10 @@ internal fun rememberArt(anime: Anime): Any? {
 @Composable
 internal fun WideArt(model: Any?, modifier: Modifier) {
     val context = LocalContext.current
-    val p = Ink.palette
-    // A haze along the top for the status bar: the page's own pale colour on
-    // Pastel, where the clock is drawn dark, and a dark one on Night, where it
-    // is light. Either way the clock reads over any picture.
-    val haze = if (p.dark) Color(0x6B0F0823) else p.backdrop[0].copy(alpha = 0.8f)
+    // A haze of the page's colour along the top for the status bar: pale on
+    // Pastel, where the clock is drawn dark, and dark on the dark themes,
+    // where it is light. Either way the clock reads over any picture.
+    val haze = Ink.Base.copy(alpha = if (Ink.palette.dark) 0.45f else 0.8f)
     Box(modifier) {
         AsyncImage(
             model = remember(model) { ImageRequest.Builder(context).data(model).crossfade(true).build() },
@@ -567,7 +566,7 @@ private fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> U
             .statusBarsPadding()
             .padding(start = 16.dp, end = 18.dp, top = 8.dp, bottom = 10.dp)
     ) {
-        GlassIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Close search", onClose)
+        SquareIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Close search", onClose)
         Spacer(Modifier.width(10.dp))
         OutlinedTextField(
             value = query,
@@ -577,7 +576,7 @@ private fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> U
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Ink.Mist) },
             shape = RoundedCornerShape(24.dp),
             textStyle = MaterialTheme.typography.bodyMedium,
-            colors = glossyFieldColors(),
+            colors = fieldColors(),
             modifier = Modifier.weight(1f).focusRequester(focus)
         )
     }
@@ -602,11 +601,8 @@ private fun AddSourceCard(onSettings: () -> Unit) {
         Modifier
             .padding(horizontal = 20.dp, vertical = 10.dp)
             .fillMaxWidth()
-            .softShadow(shape, 8.dp)
-            .raised(shape)
             .clip(shape)
-            .background(Gloss.Chip)
-            .border(1.dp, Gloss.TopLight, shape)
+            .background(Fills.Chip)
             .clickable(onClick = onSettings)
             .padding(16.dp)
     ) {
@@ -636,11 +632,8 @@ internal fun AiringRow(airing: List<Anime>, onOpen: (Int) -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .width(232.dp)
-                    .softShadow(shape, 8.dp)
-                    .raised(shape)
                     .clip(shape)
-                    .background(Gloss.Chip)
-                    .border(1.dp, Gloss.TopLight, shape)
+                    .background(Fills.Chip)
                     .clickable { onOpen(anime.id) }
                     .padding(8.dp)
             ) {
@@ -703,11 +696,9 @@ internal fun ContinueRow(shows: List<Anime>, onOpen: (Int) -> Unit) {
                     Modifier
                         .fillMaxWidth()
                         .aspectRatio(16f / 9f)
-                        .softShadow(shape, 10.dp)
-                        .raised(shape, depth = 4.dp)
                         .clip(shape)
                         .background(Ink.Veil)
-                        .border(if (Ink.palette.dark) 1.dp else 2.dp, if (Ink.palette.dark) Color(0x1FFFFFFF) else Color.White, shape)
+                        .border(1.dp, Ink.Hairline, shape)
                 ) {
                     AsyncImage(
                         model = rememberArt(anime),
@@ -738,7 +729,7 @@ internal fun ContinueRow(shows: List<Anime>, onOpen: (Int) -> Unit) {
                         modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)
                     )
                     if (total > 0) {
-                        JellyBar(
+                        ProgressLine(
                             anime.progress.toFloat() / total,
                             Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
                             height = 4.dp,
@@ -768,7 +759,7 @@ internal fun Shelf(
     onExpand: () -> Unit
 ) {
     Column {
-        GlossyHeader(title, trailing = "See all", onTrailing = onExpand)
+        RowHeader(title, trailing = "See all", onTrailing = onExpand)
         LazyRow(
             // Bottom padding leaves room for the edge and shadow under each poster.
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 10.dp),
@@ -802,7 +793,7 @@ private fun ExpandedShelf(
     }
 
     Column {
-        GlossyHeader(title, trailing = "Close", onTrailing = onCollapse, count = list.size)
+        RowHeader(title, trailing = "Close", onTrailing = onCollapse, count = list.size)
         LazyVerticalGrid(
             state = grid,
             columns = GridCells.Adaptive(108.dp),
@@ -827,17 +818,17 @@ private fun ExpandedShelf(
 
 /**
  * A poster with its title under it. Shows under way carry their episode as a
- * badge; the rest carry AniList's score where it has one, in the periwinkle
- * of everything else rather than a gold that stood apart from it.
+ * badge; the rest carry AniList's score where it has one, in the accent of
+ * everything else rather than a gold that stood apart from it.
  */
 @Composable
 internal fun PosterCard(anime: Anime, onOpen: (Int) -> Unit) {
     Column(Modifier.clickable { onOpen(anime.id) }) {
-        GlossyPoster(anime.cover, anime.title, Modifier.fillMaxWidth(), corner = 14.dp) {
+        PosterArt(anime.cover, anime.title, Modifier.fillMaxWidth(), corner = 14.dp) {
             if (anime.progress > 0) {
                 Pill(
                     "EP ${anime.progress}",
-                    brush = Gloss.Selected,
+                    brush = Fills.Selected,
                     modifier = Modifier.align(Alignment.TopStart).padding(7.dp)
                 )
             } else {
@@ -846,12 +837,12 @@ internal fun PosterCard(anime: Anime, onOpen: (Int) -> Unit) {
                 // only when there is no episode badge: side by side on a poster
                 // this narrow the two ran into each other.
                 anime.averageScore?.let { score ->
-                    // Tinted glass: a deep periwinkle at a little over half
+                    // Tinted glass: the accent, deepened, at a little over half
                     // strength, so the poster shows through while the white
                     // still reads on a bright one.
                     Pill(
                         "★ $score%",
-                        brush = SolidColor(Color(0x8C3A42C8)),
+                        brush = SolidColor(Ink.palette.badge),
                         modifier = Modifier.align(Alignment.TopEnd).padding(7.dp)
                     )
                 }

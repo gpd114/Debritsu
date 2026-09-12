@@ -18,14 +18,14 @@ import com.debritsu.app.ui.HomeFeed
 import com.debritsu.app.ui.Ink
 import com.debritsu.app.ui.SettingsScreen
 import com.debritsu.app.ui.applyTheme
-import com.debritsu.app.ui.glossyBackdrop
+import com.debritsu.app.ui.pageBackground
 
 /**
  * Debug builds only: the screens drawn with sample shows, so the look can be
  * checked when AniList is unreachable or the device has no account. Start it with
  *
  *     adb shell am start -n com.debritsu.app/.GlossyPreviewActivity \
- *         [--es screen detail|settings|downloads|player] [--es theme night]
+ *         [--es screen detail|settings|downloads|player] [--es theme night|plum]
  *
  * The samples carry real AniList ids, so the wide art is looked up on ani.zip
  * exactly as the app does it. Covers come from Kitsu's CDN. Nothing here is
@@ -104,7 +104,7 @@ class GlossyPreviewActivity : ComponentActivity() {
                 Surface(
                     color = Color.Transparent,
                     contentColor = Ink.Bone,
-                    modifier = Modifier.fillMaxSize().glossyBackdrop()
+                    modifier = Modifier.fillMaxSize().pageBackground()
                 ) {
                     when (screen) {
                         "detail" -> DetailScreen(anilistId = sample.id, onBack = {}, preview = sample)

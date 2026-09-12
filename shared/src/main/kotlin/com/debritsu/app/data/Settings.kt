@@ -93,7 +93,7 @@ object Settings {
 
     // ----- appearance -----
 
-    /** "pastel" — light, the default — or "night". */
+    /** "pastel" — light, the default — "night" or "plum". */
     var theme: String
         get() = store.getString("theme", "pastel")
         set(v) = store.putString("theme", v)

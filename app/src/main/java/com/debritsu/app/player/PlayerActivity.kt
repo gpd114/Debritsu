@@ -2,6 +2,9 @@ package com.debritsu.app.player
 
 import android.content.Context
 import android.content.res.ColorStateList
+import androidx.compose.ui.graphics.toArgb
+import androidx.media3.ui.DefaultTimeBar
+import com.debritsu.app.ui.Ink
 import android.graphics.Color
 import android.media.AudioManager
 import android.net.Uri
@@ -173,6 +176,7 @@ class PlayerActivity : ComponentActivity() {
         updateEpisodeButtons()
 
         styleBufferingSpinner()
+        styleTimeBar()
         installGestures(view)
         installSkipButton()
         applySubtitleStyle(view.subtitleView)
@@ -593,12 +597,22 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun styleBufferingSpinner() {
         val spinner = findViewById<ProgressBar>(androidx.media3.ui.R.id.exo_buffering) ?: return
-        spinner.indeterminateTintList = ColorStateList.valueOf(0xFF8A94FA.toInt())
+        spinner.indeterminateTintList = ColorStateList.valueOf(Ink.palette.video.toArgb())
         val size = (64 * resources.displayMetrics.density).toInt()
         spinner.layoutParams = spinner.layoutParams.apply {
             width = size
             height = size
         }
+    }
+
+    /**
+     * The seek bar in the theme's accent. Set here rather than in the layout,
+     * which can only name one fixed colour and there are three themes.
+     */
+    private fun styleTimeBar() {
+        val bar = findViewById<DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress) ?: return
+        bar.setPlayedColor(Ink.palette.video.toArgb())
+        bar.setScrubberColor(Ink.palette.videoKnob.toArgb())
     }
 
     /**
@@ -611,13 +625,10 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun installSkipButton() {
         val button = findViewById<TextView>(R.id.skip_segment)
-        // The app's jelly, in periwinkle, with a light rim along the top.
-        button.background = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xF2C3C9FF.toInt(), 0xF28A94FA.toInt(), 0xF25E69EA.toInt())
-        ).apply {
+        // The theme's main-button colour, flat, as everywhere else.
+        button.background = GradientDrawable().apply {
+            setColor(Ink.palette.action.copy(alpha = 0.95f).toArgb())
             cornerRadius = 26 * resources.displayMetrics.density
-            setStroke((1.5f * resources.displayMetrics.density).toInt(), 0x59FFFFFF)
         }
         button.typeface = roundedHeavy
 
@@ -842,22 +853,24 @@ class PlayerActivity : ComponentActivity() {
                 maxLines = 2
             })
             row.tag?.let { tag ->
-                // The same tags as the sheet on the detail screen: periwinkle for
-                // what is playing, a deeper blue for a direct link, quiet otherwise.
-                val (from, to) = when (tag) {
-                    "PLAYING" -> 0xFFAEB6FF.toInt() to 0xFF6B76EC.toInt()
-                    "DIRECT" -> 0xFF9AA3FF.toInt() to 0xFF525EE0.toInt()
-                    else -> 0x1FFFFFFF to 0x1FFFFFFF
+                // The same tags as the sheet on the detail screen: the theme's
+                // tag colour for what is playing, its selected colour for a
+                // direct link, quiet otherwise.
+                val fill = when (tag) {
+                    "PLAYING" -> Ink.palette.tag.toArgb()
+                    "DIRECT" -> Ink.palette.selected.toArgb()
+                    else -> 0x1FFFFFFF
                 }
                 item.addView(TextView(this@PlayerActivity).apply {
                     text = tag.lowercase().replaceFirstChar { it.uppercase() }
-                    setTextColor(if (from == 0x1FFFFFFF) 0xFFB9B3CC.toInt() else 0xFFFFFFFF.toInt())
+                    setTextColor(if (fill == 0x1FFFFFFF) 0xFFB9B3CC.toInt() else 0xFFFFFFFF.toInt())
                     textSize = 10f
                     typeface = roundedBold
                     setPadding(px(9), px(2), px(9), px(3))
-                    background = GradientDrawable(
-                        GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(from, to)
-                    ).apply { cornerRadius = px(10).toFloat() }
+                    background = GradientDrawable().apply {
+                        setColor(fill)
+                        cornerRadius = px(10).toFloat()
+                    }
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
