@@ -10,6 +10,7 @@ import com.debritsu.app.data.KeyValueStore
 import com.debritsu.app.data.Progress
 import com.debritsu.app.data.Settings
 import com.debritsu.app.data.SyncQueue
+import com.debritsu.app.ui.applyTheme
 
 class DebritsuApp : Application() {
     override fun onCreate() {
@@ -36,6 +37,10 @@ class DebritsuApp : Application() {
         SyncQueue.store = SharedPrefsStore(
             getSharedPreferences("sync_queue", Context.MODE_PRIVATE)
         )
+        // Here rather than in an activity: the player can be the first thing
+        // built in a process Android restarted, and it takes its colours from
+        // the theme too.
+        applyTheme(Settings.theme)
         BuildInfo.debug = BuildConfig.DEBUG
         BuildInfo.anilistClientId = BuildConfig.ANILIST_CLIENT_ID
         BuildInfo.log = { tag, message -> android.util.Log.d(tag, message) }

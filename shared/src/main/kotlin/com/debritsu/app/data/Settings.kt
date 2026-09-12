@@ -91,6 +91,13 @@ object Settings {
         get() = store.getBoolean("sub_outline", true)
         set(v) = store.putBoolean("sub_outline", v)
 
+    // ----- appearance -----
+
+    /** "pastel" — light, the default — "night" or "plum". */
+    var theme: String
+        get() = store.getString("theme", "pastel")
+        set(v) = store.putString("theme", v)
+
     // ----- automatic source selection -----
 
     /** Play the best match straight away instead of opening the source list. */

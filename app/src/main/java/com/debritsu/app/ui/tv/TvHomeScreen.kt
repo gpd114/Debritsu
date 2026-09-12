@@ -21,10 +21,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,6 +37,10 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -52,12 +56,16 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Button
 import androidx.tv.material3.Card
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -67,6 +75,8 @@ import com.debritsu.app.data.AniList
 import com.debritsu.app.data.Anime
 import com.debritsu.app.data.Settings
 import com.debritsu.app.ui.Ink
+import com.debritsu.app.ui.pageBackground
+import com.debritsu.app.ui.fieldColors
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -77,10 +87,18 @@ import kotlinx.coroutines.launch
  */
 internal val OVERSCAN = 27.dp
 
-private val POSTER_WIDTH = 140.dp
+private val POSTER_WIDTH = 116.dp
 
 /**
- * The browse screen, as rows of shows.
+ * The browse screen: a show's artwork and details across the top, rows of
+ * shows beneath.
+ *
+ * The top follows the remote. Whichever card is focused puts its own art,
+ * title and details up there, so moving along a row is browsing the shows
+ * themselves rather than a strip of small posters — and the Resume and Details
+ * buttons act on the show last focused. On a phone the top turns over on its
+ * own; on a television that would be the picture changing under someone who
+ * is deciding.
  *
  * Focus is left entirely to tv-material's [Card], which scales and outlines
  * itself when selected and moves correctly under a d-pad. The equivalent was
@@ -91,6 +109,7 @@ private val POSTER_WIDTH = 140.dp
 @Composable
 fun TvHomeScreen(
     onOpen: (Int) -> Unit,
+    onResume: (Int) -> Unit,
     onSettings: () -> Unit,
     authFlash: Int
 ) {
@@ -102,6 +121,9 @@ fun TvHomeScreen(
     var query by remember { mutableStateOf("") }
     var found by remember { mutableStateOf<List<Anime>>(emptyList()) }
     val searching = query.trim().length >= 3
+    // The show whose art and details are across the top: the last card the
+    // remote was on, or, before any has been, the first show under way.
+    var focusedShow by remember { mutableStateOf<Anime?>(null) }
 
     // The field can only be focused once search is deliberately started, and a
     // button is what starts it.
@@ -140,9 +162,6 @@ fun TvHomeScreen(
         found = runCatching { AniList.search(query.trim()).items }.getOrDefault(emptyList())
     }
 
-    // Three independent queries, run together rather than one after another.
-    // Each row is assigned on its own so it appears as its own query lands
-    // instead of every row waiting for the slowest.
     // Reloaded on every return, so Continue watching reflects the episode just
     // finished rather than the state this screen was first built with.
     var refresh by remember { mutableStateOf(0) }
@@ -197,135 +216,290 @@ fun TvHomeScreen(
     // completed years ago, which is the one thing this shelf should never
     // suggest.
     val onMyList = listed + (watching + planning).map { it.id }
+    val fresh = recommended.filter { it.id !in onMyList }
 
+    TvHomeFeed(
+        watching = watching,
+        planning = planning,
+        trending = trending,
+        recommended = fresh,
+        focusedShow = focusedShow,
+        onFocusShow = { focusedShow = it },
+        searchActive = searchActive,
+        query = query,
+        onQuery = { query = it },
+        searchFocus = searchFocus,
+        found = found,
+        searching = searching,
+        needsSource = Settings.addons.isEmpty(),
+        onStartSearch = { searchActive = true },
+        onOpen = onOpen,
+        onResume = onResume,
+        onSettings = onSettings
+    )
+}
+
+/**
+ * The screen itself, from lists already in hand — kept apart from the
+ * fetching so the debug preview can draw it with sample shows.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+internal fun TvHomeFeed(
+    watching: List<Anime>,
+    planning: List<Anime>,
+    trending: List<Anime>,
+    recommended: List<Anime>,
+    focusedShow: Anime?,
+    onFocusShow: (Anime) -> Unit,
+    searchActive: Boolean,
+    query: String,
+    onQuery: (String) -> Unit,
+    searchFocus: FocusRequester,
+    found: List<Anime>,
+    searching: Boolean,
+    needsSource: Boolean,
+    onStartSearch: () -> Unit,
+    onOpen: (Int) -> Unit,
+    onResume: (Int) -> Unit,
+    onSettings: () -> Unit
+) {
+    val shown = focusedShow ?: watching.firstOrNull() ?: trending.firstOrNull()
     val shelves = buildList {
-        if (watching.isNotEmpty()) add("Continue watching" to watching)
         if (planning.isNotEmpty()) add("Plan to watch" to planning)
         if (trending.isNotEmpty()) add("Trending" to trending)
-        val fresh = recommended.filter { it.id !in onMyList }
-        if (fresh.isNotEmpty()) add("Recommended" to fresh)
+        if (recommended.isNotEmpty()) add("Recommended" to recommended)
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Ink.Base)
-            .padding(OVERSCAN)
-    ) {
-        // Pressing down from here lands on the fifth card rather than the
-        // first, because focus moves geometrically and Search and Settings sit
-        // at the right-hand end of this row.
-        //
-        // Aiming down at the first card with focusProperties was tried twice
-        // and is not the answer. Pointed at a FocusRequester no card held, it
-        // threw and closed the app; once attached, it swallowed the key press
-        // and focus stopped moving at all. There is already a note further down
-        // this file about focusProperties not taking on a text field either, so
-        // that is twice this mechanism has not done what it says.
-        //
-        // Left alone deliberately rather than guessed at a third time.
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp)
-        ) {
-            // Search takes the space the app's name used to. Nobody needs
-            // reminding what they are looking at while they are looking at it.
-            //
-            // The field only exists while searching. Marking it unfocusable was
-            // tried and does not hold — focusProperties has no effect on a text
-            // field's own focus target — so at launch the remote's first press
-            // landed in it, the keyboard opened, and the shows became
-            // unreachable behind it. A control that is not in the tree cannot
-            // take focus, which is the only version of this that survives
-            // contact with the box.
-            if (searchActive) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    singleLine = true,
-                    placeholder = { androidx.compose.material3.Text("Search anime") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        unfocusedBorderColor = Ink.Edge,
-                        focusedBorderColor = Ink.Iris,
-                        unfocusedContainerColor = Ink.Veil,
-                        focusedContainerColor = Ink.Veil
-                    ),
-                    // Half the row rather than all of it. A search box does not
-                    // get more useful for being a metre wide, and the space it
-                    // was taking says what is airing instead.
-                    modifier = Modifier.width(420.dp).focusRequester(searchFocus)
-                )
-                Spacer(Modifier.weight(1f))
-            } else if (query.isNotBlank()) {
-                // Only when there is something to say. It used to read "Search
-                // anime" whenever nothing had been searched, which is a label
-                // for a field that is not on screen — the field only exists
-                // while searching — so it sat in the corner of the shelves
-                // describing nothing.
-                Text(
-                    "Results for “${query.trim()}”",
-                    style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
-                    color = Ink.Mist,
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-                // What is airing soon, in the room the header gave up.
-                //
-                // Deliberately not focusable, which is the whole design of it.
-                // A focusable row here would sit between the top buttons and
-                // the shelves, so every trip from Search to a show would cross
-                // it — and this is something to glance at rather than something
-                // to visit. It shows what fits and fades what does not, which
-                // on a television is the right trade: the shelves are the thing
-                // you came for.
-                TvAiringStrip(
-                    airing = (watching + planning)
-                        .filter { it.nextEpisode != null && (it.airingInSeconds ?: 0) > 0 }
-                        .sortedBy { it.airingInSeconds ?: Int.MAX_VALUE },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            if (!searchActive) {
-                TvIconButton(Icons.Default.Search, "Search") { searchActive = true }
-                Spacer(Modifier.width(12.dp))
-            }
-            TvIconButton(Icons.Default.Settings, "Settings", onSettings)
-        }
-
-        // Nothing can be played until an addon is configured, and on a fresh
-        // install there is none — so say so rather than showing an empty screen
-        // that looks broken.
-        if (Settings.addons.isEmpty()) {
-            Text(
-                "No addons yet. Open Settings and paste an addon URL — a phone " +
-                    "keyboard app makes that far less painful than the remote.",
-                style = androidx.tv.material3.MaterialTheme.typography.bodyLarge,
-                color = Ink.Mist,
-                modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
+    Box(Modifier.fillMaxSize().pageBackground()) {
+        // The focused show's art, across the top right, dissolving into the
+        // page to the left where the words are and downward into the rows.
+        if (!searching) {
+            TvBackdrop(
+                rememberTvArt(shown),
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .fillMaxWidth(0.74f)
+                    .aspectRatio(16f / 9f)
             )
         }
 
-        // Results take over from the shelves while there is a query, rather
-        // than appearing beneath them — with a remote, anything below the fold
-        // may as well not be there.
-        if (searching) {
-            if (found.isEmpty()) {
+        Column(Modifier.fillMaxSize().padding(OVERSCAN)) {
+            // Pressing down from here lands on whatever lies beneath the
+            // button, because focus moves geometrically and Search and
+            // Settings sit at the right-hand end of this row. Aiming it with
+            // focusProperties was tried twice and is not the answer — pointed
+            // at a FocusRequester no card held, it threw and closed the app;
+            // once attached, it swallowed the key press. Left alone
+            // deliberately rather than guessed at a third time.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 6.dp)
+            ) {
+                // The field only exists while searching. Marking it
+                // unfocusable was tried and does not hold — focusProperties
+                // has no effect on a text field's own focus target — so at
+                // launch the remote's first press landed in it, the keyboard
+                // opened, and the shows became unreachable behind it. A
+                // control that is not in the tree cannot take focus, which is
+                // the only version of this that survives contact with the box.
+                if (searchActive) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = onQuery,
+                        singleLine = true,
+                        placeholder = { androidx.compose.material3.Text("Search anime") },
+                        shape = RoundedCornerShape(24.dp),
+                        colors = fieldColors(),
+                        // Half the row rather than all of it. A search box does
+                        // not get more useful for being a metre wide.
+                        modifier = Modifier.width(420.dp).focusRequester(searchFocus)
+                    )
+                    Spacer(Modifier.weight(1f))
+                } else if (query.isNotBlank()) {
+                    Text(
+                        "Results for “${query.trim()}”",
+                        style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
+                        color = Ink.Mist,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    // What is airing soon. Deliberately not focusable: a
+                    // focusable row here would sit between the top buttons and
+                    // everything else, so every trip from Search to a show
+                    // would cross it — and this is something to glance at
+                    // rather than something to visit.
+                    TvAiringStrip(
+                        airing = (watching + planning)
+                            .filter { it.nextEpisode != null && (it.airingInSeconds ?: 0) > 0 }
+                            .sortedBy { it.airingInSeconds ?: Int.MAX_VALUE },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                if (!searchActive) {
+                    TvIconButton(Icons.Default.Search, "Search", onStartSearch)
+                    Spacer(Modifier.width(12.dp))
+                }
+                TvIconButton(Icons.Default.Settings, "Settings", onSettings)
+            }
+
+            if (searching) {
+                // Results take over from everything else while there is a
+                // query, rather than appearing beneath it — with a remote,
+                // anything below the fold may as well not be there.
+                if (found.isEmpty()) {
+                    Text(
+                        "Searching…",
+                        style = androidx.tv.material3.MaterialTheme.typography.bodyLarge,
+                        color = Ink.Mist,
+                        modifier = Modifier.padding(start = 8.dp, top = 12.dp)
+                    )
+                } else {
+                    TvShelf("Results for “${query.trim()}”", found, onOpen, onFocusShow, captions = true)
+                }
+                return@Column
+            }
+
+            shown?.let { TvHeroText(it, it.progress > 0, onOpen, onResume) }
+
+            // Nothing can be played until an addon is configured, and on a
+            // fresh install there is none — so say so rather than showing a
+            // screen that looks broken.
+            if (needsSource) {
                 Text(
-                    "Searching…",
+                    "No addons yet. Open Settings and paste an addon URL — a phone " +
+                        "keyboard app makes that far less painful than the remote.",
                     style = androidx.tv.material3.MaterialTheme.typography.bodyLarge,
                     color = Ink.Mist,
-                    modifier = Modifier.padding(start = 8.dp, top = 12.dp)
+                    modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
                 )
-            } else {
-                TvShelf("Results for “${query.trim()}”", found, onOpen)
             }
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                items(shelves) { (title, list) ->
-                    TvShelf(title, list, onOpen)
+
+            // The rows scroll so the focused one sits at the top of the space
+            // under the hero, title and all, rather than by the least that
+            // brings the card into view. The least left a sliver of the row
+            // above showing and the focused poster's lower edge under the
+            // screen's — measured on the emulator.
+            //
+            // Only for this list. The spec is a composition local, so the rows
+            // inside are handed back the default, or sideways moves would try
+            // to pin each card against the left edge too.
+            val rowSpec = LocalBringIntoViewSpec.current
+            val density = LocalDensity.current
+            val pinRows = remember(density) {
+                // Row title and the room above a card for it to grow into.
+                val above = with(density) { 38.dp.toPx() }
+                object : BringIntoViewSpec {
+                    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float) =
+                        offset - above
                 }
             }
+            CompositionLocalProvider(LocalBringIntoViewSpec provides pinRows) {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    if (watching.isNotEmpty()) {
+                        item {
+                            CompositionLocalProvider(LocalBringIntoViewSpec provides rowSpec) {
+                                TvContinueRow(watching, onOpen, onFocusShow)
+                            }
+                        }
+                    }
+                    items(shelves) { (title, list) ->
+                        CompositionLocalProvider(LocalBringIntoViewSpec provides rowSpec) {
+                            TvShelf(title, list, onOpen, onFocusShow)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The show across the top: what it is, how far in, and the two things to do
+ * with it. A fixed height, so the rows beneath do not jump as the remote moves
+ * between shows with longer and shorter titles.
+ *
+ * Its height and the rows' are budgeted together. The panel is 540dp tall;
+ * the margins and top row take about 110 of it, this 200, which leaves one
+ * row of posters whole beneath — measured on the emulator, with captions
+ * under the posters as well the row was cut off at the bottom of the screen.
+ * The captions went rather than the hero, since the name of whatever is
+ * focused is written up here in large type anyway.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun TvHeroText(
+    show: Anime,
+    underway: Boolean,
+    onOpen: (Int) -> Unit,
+    onResume: (Int) -> Unit
+) {
+    val total = show.episodes ?: 0
+    val next = (show.progress + 1).let { if (total > 0) it.coerceAtMost(total) else it }
+    Column(
+        verticalArrangement = Arrangement.Bottom,
+        modifier = Modifier
+            .fillMaxWidth(0.5f)
+            .height(200.dp)
+            .padding(start = 8.dp, bottom = 12.dp)
+    ) {
+        Text(
+            if (underway) "CONTINUE WATCHING" else "TRENDING NOW",
+            style = androidx.tv.material3.MaterialTheme.typography.labelMedium.copy(
+                fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp
+            ),
+            color = Ink.Candy
+        )
+        Text(
+            show.title,
+            style = androidx.tv.material3.MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
+            color = Ink.Bone,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp, bottom = 6.dp)
+        )
+        Text(
+            buildAnnotatedString {
+                show.averageScore?.let {
+                    withStyle(SpanStyle(color = Ink.Candy, fontWeight = FontWeight.ExtraBold)) { append("★ $it%") }
+                    append("   ")
+                }
+                append(
+                    if (underway) "Episode $next" + (if (total > 0) " of $total" else "")
+                    else show.episodes?.let { if (it == 1) "1 episode" else "$it episodes" } ?: ""
+                )
+            },
+            style = androidx.tv.material3.MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+            color = Ink.Mist
+        )
+        if (underway && total > 0) {
+            Box(
+                Modifier
+                    .padding(top = 8.dp)
+                    .width(260.dp)
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Ink.Edge)
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(show.progress.toFloat() / total)
+                        .height(5.dp)
+                        .background(Ink.palette.progress)
+                )
+            }
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(top = 14.dp)
+        ) {
+            TvPrimaryButton(onClick = { onResume(show.id) }) {
+                androidx.tv.material3.Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (underway) "Resume" else "Play")
+            }
+            TvSecondaryButton(onClick = { onOpen(show.id) }) { Text("Details") }
         }
     }
 }
@@ -408,8 +582,8 @@ private fun TvAiringStrip(airing: List<Anime>, modifier: Modifier = Modifier) {
         // pass.
         Text(
             "Airing next",
-            style = androidx.tv.material3.MaterialTheme.typography.labelMedium,
-            color = Ink.Iris
+            style = androidx.tv.material3.MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.ExtraBold),
+            color = Ink.Candy
         )
         Spacer(Modifier.width(12.dp))
 
@@ -473,21 +647,27 @@ private fun AiringChips(airing: List<Anime>) {
     airing.forEach { show ->
         Row(
             Modifier.padding(end = 10.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Ink.Veil)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .clip(RoundedCornerShape(14.dp))
+                .background(if (Ink.palette.dark) Ink.Veil else Color.White.copy(alpha = 0.85f))
+                .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 show.title,
-                style = androidx.tv.material3.MaterialTheme.typography.labelMedium,
+                style = androidx.tv.material3.MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                 color = Ink.Bone,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.widthIn(max = 260.dp)
             )
             Text(
-                "  ep ${show.nextEpisode}  ${airsIn(show.airingInSeconds ?: 0)}",
+                "  Episode ${show.nextEpisode}",
+                style = androidx.tv.material3.MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                color = Ink.Candy,
+                maxLines = 1
+            )
+            Text(
+                "  ${airsIn(show.airingInSeconds ?: 0)}",
                 style = androidx.tv.material3.MaterialTheme.typography.labelMedium,
                 color = Ink.Mist,
                 maxLines = 1
@@ -513,7 +693,7 @@ private fun TvIconButton(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    Button(
+    TvSecondaryButton(
         onClick = onClick,
         modifier = Modifier.onFocusChanged { focused = it.isFocused }
     ) {
@@ -536,38 +716,103 @@ private fun TvIconButton(
     }
 }
 
-/** A small dark pill over the artwork, legible at a distance. */
+/**
+ * The shows under way as wide cards, in their own fanart — the next episode
+ * and a bar through the series over the bottom of each.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
+@Composable
+private fun TvContinueRow(list: List<Anime>, onOpen: (Int) -> Unit, onFocusShow: (Anime) -> Unit) {
+    val firstCard = remember { FocusRequester() }
+    Column {
+        RowTitle("Continue watching")
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            // Room for a focused card to grow into without being clipped by the
+            // row's own bounds.
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+            modifier = Modifier.focusRestorer { firstCard }
+        ) {
+            itemsIndexed(list) { index, anime ->
+                val total = anime.episodes ?: 0
+                val next = (anime.progress + 1).let { if (total > 0) it.coerceAtMost(total) else it }
+                // No caption beneath: the hero names whichever card is focused.
+                Column(Modifier.width(236.dp)) {
+                    Card(
+                        onClick = { onOpen(anime.id) },
+                        shape = TvCardShape,
+                        modifier = Modifier
+                            .then(if (index == 0) Modifier.focusRequester(firstCard) else Modifier)
+                            .onFocusChanged { if (it.isFocused) onFocusShow(anime) }
+                    ) {
+                        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Ink.Veil)) {
+                            AsyncImage(
+                                model = rememberTvArt(anime),
+                                contentDescription = anime.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            Box(
+                                Modifier.fillMaxSize().background(
+                                    Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color(0xB3000000))
+                                )
+                            )
+                            Text(
+                                "EP $next",
+                                style = androidx.tv.material3.MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                modifier = Modifier.align(Alignment.BottomStart).padding(10.dp)
+                            )
+                            if (total > 0) {
+                                Box(
+                                    Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .background(Color(0x40FFFFFF))
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth(anime.progress.toFloat() / total)
+                                            .height(4.dp)
+                                            .background(Ink.palette.progress)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun Badge(text: String, colour: androidx.compose.ui.graphics.Color, modifier: Modifier) {
-    Box(
-        modifier
-            .padding(6.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(androidx.compose.ui.graphics.Color(0xCC08070D))
-            .padding(horizontal = 7.dp, vertical = 3.dp)
-    ) {
-        Text(
-            text,
-            style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
-            color = colour
-        )
-    }
+private fun RowTitle(title: String) {
+    Text(
+        title,
+        style = androidx.tv.material3.MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+        color = Ink.Bone,
+        modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)
+    )
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
-private fun TvShelf(title: String, list: List<Anime>, onOpen: (Int) -> Unit) {
+private fun TvShelf(
+    title: String,
+    list: List<Anime>,
+    onOpen: (Int) -> Unit,
+    onFocusShow: (Anime) -> Unit,
+    /** Names under the posters — for search results, which have no hero above to name them. */
+    captions: Boolean = false
+) {
     // Held by the first card, and used only when there is nothing to restore.
     val firstCard = remember { FocusRequester() }
 
     Column {
-        Text(
-            title,
-            style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
-            color = Ink.Bone,
-            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
-        )
+        RowTitle(title)
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             // Room for a focused card to grow into without being clipped by the
@@ -587,7 +832,7 @@ private fun TvShelf(title: String, list: List<Anime>, onOpen: (Int) -> Unit) {
             modifier = Modifier.focusRestorer { firstCard }
         ) {
             itemsIndexed(list) { index, anime ->
-                TvPoster(anime, onOpen, firstCard.takeIf { index == 0 })
+                TvPoster(anime, onOpen, onFocusShow, captions, firstCard.takeIf { index == 0 })
             }
         }
     }
@@ -598,12 +843,16 @@ private fun TvShelf(title: String, list: List<Anime>, onOpen: (Int) -> Unit) {
 private fun TvPoster(
     anime: Anime,
     onOpen: (Int) -> Unit,
+    onFocusShow: (Anime) -> Unit,
+    captions: Boolean,
     focus: FocusRequester? = null
 ) {
     Column(Modifier.width(POSTER_WIDTH)) {
         Card(
             onClick = { onOpen(anime.id) },
-            modifier = focus?.let { Modifier.focusRequester(it) } ?: Modifier
+            shape = TvCardShape,
+            modifier = (focus?.let { Modifier.focusRequester(it) } ?: Modifier)
+                .onFocusChanged { if (it.isFocused) onFocusShow(anime) }
         ) {
             Box {
                 AsyncImage(
@@ -617,21 +866,13 @@ private fun TvPoster(
                 )
                 // How far in you are, bottom left.
                 if (anime.progress > 0) {
-                    Badge(
-                        "EP ${anime.progress.toString().padStart(2, '0')}",
-                        Ink.Bone,
-                        Modifier.align(Alignment.BottomStart)
-                    )
+                    TvBadge("EP ${anime.progress}", Modifier.align(Alignment.BottomStart), solid = true)
                 }
-                // Opposite corner, and only when AniList has a score — a new or
+                // Top right, and only when AniList has a score — a new or
                 // obscure title often has none, and an empty pill reads worse
                 // than no pill.
                 anime.averageScore?.let { score ->
-                    Badge(
-                        "$score%",
-                        if (score >= 75) Ink.Iris else Ink.Bone,
-                        Modifier.align(Alignment.BottomEnd)
-                    )
+                    TvBadge("★ $score%", Modifier.align(Alignment.TopEnd))
                 }
             }
         }
@@ -640,14 +881,16 @@ private fun TvPoster(
         // neighbours, and a downward press then finds that neighbour rather
         // than the row beneath — which is the bug that cost the phone build an
         // evening.
-        Text(
-            anime.title,
-            style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-            color = Ink.Mist,
-            minLines = 2,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp, start = 2.dp)
-        )
+        if (captions) {
+            Text(
+                anime.title,
+                style = androidx.tv.material3.MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                color = Ink.Bone,
+                minLines = 2,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 6.dp, start = 2.dp)
+            )
+        }
     }
 }

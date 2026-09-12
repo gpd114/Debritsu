@@ -2,6 +2,9 @@ package com.debritsu.app.player
 
 import android.content.Context
 import android.content.res.ColorStateList
+import androidx.compose.ui.graphics.toArgb
+import androidx.media3.ui.DefaultTimeBar
+import com.debritsu.app.ui.Ink
 import android.graphics.Color
 import android.media.AudioManager
 import android.net.Uri
@@ -178,6 +181,7 @@ class PlayerActivity : ComponentActivity() {
         updateEpisodeButtons()
 
         styleBufferingSpinner()
+        styleTimeBar()
         installGestures(view)
         installSkipButton()
         applySubtitleStyle(view.subtitleView)
@@ -668,6 +672,16 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /**
+     * The seek bar in the theme's accent. Set here rather than in the layout,
+     * which can only name one fixed colour and there are three themes.
+     */
+    private fun styleTimeBar() {
+        val bar = findViewById<DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress) ?: return
+        bar.setPlayedColor(Ink.palette.video.toArgb())
+        bar.setScrubberColor(Ink.palette.videoKnob.toArgb())
+    }
+
+    /**
      * Recolours and enlarges the buffering spinner.
      *
      * It belongs to PlayerView's own layout rather than ours, so there is no
@@ -677,7 +691,7 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun styleBufferingSpinner() {
         val spinner = findViewById<ProgressBar>(androidx.media3.ui.R.id.exo_buffering) ?: return
-        spinner.indeterminateTintList = ColorStateList.valueOf(0xFF8B5CF6.toInt())
+        spinner.indeterminateTintList = ColorStateList.valueOf(Ink.palette.video.toArgb())
         val size = (64 * resources.displayMetrics.density).toInt()
         spinner.layoutParams = spinner.layoutParams.apply {
             width = size
@@ -698,7 +712,7 @@ class PlayerActivity : ComponentActivity() {
         skipButton = button
         val radius = 26 * resources.displayMetrics.density
 
-        // Violet normally, and near-white with dark text once the remote is on
+        // The theme's main-button colour normally, and near-white with dark text once the remote is on
         // it. It had a single flat drawable before, so being focused looked
         // exactly like not being focused — there was no faint highlight, there
         // was none at all, and the only way to know the button was selected was
@@ -709,7 +723,7 @@ class PlayerActivity : ComponentActivity() {
         // colour is not. It follows the dialog rows, which already say where
         // the remote is — this was simply missed when they were done.
         val resting = GradientDrawable().apply {
-            setColor(0xE68B5CF6.toInt())
+            setColor(Ink.palette.action.copy(alpha = 0.9f).toArgb())
             cornerRadius = radius
         }
         val focused = GradientDrawable().apply {
@@ -933,13 +947,13 @@ class PlayerActivity : ComponentActivity() {
 
     /** The app's panel styling, shared by the source and cast pickers. */
     /**
-     * A violet plate behind whichever row the d-pad is on, and nothing
+     * A tinted plate behind whichever row the d-pad is on, and nothing
      * otherwise. Built here rather than as a drawable resource so the colour
      * sits beside the rest of the dialog's.
      */
     private fun focusHighlight(): android.graphics.drawable.Drawable {
         val on = GradientDrawable().apply {
-            setColor(0x338B5CF6)
+            setColor(Ink.palette.video.copy(alpha = 0.2f).toArgb())
             cornerRadius = 10 * resources.displayMetrics.density
         }
         return android.graphics.drawable.StateListDrawable().apply {
@@ -1016,7 +1030,7 @@ class PlayerActivity : ComponentActivity() {
                 item.addView(TextView(this@PlayerActivity).apply {
                     text = tag
                     setTextColor(
-                        if (tag == "DIRECT" || tag == "PLAYING") 0xFF8B5CF6.toInt()
+                        if (tag == "DIRECT" || tag == "PLAYING") Ink.palette.video.toArgb()
                         else 0xFFB9B3CC.toInt()
                     )
                     textSize = 9.5f

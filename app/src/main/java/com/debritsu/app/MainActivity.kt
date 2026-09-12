@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.lifecycle.lifecycleScope
 import com.debritsu.app.data.Settings
 import com.debritsu.app.data.SyncQueue
@@ -54,15 +56,23 @@ class MainActivity : ComponentActivity() {
                             // that it does not carry the other one around.
                             TvHomeScreen(
                                 onOpen = { nav.navigate("detail/$it") },
+                                onResume = { nav.navigate("detail/$it?play=true") },
                                 onSettings = { nav.navigate("settings") },
                                 authFlash = authFlash
                             )
                         }
-                        composable("detail/{id}") { entry ->
+                        composable(
+                            "detail/{id}?play={play}",
+                            arguments = listOf(
+                                navArgument("id") { type = NavType.StringType },
+                                navArgument("play") { type = NavType.BoolType; defaultValue = false }
+                            )
+                        ) { entry ->
                             TvDetailScreen(
                                 anilistId = entry.arguments?.getString("id")?.toIntOrNull() ?: 0,
                                 onBack = { nav.popBackStack() },
-                                onOpen = { nav.navigate("detail/$it") }
+                                onOpen = { nav.navigate("detail/$it") },
+                                autoPlay = entry.arguments?.getBoolean("play") ?: false
                             )
                         }
                         composable("settings") {

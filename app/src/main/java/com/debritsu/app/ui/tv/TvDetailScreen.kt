@@ -43,10 +43,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.CircleShape
-import androidx.tv.material3.Button
-import androidx.tv.material3.ButtonDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.tv.material3.Card
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
@@ -70,6 +77,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.debritsu.app.ui.Ink
+import com.debritsu.app.ui.pageBackground
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -86,7 +94,13 @@ import kotlinx.coroutines.launch
 fun TvDetailScreen(
     anilistId: Int,
     onBack: () -> Unit,
-    onOpen: (Int) -> Unit
+    onOpen: (Int) -> Unit,
+    /** Start the next episode as soon as the show loads — Home's Resume. */
+    autoPlay: Boolean = false,
+    // A show to draw instead of asking AniList for one. Only the debug-build
+    // preview passes it, so the look can be checked with AniList unreachable;
+    // the app itself never does.
+    preview: Anime? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -121,7 +135,7 @@ fun TvDetailScreen(
     var epMeta by remember { mutableStateOf<Map<Int, Jikan.EpisodeMeta>>(emptyMap()) }
 
     LaunchedEffect(anilistId, progressTick) {
-        anime = runCatching { AniList.media(anilistId) }.getOrNull()
+        anime = preview ?: runCatching { AniList.media(anilistId) }.getOrNull()
         // Where you left off, and never past the end.
         //
         // Progress plus one is the next episode to watch, which is right until
@@ -268,6 +282,16 @@ fun TvDetailScreen(
         }
     }
 
+    // Once only, and remembered across the trip to the player and back: a
+    // Resume from Home plays when the show first loads, and the return from
+    // the episode lands on this page as normal rather than starting another.
+    var autoPlayed by rememberSaveable(anilistId) { mutableStateOf(false) }
+    LaunchedEffect(anime?.id) {
+        if (!autoPlay || autoPlayed || anime == null) return@LaunchedEffect
+        autoPlayed = true
+        play(selectedEpisode)
+    }
+
     val total = (anime?.episodes ?: 1).coerceAtLeast(1)
     val resumeFrac = remember(selectedEpisode, progressTick) {
         Progress.fraction(anilistId, selectedEpisode)
@@ -313,7 +337,7 @@ fun TvDetailScreen(
     // column — is named as the thing not to do.
     CompositionLocalProvider(LocalBringIntoViewSpec provides onlyScrollWhenNeeded) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(Ink.Base),
+        modifier = Modifier.fillMaxSize().pageBackground(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
@@ -340,174 +364,95 @@ fun TvDetailScreen(
                 .fillMaxWidth()
                 .height(460.dp)
                 .clipToBounds()
-                .background(Ink.Base)
         ) {
-            // Two different shapes of picture doing the same job, so they are
-            // not scaled the same way.
-            //
-            // A banner is about 1900x400 — nearly five times as wide as it is
-            // tall — and this box is 1920x800. Cropping to cover took the
-            // larger of the two scales, which is the vertical one, so the
-            // banner was drawn 3800px wide at twice its own size and you saw
-            // the middle half of it, blown up past its own resolution. That is
-            // the zoom, and the softness with it.
-            //
-            // Filling the width instead scales it 1.01x: the whole banner, at
-            // very nearly one pixel to one. It stands at the top of the box and
-            // the page colour carries on beneath it.
-            val banner = anime?.banner
-            val hasBanner = banner != null
-            if (banner != null) {
-                AsyncImage(
-                    model = banner,
-                    contentDescription = null,
-                    contentScale = ContentScale.FillWidth,
-                    alignment = Alignment.TopCenter,
-                    modifier = Modifier.fillMaxWidth().align(Alignment.TopStart)
-                )
-            } else {
-                // A cover is portrait, so there is no framing of it that is not
-                // a crop. The phone has cropped one to this same wide ratio all
-                // along and it reads as soft artwork rather than an absence.
-                AsyncImage(
-                    model = anime?.cover,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-            // Sideways, so the text has something to be read against. Light
-            // enough to leave the artwork visible through it, and reaching far
-            // enough right to cover the text column, which is wider than it was.
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.horizontalGradient(
-                        0f to Ink.Base.copy(alpha = 0.88f),
-                        0.5f to Ink.Base.copy(alpha = 0.6f),
-                        0.78f to androidx.compose.ui.graphics.Color.Transparent
-                    )
-                )
-            )
-            // Downward, and it has to end where the picture does or it draws a
-            // line across it. A banner stops at 202dp of this 460dp box, so the
-            // fade is finished by then and its bottom edge dissolves. A cover
-            // fills the whole box, so the fade takes the full height instead —
-            // finishing early there left a visible edge with bright artwork
-            // still going on underneath it.
-            Box(
-                Modifier.fillMaxSize().background(
-                    if (hasBanner) {
-                        Brush.verticalGradient(
-                            0.24f to androidx.compose.ui.graphics.Color.Transparent,
-                            0.44f to Ink.Base
-                        )
-                    } else {
-                        Brush.verticalGradient(
-                            0.45f to androidx.compose.ui.graphics.Color.Transparent,
-                            1f to Ink.Base
-                        )
-                    }
-                )
-            )
-
-            // The poster, at its own two-to-three shape. Always present, so a
-            // show without a banner still has artwork on screen.
-            AsyncImage(
-                model = anime?.cover,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = OVERSCAN)
-                    .height(340.dp)
-                    .aspectRatio(2f / 3f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Ink.Edge)
+            // The show's own wide art at the top right, at its natural shape —
+            // TVDB's fanart is 1920x1080, the shape of the panel, so none of
+            // it is thrown away and nothing is blown up past its resolution.
+            // AniList's banner, which this used to stretch across the box, is
+            // a strip four hundred pixels tall. It dissolves leftward into the
+            // words and downward into the page by masking the picture itself,
+            // so there is no seam where a guessed colour meets the backdrop.
+            TvBackdrop(
+                rememberTvArt(anime),
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .fillMaxWidth(0.72f)
+                    .aspectRatio(16f / 9f)
             )
 
             Column(
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
                 // Anchored to the top, not the bottom. Bottom-anchored, a show
                 // with more to say pushes its own title upward and out of the
                 // box; top-anchored, the overflow goes downward where the box
                 // simply grows to take it.
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    // Two thirds rather than half. The poster starts at 685dp
-                    // of the 960dp width, so there was 185dp of empty middle
-                    // that the synopsis can have — and a wider line holds more
-                    // of it for the same height.
-                    .fillMaxWidth(0.66f)
-                    .padding(start = OVERSCAN, end = 24.dp, top = OVERSCAN, bottom = 20.dp)
+                    .fillMaxWidth(0.56f)
+                    .padding(start = OVERSCAN, end = 24.dp, top = OVERSCAN + 12.dp, bottom = 16.dp)
             ) {
+                // What kind of thing it is, small and in the accent, above the
+                // name — the phone's kicker.
+                Text(
+                    listOfNotNull(anime?.format, anime?.seasonLabel, anime?.airingStatus)
+                        .joinToString("  ·  ").uppercase(),
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp
+                    ),
+                    color = Ink.Candy,
+                    maxLines = 1
+                )
+
                 Text(
                     anime?.title ?: "…",
                     // A step down from displaySmall. At 36sp a long title ate
                     // the space the rest of the block needed and still did not
                     // finish; smaller, three lines fit in less room than two
                     // used to take.
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
                     color = Ink.Bone,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
 
+                // Score first — it is the thing that decides whether to
+                // bother — then the facts, on one line.
                 Text(
-                    listOfNotNull(
-                        anime?.format,
-                        anime?.episodes?.let { "${it.toString().padStart(2, '0')} EP" },
-                        anime?.durationMins?.let { "${it}m" },
-                        anime?.seasonLabel,
-                        anime?.airingStatus
-                    ).joinToString("  ·  ").uppercase(),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Ink.Mist
-                )
-
-                // Score first — it is the thing that decides whether to bother.
-                anime?.averageScore?.let { avg ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "$avg%",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = when {
-                                avg >= 80 -> Ink.Iris
-                                avg >= 65 -> Ink.Bone
-                                else -> Ink.Mist
+                    buildAnnotatedString {
+                        anime?.averageScore?.let {
+                            withStyle(SpanStyle(color = Ink.Candy, fontWeight = FontWeight.ExtraBold)) {
+                                append("★ $it%")
                             }
-                        )
-                        Spacer(Modifier.width(14.dp))
-                        Column {
-                            Text(
-                                "AVERAGE SCORE",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Ink.Mist
-                            )
-                            Text(
-                                listOfNotNull(
-                                    anime?.popularity?.let { "#$it BY POPULARITY" },
-                                    anime?.favourites?.takeIf { it > 0 }?.let { "$it FAVOURITES" }
-                                ).joinToString("  ·  "),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Ink.Mist
-                            )
+                            append("    ")
                         }
-                    }
-                }
+                        append(
+                            listOfNotNull(
+                                anime?.episodes?.let { if (it == 1) "1 episode" else "$it episodes" },
+                                anime?.durationMins?.let { "${it}m" },
+                                anime?.popularity?.let { "#$it by popularity" }
+                            ).joinToString("  ·  ")
+                        )
+                    },
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Ink.Mist,
+                    maxLines = 1
+                )
 
                 anime?.genres?.take(4)?.takeIf { it.isNotEmpty() }?.let { genres ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         genres.forEach { g ->
                             Box(
                                 Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Ink.Veil)
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    // Quiet, as on the phone: the accent is for
+                                    // things to press, and genres are not.
+                                    .background(Ink.Quiet)
+                                    .padding(horizontal = 12.dp, vertical = 5.dp)
                             ) {
                                 Text(
                                     g,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Ink.Mist
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = Ink.QuietText
                                 )
                             }
                         }
@@ -517,7 +462,7 @@ fun TvDetailScreen(
                 anime?.description?.let {
                     Text(
                         synopsis(it),
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = Ink.Mist,
                         // Whatever room is left, rather than a fixed count of
                         // lines. A fixed six cut a synopsis short on a show
@@ -534,7 +479,6 @@ fun TvDetailScreen(
                         modifier = Modifier.weight(1f)
                     )
                 }
-
             }
         }
         }
@@ -547,29 +491,28 @@ fun TvDetailScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.padding(horizontal = OVERSCAN)
         ) {
-            // The primary action carries the app's colour rather than
-            // the library's default, so it reads as the thing to press.
-            Button(
-                onClick = { play(selectedEpisode) },
-                colors = ButtonDefaults.colors(
-                    containerColor = Ink.Iris,
-                    contentColor = Ink.Bone
+            // The primary action in the accent, so it reads as the thing to
+            // press; everything else soft beside it.
+            TvPrimaryButton(onClick = { play(selectedEpisode) }) {
+                androidx.tv.material3.Icon(
+                    Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
                 )
-            ) {
+                Spacer(Modifier.width(6.dp))
                 Text(
                     if (resumeFrac > 0f)
-                        "Resume episode ${selectedEpisode.toString().padStart(2, '0')}  ·  " +
-                            "${(resumeFrac * 100).toInt()}%"
-                    else "Play episode ${selectedEpisode.toString().padStart(2, '0')}"
+                        "Resume episode $selectedEpisode  ·  ${(resumeFrac * 100).toInt()}%"
+                    else "Play episode $selectedEpisode"
                 )
             }
-            Button(onClick = { manualSearch(selectedEpisode) }) { Text("Choose source") }
+            TvSecondaryButton(onClick = { manualSearch(selectedEpisode) }) { Text("Sources") }
             if (Settings.aniListToken.isNotEmpty()) {
-                Button(onClick = { showStatus = true }) {
+                TvSecondaryButton(onClick = { showStatus = true }) {
                     Text(statusLabel(anime?.listStatus))
                 }
             }
-            Button(onClick = onBack) { Text("Back") }
+            TvSecondaryButton(onClick = onBack) { Text("Back") }
         }
         }
 
@@ -583,23 +526,15 @@ fun TvDetailScreen(
                 modifier = Modifier.padding(horizontal = OVERSCAN)
             ) {
                 STATUS_CHOICES.forEach { (value, label) ->
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                runCatching {
-                                    AniList.saveEntry(anilistId, status = value)
-                                }
-                                showStatus = false
-                                progressTick++
+                    TvChoice(label, anime?.listStatus == value) {
+                        scope.launch {
+                            runCatching {
+                                AniList.saveEntry(anilistId, status = value)
                             }
-                        },
-                        colors = if (anime?.listStatus == value)
-                            ButtonDefaults.colors(
-                                containerColor = Ink.Iris,
-                                contentColor = Ink.Bone
-                            )
-                        else ButtonDefaults.colors()
-                    ) { Text(label) }
+                            showStatus = false
+                            progressTick++
+                        }
+                    }
                 }
             }
         }
@@ -610,7 +545,7 @@ fun TvDetailScreen(
         item {
         Text(
             "Episodes",
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
             color = Ink.Bone,
             modifier = Modifier.padding(start = OVERSCAN)
         )
@@ -642,20 +577,22 @@ fun TvDetailScreen(
                 // a downward press cannot find one along the row instead of
                 // leaving it.
                 val selected = ep == selectedEpisode
-                Card(onClick = { selectedEpisode = ep; play(ep) }) {
+                Card(onClick = { selectedEpisode = ep; play(ep) }, shape = TvCardShape) {
                     Box(
-                        Modifier.size(96.dp)
-                            .background(if (selected) Ink.Iris else Ink.Veil),
+                        Modifier.size(width = 104.dp, height = 84.dp)
+                            .background(
+                                if (selected) Ink.palette.selected else Ink.palette.chip
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                ep.toString().padStart(2, '0'),
-                                style = MaterialTheme.typography.titleMedium,
+                                ep.toString(),
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
                                 // Watched ones recede rather than shout.
                                 color = when {
-                                    selected -> Ink.Bone
-                                    watched -> Ink.Mist
+                                    selected -> Color.White
+                                    watched -> Ink.Dim
                                     else -> Ink.Bone
                                 }
                             )
@@ -664,8 +601,8 @@ fun TvDetailScreen(
                             if (skippable) {
                                 Text(
                                     if (meta?.filler == true) "FILLER" else "RECAP",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (selected) Ink.Bone else Ink.Orchid
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                    color = if (selected) Color.White else Ink.Candy
                                 )
                             }
                         }
@@ -685,16 +622,16 @@ fun TvDetailScreen(
                                     Modifier
                                         .fillMaxWidth(resume)
                                         .fillMaxHeight()
-                                        .background(Ink.Orchid)
+                                        .background(Ink.palette.progress)
                                 )
                             }
                             watched && !selected -> Box(
                                 Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(bottom = 11.dp)
+                                    .padding(bottom = 9.dp)
                                     .size(6.dp)
                                     .clip(CircleShape)
-                                    .background(Ink.Orchid)
+                                    .background(Ink.Candy)
                             )
                         }
                     }
@@ -708,7 +645,7 @@ fun TvDetailScreen(
         if (relations.isNotEmpty()) {
             Text(
                 "Related",
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
                 color = Ink.Bone,
                 modifier = Modifier.padding(start = OVERSCAN)
             )
@@ -717,8 +654,8 @@ fun TvDetailScreen(
                 contentPadding = PaddingValues(horizontal = OVERSCAN, vertical = 10.dp)
             ) {
                 items(relations) { rel ->
-                    Column(Modifier.width(140.dp)) {
-                        Card(onClick = { onOpen(rel.anime.id) }) {
+                    Column(Modifier.width(124.dp)) {
+                        Card(onClick = { onOpen(rel.anime.id) }, shape = TvCardShape) {
                             AsyncImage(
                                 model = rel.anime.cover,
                                 contentDescription = rel.anime.title,
@@ -731,16 +668,16 @@ fun TvDetailScreen(
                         }
                         Text(
                             rel.type.uppercase(),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Ink.Orchid,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                            color = Ink.Candy,
                             modifier = Modifier.padding(top = 6.dp)
                         )
                         // Both lines reserved, so every card in the row is the
                         // same height and a downward press leaves the row.
                         Text(
                             rel.anime.title,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Ink.Mist,
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                            color = Ink.Bone,
                             minLines = 2,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
@@ -764,7 +701,7 @@ fun TvDetailScreen(
         if (unseen.isNotEmpty()) {
             Text(
                 "Recommended",
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
                 color = Ink.Bone,
                 modifier = Modifier.padding(start = OVERSCAN)
             )
@@ -773,30 +710,31 @@ fun TvDetailScreen(
                 contentPadding = PaddingValues(horizontal = OVERSCAN, vertical = 10.dp)
             ) {
                 items(unseen) { rec ->
-                    Column(Modifier.width(140.dp)) {
-                        Card(onClick = { onOpen(rec.id) }) {
-                            AsyncImage(
-                                model = rec.cover,
-                                contentDescription = rec.title,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(2f / 3f)
-                                    .background(Ink.Veil)
-                            )
+                    Column(Modifier.width(124.dp)) {
+                        Card(onClick = { onOpen(rec.id) }, shape = TvCardShape) {
+                            Box {
+                                AsyncImage(
+                                    model = rec.cover,
+                                    contentDescription = rec.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(2f / 3f)
+                                        .background(Ink.Veil)
+                                )
+                                // Where Related names the kind of relation, the
+                                // useful thing here is whether it is any good —
+                                // on the poster, as it is on Home.
+                                rec.averageScore?.let {
+                                    TvBadge("★ $it%", Modifier.align(Alignment.TopEnd))
+                                }
+                            }
                         }
-                        // Where Related names the kind of relation, the useful
-                        // thing here is whether it is any good.
-                        Text(
-                            rec.averageScore?.let { "$it%" } ?: " ",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Ink.Iris,
-                            modifier = Modifier.padding(top = 6.dp)
-                        )
                         Text(
                             rec.title,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Ink.Mist,
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                            color = Ink.Bone,
+                            modifier = Modifier.padding(top = 6.dp),
                             minLines = 2,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
@@ -833,12 +771,12 @@ fun TvDetailScreen(
             val streams = results.flatMap { it.streams }
             Text(
                 "Sources · ${streams.size} found",
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
                 color = Ink.Bone,
                 modifier = Modifier.padding(horizontal = OVERSCAN)
             )
             streams.take(40).forEach { s ->
-                Button(
+                TvSecondaryButton(
                     onClick = {
                         scope.launch {
                             status = "Resolving…"

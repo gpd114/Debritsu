@@ -17,7 +17,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,10 +34,10 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -46,6 +46,9 @@ import com.debritsu.app.data.DEFAULT_ANILIST_CLIENT_ID
 import com.debritsu.app.data.DebridProvider
 import com.debritsu.app.data.Settings
 import com.debritsu.app.ui.Ink
+import com.debritsu.app.ui.applyTheme
+import com.debritsu.app.ui.pageBackground
+import com.debritsu.app.ui.fieldColors
 
 /**
  * Everything needed to make the app work, arranged as one vertical run.
@@ -73,6 +76,7 @@ fun TvSettingsScreen(onBack: () -> Unit) {
     var maxRes by remember { mutableStateOf(Settings.maxResolution) }
     var maxSize by remember { mutableStateOf(Settings.maxSizeMb) }
     var preferEnglish by remember { mutableStateOf(Settings.preferEnglish) }
+    var theme by remember { mutableStateOf(Settings.theme) }
     var tokenTick by remember { mutableStateOf(0) }
     val signedIn = remember(tokenTick) { Settings.aniListToken.isNotEmpty() }
 
@@ -88,16 +92,28 @@ fun TvSettingsScreen(onBack: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
-            .background(Ink.Base)
+            .pageBackground()
             .verticalScroll(rememberScrollState())
             .padding(OVERSCAN),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(
             "Settings",
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
             color = Ink.Bone
         )
+
+        // --- Appearance ------------------------------------------------------
+        // First, because it is the one setting you can see work: the screen
+        // recolours around the button as it is pressed.
+        Heading("Appearance")
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            listOf("pastel" to "Pastel", "night" to "Night", "plum" to "Plum").forEach { (key, label) ->
+                TvChoice(label, theme == key) {
+                    theme = key; Settings.theme = key; applyTheme(key)
+                }
+            }
+        }
 
         // --- AniList ---------------------------------------------------------
         Heading("AniList")
@@ -114,11 +130,11 @@ fun TvSettingsScreen(onBack: () -> Unit) {
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { signIn.launch(AuthActivity.intent(context, clientId)) }) {
+            TvSecondaryButton(onClick = { signIn.launch(AuthActivity.intent(context, clientId)) }) {
                 Text(if (signedIn) "Re-authorise" else "Sign in")
             }
             if (signedIn) {
-                Button(onClick = { Settings.aniListToken = ""; tokenTick++ }) {
+                TvSecondaryButton(onClick = { Settings.aniListToken = ""; tokenTick++ }) {
                     Text("Sign out")
                 }
             }
@@ -148,7 +164,7 @@ fun TvSettingsScreen(onBack: () -> Unit) {
             onChange = { newAddon = it },
             onDone = { addAddon() }
         )
-        Button(onClick = { addAddon() }) { Text("Add addon") }
+        TvSecondaryButton(onClick = { addAddon() }) { Text("Add addon") }
 
         // The URL above its own remove button rather than beside it. Set next to
         // a fixed-width block of text the button did not render at all, and a
@@ -162,7 +178,7 @@ fun TvSettingsScreen(onBack: () -> Unit) {
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
-            Button(onClick = { Settings.removeAddon(a); addons = Settings.addons }) {
+            TvSecondaryButton(onClick = { Settings.removeAddon(a); addons = Settings.addons }) {
                 Text("Remove this addon")
             }
         }
@@ -175,10 +191,8 @@ fun TvSettingsScreen(onBack: () -> Unit) {
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             DebridProvider.entries.forEach { p ->
-                Button(
-                    onClick = { provider = p; Settings.debridProvider = p; debridToken = Settings.debridToken }
-                ) {
-                    Text(if (p == provider) "· ${p.label}" else p.label)
+                TvChoice(p.label, p == provider) {
+                    provider = p; Settings.debridProvider = p; debridToken = Settings.debridToken
                 }
             }
         }
@@ -191,33 +205,31 @@ fun TvSettingsScreen(onBack: () -> Unit) {
         // --- Playback --------------------------------------------------------
         Heading("Playback")
         Caption("What automatic selection will and will not start.")
-        Button(onClick = { autoPlay = !autoPlay; Settings.autoPlay = autoPlay }) {
+        TvSecondaryButton(onClick = { autoPlay = !autoPlay; Settings.autoPlay = autoPlay }) {
             Text(if (autoPlay) "Play automatically: on" else "Play automatically: off")
         }
         if (autoPlay) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 listOf(720, 1080, 2160, 0).forEach { r ->
-                    Button(onClick = { maxRes = r; Settings.maxResolution = r }) {
-                        val label = if (r == 0) "Any" else "${r}p"
-                        Text(if (r == maxRes) "· $label" else label)
+                    TvChoice(if (r == 0) "Any" else "${r}p", r == maxRes) {
+                        maxRes = r; Settings.maxResolution = r
                     }
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 listOf(600, 1200, 2500, 0).forEach { s ->
-                    Button(onClick = { maxSize = s; Settings.maxSizeMb = s }) {
-                        val label = if (s == 0) "Any size" else "${s} MB"
-                        Text(if (s == maxSize) "· $label" else label)
+                    TvChoice(if (s == 0) "Any size" else "${s} MB", s == maxSize) {
+                        maxSize = s; Settings.maxSizeMb = s
                     }
                 }
             }
-            Button(onClick = { preferEnglish = !preferEnglish; Settings.preferEnglish = preferEnglish }) {
+            TvSecondaryButton(onClick = { preferEnglish = !preferEnglish; Settings.preferEnglish = preferEnglish }) {
                 Text(if (preferEnglish) "English only: on" else "English only: off")
             }
         }
 
         Spacer(Modifier.height(8.dp))
-        Button(onClick = onBack) { Text("Done") }
+        TvPrimaryButton(onClick = onBack) { Text("Done") }
     }
 }
 
@@ -225,9 +237,12 @@ fun TvSettingsScreen(onBack: () -> Unit) {
 @Composable
 private fun Heading(text: String) {
     Text(
-        text,
-        style = MaterialTheme.typography.titleMedium,
-        color = Ink.Bone,
+        text.uppercase(),
+        style = MaterialTheme.typography.labelLarge.copy(
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = androidx.compose.ui.unit.TextUnit(1.5f, androidx.compose.ui.unit.TextUnitType.Sp)
+        ),
+        color = Ink.Candy,
         modifier = Modifier.padding(top = 10.dp)
     )
 }
@@ -276,12 +291,8 @@ private fun Field(
         onValueChange = onChange,
         label = { androidx.compose.material3.Text(label) },
         singleLine = true,
-        colors = OutlinedTextFieldDefaults.colors(
-            unfocusedBorderColor = Ink.Edge,
-            focusedBorderColor = Ink.Iris,
-            unfocusedContainerColor = Ink.Veil,
-            focusedContainerColor = Ink.Veil
-        ),
+        shape = RoundedCornerShape(16.dp),
+        colors = fieldColors(),
         keyboardOptions = KeyboardOptions(
             imeAction = if (onDone != null) ImeAction.Done else ImeAction.Next
         ),
