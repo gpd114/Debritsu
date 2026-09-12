@@ -945,7 +945,14 @@ class PlayerActivity : ComponentActivity() {
 
     private data class Row(val title: String, val subtitle: String, val tag: String?)
 
-    /** The app's panel styling, shared by the source and cast pickers. */
+    /**
+     * The pickers take the theme's own sheet and text colours — white on
+     * Pastel, dark on Night and Plum — like every other sheet in the app.
+     * Their accent is the page's where that is legible on the sheet, and the
+     * lighter one meant for over video where the page's is too dark to read.
+     */
+    private fun panelAccent() = if (Ink.palette.dark) Ink.palette.video else Ink.palette.iris
+
     /**
      * A tinted plate behind whichever row the d-pad is on, and nothing
      * otherwise. Built here rather than as a drawable resource so the colour
@@ -953,7 +960,7 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun focusHighlight(): android.graphics.drawable.Drawable {
         val on = GradientDrawable().apply {
-            setColor(Ink.palette.video.copy(alpha = 0.2f).toArgb())
+            setColor(panelAccent().copy(alpha = 0.18f).toArgb())
             cornerRadius = 10 * resources.displayMetrics.density
         }
         return android.graphics.drawable.StateListDrawable().apply {
@@ -975,19 +982,19 @@ class PlayerActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(px(20), px(18), px(20), px(24))
             background = GradientDrawable().apply {
-                setColor(0xFF171226.toInt())
+                setColor(Ink.palette.sheet.toArgb())
                 cornerRadius = px(20).toFloat()
             }
         }
         content.addView(TextView(this).apply {
             text = heading
-            setTextColor(0xFFF1EEF8.toInt())
+            setTextColor(Ink.palette.bone.toArgb())
             textSize = 16f
             setTypeface(Typeface.DEFAULT_BOLD)
         })
         content.addView(TextView(this).apply {
             text = subheading
-            setTextColor(0xFFB9B3CC.toInt())
+            setTextColor(Ink.palette.mist.toArgb())
             textSize = 10.5f
             typeface = Typeface.MONOSPACE
             setPadding(0, px(2), 0, px(12))
@@ -1015,14 +1022,14 @@ class PlayerActivity : ComponentActivity() {
             }
             item.addView(TextView(this).apply {
                 text = row.title
-                setTextColor(0xFFF1EEF8.toInt())
+                setTextColor(Ink.palette.bone.toArgb())
                 textSize = 12f
                 typeface = Typeface.MONOSPACE
                 maxLines = 1
             })
             item.addView(TextView(this).apply {
                 text = row.subtitle
-                setTextColor(0xFFB9B3CC.toInt())
+                setTextColor(Ink.palette.mist.toArgb())
                 textSize = 11.5f
                 maxLines = 2
             })
@@ -1030,8 +1037,8 @@ class PlayerActivity : ComponentActivity() {
                 item.addView(TextView(this@PlayerActivity).apply {
                     text = tag
                     setTextColor(
-                        if (tag == "DIRECT" || tag == "PLAYING") Ink.palette.video.toArgb()
-                        else 0xFFB9B3CC.toInt()
+                        if (tag == "DIRECT" || tag == "PLAYING") panelAccent().toArgb()
+                        else Ink.palette.mist.toArgb()
                     )
                     textSize = 9.5f
                     typeface = Typeface.MONOSPACE
@@ -1043,7 +1050,7 @@ class PlayerActivity : ComponentActivity() {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, px(1)
                 )
-                setBackgroundColor(0xFF221A36.toInt())
+                setBackgroundColor(Ink.palette.hairline.toArgb())
             })
         }
 

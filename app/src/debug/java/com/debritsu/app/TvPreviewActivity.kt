@@ -15,13 +15,14 @@ import com.debritsu.app.ui.tv.DebritsuTvTheme
 import com.debritsu.app.ui.tv.TvDetailScreen
 import com.debritsu.app.ui.tv.TvHomeFeed
 import com.debritsu.app.ui.tv.TvSettingsScreen
+import com.debritsu.app.ui.tv.TvWaitCard
 
 /**
  * Debug builds only: the television screens drawn with sample shows, so the
  * look can be checked on a device with no AniList account. Start it with
  *
  *     adb shell am start -n com.debritsu.tv/com.debritsu.app.TvPreviewActivity \
- *         [--es screen detail|settings] [--es theme night|plum]
+ *         [--es screen detail|wait|settings|player] [--es theme night|plum]
  *
  * Home and Detail are drawn from the samples below, Settings is the real
  * screen. The samples carry
@@ -43,6 +44,33 @@ class TvPreviewActivity : ComponentActivity() {
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
             .hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
 
+        // `--es screen player` opens the real player on a public test clip (Big
+        // Buck Bunny, Creative Commons) with two sample sources, so its Sources
+        // picker can be seen. Both point at the same clip; nothing is resolved.
+        if (intent.getStringExtra("screen") == "player") {
+            val clip = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4"
+            com.debritsu.app.data.SourceHandoff.offer(
+                listOf(
+                    com.debritsu.app.data.StreamOption(
+                        "Sample addon", "Sample 720p", "Big Buck Bunny 720p · 1 MB", clip, null, null
+                    ),
+                    com.debritsu.app.data.StreamOption(
+                        "Sample addon", "Sample 1080p", "Big Buck Bunny 1080p · 2 MB", clip, null, null
+                    )
+                )
+            )
+            startActivity(
+                android.content.Intent(this, com.debritsu.app.player.PlayerActivity::class.java)
+                    .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_URL, clip)
+                    .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_TITLE, "Sample — EP 2")
+                    .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_EPISODE, 2)
+                    .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_EPISODE_COUNT, 12)
+                    .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_SOURCE_INDEX, 0)
+            )
+            finish()
+            return
+        }
+
         val watching = listOf(
             Anime(16498, "Attack on Titan", poster(7442), episodes = 25, progress = 7, averageScore = 84),
             Anime(21459, "My Hero Academia", poster(11469), episodes = 13, progress = 8, averageScore = 76),
@@ -61,9 +89,13 @@ class TvPreviewActivity : ComponentActivity() {
             Anime(20755, "Assassination Classroom", poster(8640), episodes = 22, averageScore = 80)
         )
 
+        // `--ei episodes N --ei progress P` makes the sample a long runner, to
+        // see the episode row the way One Piece has it.
         val sample = Anime(
             16498, "Attack on Titan", poster(7442),
-            episodes = 25, progress = 7, listStatus = "CURRENT",
+            episodes = intent.getIntExtra("episodes", 25),
+            progress = intent.getIntExtra("progress", 7),
+            listStatus = "CURRENT",
             description = "Centuries ago, mankind was slaughtered to near extinction by monstrous " +
                 "humanoid creatures called titans, forcing humans to hide in fear behind " +
                 "enormous concentric walls. What makes these giants truly terrifying is that " +
@@ -81,6 +113,15 @@ class TvPreviewActivity : ComponentActivity() {
                 DebritsuTvTheme {
                     when (screen) {
                         "detail" -> TvDetailScreen(anilistId = sample.id, onBack = { finish() }, onOpen = {}, preview = sample)
+                        // The card an episode search shows, held on screen —
+                        // with no addons on the emulator a real search ends
+                        // before anything can be seen of it.
+                        "wait" -> {
+                            TvDetailScreen(anilistId = sample.id, onBack = { finish() }, onOpen = {}, preview = sample)
+                            androidx.compose.ui.window.Dialog(onDismissRequest = { finish() }) {
+                                TvWaitCard(sample.cover, sample.title, 8, "Searching your addons…")
+                            }
+                        }
                         "settings" -> TvSettingsScreen(onBack = { finish() })
                         else -> {
                             var focused by remember { mutableStateOf<Anime?>(null) }

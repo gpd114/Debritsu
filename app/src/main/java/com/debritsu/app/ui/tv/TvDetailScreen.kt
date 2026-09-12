@@ -54,6 +54,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.tv.material3.Card
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
@@ -89,7 +95,11 @@ import kotlinx.coroutines.launch
  * Intent. Only the arrangement is different, and the controls are ones a remote
  * can reach.
  */
-@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(
+    ExperimentalTvMaterial3Api::class,
+    ExperimentalFoundationApi::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class
+)
 @Composable
 fun TvDetailScreen(
     anilistId: Int,
@@ -163,6 +173,8 @@ fun TvDetailScreen(
      */
     val episodeRow = rememberLazyListState()
     var placedEpisodeRow by remember(anilistId) { mutableStateOf(false) }
+    // Where focus enters that row; see the row itself.
+    val selectedTile = remember { FocusRequester() }
     LaunchedEffect(anilistId, anime, selectedEpisode) {
         if (placedEpisodeRow || anime == null) return@LaunchedEffect
         placedEpisodeRow = true
@@ -356,13 +368,21 @@ fun TvDetailScreen(
         // because growing is precisely what a minimum allows.
         //
         // Fixed, the box is the same size empty or full, so nothing below it
-        // moves and there is nothing to chase. 400dp: the panel is 1920x1080 at
-        // 2x, so the viewport is 540dp, and the hero plus its spacing plus the
-        // control row has to fit inside that with room to spare.
+        // moves and there is nothing to chase.
+        //
+        // 360dp, so the top of the episode row shows beneath the buttons. The
+        // panel is 1920x1080 at 2x, a 540dp viewport; at 460 the row sat wholly
+        // below it, and a lazy row that is built in the same moment focus
+        // arrives, scrolled to somewhere past its first episode, does not take
+        // the focus — it paged back towards episode one looking for it, which
+        // on One Piece was a thousand episodes of scrolling, and then let focus
+        // fall through to Related. On screen already, the press lands on a tile
+        // that is there. It also means moving down to the episodes lifts the
+        // page by only a couple of dozen dp, so the title stays in view.
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(460.dp)
+                .height(360.dp)
                 .clipToBounds()
         ) {
             // The show's own wide art at the top right, at its natural shape —
@@ -565,7 +585,20 @@ fun TvDetailScreen(
         LazyRow(
             state = episodeRow,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(horizontal = OVERSCAN, vertical = 10.dp)
+            contentPadding = PaddingValues(horizontal = OVERSCAN, vertical = 10.dp),
+            // Focus comes into the row on the episode the Play button names,
+            // and afterwards back to whichever one the remote was last on.
+            //
+            // Left to itself the row enters at whichever tile is nearest the
+            // button the remote came from, which is rarely the one you want.
+            //
+            // Only while that episode is actually laid out: a FocusRequester
+            // nothing holds throws when focus is sent to it, which is how an
+            // earlier attempt at aiming focus closed the app from Home.
+            modifier = Modifier.focusRestorer {
+                val shown = episodeRow.layoutInfo.visibleItemsInfo.any { it.index == selectedEpisode - 1 }
+                if (shown) selectedTile else FocusRequester.Default
+            }
         ) {
             items((1..total).toList()) { ep ->
                 val watched = ep <= (anime?.progress ?: 0)
@@ -577,7 +610,11 @@ fun TvDetailScreen(
                 // a downward press cannot find one along the row instead of
                 // leaving it.
                 val selected = ep == selectedEpisode
-                Card(onClick = { selectedEpisode = ep; play(ep) }, shape = TvCardShape) {
+                Card(
+                    onClick = { selectedEpisode = ep; play(ep) },
+                    shape = TvCardShape,
+                    modifier = if (selected) Modifier.focusRequester(selectedTile) else Modifier
+                ) {
                     Box(
                         Modifier.size(width = 104.dp, height = 84.dp)
                             .background(
@@ -746,16 +783,6 @@ fun TvDetailScreen(
         }
 
         item {
-        autoStep?.let { step ->
-            Text(
-                stepLabel(step),
-                style = MaterialTheme.typography.bodyLarge,
-                color = Ink.Orchid,
-                modifier = Modifier.padding(horizontal = OVERSCAN)
-            )
-        }
-        }
-        item {
         status?.let {
             Text(
                 it,
@@ -801,6 +828,81 @@ fun TvDetailScreen(
         }
         }
     }
+    }
+
+    // Over everything while an episode is being found, as on the phone.
+    //
+    // It used to be a line of text at the foot of this page, and the page is
+    // taller than the screen, so it was below the fold: Resume on Home opened
+    // a show and then, as far as anyone watching could tell, did nothing until
+    // the episode suddenly started. A dialog also gives Back a meaning here —
+    // it stops the search — and holds nothing focusable, so stray presses of
+    // the remote cannot start something else underneath it.
+    autoStep?.let { step ->
+        Dialog(onDismissRequest = { autoJob?.cancel(); autoStep = null }) {
+            TvWaitCard(
+                cover = anime?.cover,
+                title = anime?.title.orEmpty(),
+                episode = selectedEpisode,
+                label = stepLabel(step)
+            )
+        }
+    }
+}
+
+/** The card shown while an episode is found: the poster, which episode, and what is happening. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+internal fun TvWaitCard(cover: String?, title: String, episode: Int, label: String) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(340.dp)
+            .clip(RoundedCornerShape(26.dp))
+            .background(Ink.Sheet)
+            .padding(horizontal = 28.dp, vertical = 24.dp)
+    ) {
+        AsyncImage(
+            model = cover,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .width(96.dp)
+                .aspectRatio(2f / 3f)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Ink.Veil)
+        )
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+            color = Ink.Bone,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 14.dp)
+        )
+        TvBadge("Episode $episode", Modifier.padding(top = 2.dp), solid = true)
+        LinearProgressIndicator(
+            color = Ink.Candy,
+            trackColor = Ink.Edge,
+            modifier = Modifier
+                .padding(top = 12.dp)
+                .width(160.dp)
+                .clip(RoundedCornerShape(2.dp))
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+            color = Ink.Bone,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 12.dp)
+        )
+        Text(
+            "Press Back to cancel",
+            style = MaterialTheme.typography.labelSmall,
+            color = Ink.Mist,
+            modifier = Modifier.padding(top = 6.dp)
+        )
     }
 }
 
