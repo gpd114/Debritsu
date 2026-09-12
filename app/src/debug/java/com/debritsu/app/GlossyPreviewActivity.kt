@@ -47,6 +47,19 @@ class GlossyPreviewActivity : ComponentActivity() {
         // Creative Commons), so its controls can be seen over moving pictures.
         val screen = intent.getStringExtra("screen")
         if (screen == "player") {
+            // Two sample sources, so the Sources button shows and its picker can
+            // be seen. Both point at the same public clip; nothing is resolved.
+            val clip = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4"
+            com.debritsu.app.data.SourceHandoff.offer(
+                listOf(
+                    com.debritsu.app.data.StreamOption(
+                        "Sample addon", "Sample 720p", "Big Buck Bunny 720p · 1 MB", clip, null, null
+                    ),
+                    com.debritsu.app.data.StreamOption(
+                        "Sample addon", "Sample 1080p", "Big Buck Bunny 1080p · 2 MB", clip, null, null
+                    )
+                )
+            )
             startActivity(
                 android.content.Intent(this, com.debritsu.app.player.PlayerActivity::class.java)
                     .putExtra(
@@ -56,6 +69,7 @@ class GlossyPreviewActivity : ComponentActivity() {
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_TITLE, "Sample — EP 2")
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_EPISODE, 2)
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_EPISODE_COUNT, 12)
+                    .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_SOURCE_INDEX, 0)
             )
             finish()
             return

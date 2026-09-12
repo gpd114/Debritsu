@@ -501,12 +501,10 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun installGestures(view: PlayerView) {
         hud = findViewById<TextView>(R.id.gesture_hud).apply {
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(0xE6201F44.toInt(), 0xE616152B.toInt())
-            ).apply {
+            // Dark in every theme: it is read over the picture, not the page.
+            background = GradientDrawable().apply {
+                setColor(0xE616152B.toInt())
                 cornerRadius = 18 * resources.displayMetrics.density
-                setStroke((1 * resources.displayMetrics.density).toInt(), 0x33FFFFFF)
             }
             typeface = roundedBold
         }
@@ -790,7 +788,11 @@ class PlayerActivity : ComponentActivity() {
 
     private data class Row(val title: String, val subtitle: String, val tag: String?)
 
-    /** The app's panel styling, shared by the source and cast pickers. */
+    /**
+     * The app's panel styling, shared by the source and cast pickers — in the
+     * theme's own sheet and text colours, white on Pastel and dark on Night and
+     * Plum, like every other sheet in the app.
+     */
     private fun panelDialog(
         heading: String,
         subheading: String,
@@ -803,23 +805,21 @@ class PlayerActivity : ComponentActivity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(px(20), px(18), px(20), px(24))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(0xFF201F44.toInt(), 0xFF16152B.toInt())
-            ).apply {
+            background = GradientDrawable().apply {
+                setColor(Ink.palette.sheet.toArgb())
                 cornerRadius = px(24).toFloat()
-                setStroke(px(1), 0x29FFFFFF)
+                setStroke(px(1), Ink.palette.hairline.toArgb())
             }
         }
         content.addView(TextView(this).apply {
             text = heading
-            setTextColor(0xFFF1EEF8.toInt())
+            setTextColor(Ink.palette.bone.toArgb())
             textSize = 18f
             typeface = roundedHeavy
         })
         content.addView(TextView(this).apply {
             text = subheading
-            setTextColor(0xFFB9B3CC.toInt())
+            setTextColor(Ink.palette.mist.toArgb())
             textSize = 10.5f
             typeface = roundedBold
             letterSpacing = 0.06f
@@ -840,14 +840,14 @@ class PlayerActivity : ComponentActivity() {
             }
             item.addView(TextView(this).apply {
                 text = row.title
-                setTextColor(0xFFF1EEF8.toInt())
+                setTextColor(Ink.palette.bone.toArgb())
                 textSize = 13f
                 typeface = roundedBold
                 maxLines = 1
             })
             item.addView(TextView(this).apply {
                 text = row.subtitle
-                setTextColor(0xFFB9B3CC.toInt())
+                setTextColor(Ink.palette.mist.toArgb())
                 textSize = 11.5f
                 typeface = roundedMedium
                 maxLines = 2
@@ -859,11 +859,11 @@ class PlayerActivity : ComponentActivity() {
                 val fill = when (tag) {
                     "PLAYING" -> Ink.palette.tag.toArgb()
                     "DIRECT" -> Ink.palette.selected.toArgb()
-                    else -> 0x1FFFFFFF
+                    else -> Ink.palette.quiet.toArgb()
                 }
                 item.addView(TextView(this@PlayerActivity).apply {
                     text = tag.lowercase().replaceFirstChar { it.uppercase() }
-                    setTextColor(if (fill == 0x1FFFFFFF) 0xFFB9B3CC.toInt() else 0xFFFFFFFF.toInt())
+                    setTextColor(if (fill == Ink.palette.quiet.toArgb()) Ink.palette.quietText.toArgb() else 0xFFFFFFFF.toInt())
                     textSize = 10f
                     typeface = roundedBold
                     setPadding(px(9), px(2), px(9), px(3))
@@ -882,7 +882,7 @@ class PlayerActivity : ComponentActivity() {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, px(1)
                 )
-                setBackgroundColor(0x12FFFFFF)
+                setBackgroundColor(Ink.palette.hairline.toArgb())
             })
         }
 
