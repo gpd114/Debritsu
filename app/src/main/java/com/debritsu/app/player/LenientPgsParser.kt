@@ -1,6 +1,8 @@
 package com.debritsu.app.player
 
 import android.graphics.Bitmap
+import android.util.Log
+import com.debritsu.app.BuildConfig
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
@@ -251,7 +253,10 @@ class LenientPgsParser : SubtitleParser {
         }
     }
 
-    /** Uses the lenient parser for PGS and defers to media3 for everything else. */
+    /**
+     * Uses the lenient parser for PGS and defers to media3 for everything else,
+     * with every parser wrapped in [Forgiving].
+     */
     @UnstableApi
     class Factory : SubtitleParser.Factory {
         private val fallback = DefaultSubtitleParserFactory()
@@ -267,7 +272,51 @@ class LenientPgsParser : SubtitleParser {
             else fallback.getCueReplacementBehavior(format)
 
         override fun create(format: Format): SubtitleParser =
-            if (isPgs(format)) LenientPgsParser() else fallback.create(format)
+            Forgiving(if (isPgs(format)) LenientPgsParser() else fallback.create(format), format)
+    }
+
+    /**
+     * A subtitle line its parser rejects is dropped, and playback carries on.
+     *
+     * Subtitles embedded in a video are parsed while the video is read, on the
+     * same loader, so anything a parser throws is a loader failure and ends
+     * the whole episode — reported as "Couldn't play this source", partway
+     * through and at the same point on every attempt, which reads exactly like
+     * a corrupt file and is not one.
+     *
+     * Measured on a Pixel 10: media3 1.4.1's SsaParser.parse ends in a bare
+     * `throw IllegalStateException()` (SsaParser.java:166) whenever an event's
+     * last start time still has cues, which is what a line whose end is not
+     * after its start produces. Some encoders write such lines into MKVs. A
+     * line like that could never have been on screen anyway, so losing it
+     * costs nothing; losing the episode to it cost the rest of the episode.
+     *
+     * Every format goes through this, not only ASS: the side-loaded files from
+     * subtitle addons are parsed by the same factory, and LenientPgsParser does
+     * no bounds checking of its own on the bitmaps it decodes.
+     */
+    @UnstableApi
+    private class Forgiving(private val inner: SubtitleParser, private val format: Format) : SubtitleParser {
+        override fun parse(
+            data: ByteArray,
+            offset: Int,
+            length: Int,
+            outputOptions: SubtitleParser.OutputOptions,
+            output: Consumer<CuesWithTiming>
+        ) {
+            try {
+                inner.parse(data, offset, length, outputOptions, output)
+            } catch (e: RuntimeException) {
+                if (BuildConfig.DEBUG) {
+                    Log.w("DebritsuSubs", "dropped a ${format.sampleMimeType} line its parser rejected", e)
+                }
+            }
+        }
+
+        override fun getCueReplacementBehavior(): @Format.CueReplacementBehavior Int =
+            inner.cueReplacementBehavior
+
+        override fun reset() = inner.reset()
     }
 
     private companion object {
