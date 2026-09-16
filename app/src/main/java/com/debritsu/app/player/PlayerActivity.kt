@@ -286,6 +286,10 @@ class PlayerActivity : ComponentActivity() {
                     resumed = true
                     if (resumeAtMs > 0) player?.time = resumeAtMs
                 }
+                if (refreshAfterReattach) {
+                    refreshAfterReattach = false
+                    player?.let { it.time = it.time }
+                }
             }
             MediaPlayer.Event.ESAdded -> chooseSubtitleTrack()
             MediaPlayer.Event.Paused -> {
@@ -999,12 +1003,13 @@ class PlayerActivity : ComponentActivity() {
         player?.let { mp ->
             if (videoAttached) return@let
             attachVideo(mp)
-            // A fresh surface has no picture until the decoder reaches the next
-            // keyframe — several seconds of black in an anime encode, or grey
-            // smears where it decodes without one. Seeking to where it already
-            // is restarts decoding from the keyframe before, so the picture is
-            // back at once.
-            if (mp.length > 0) mp.time = mp.time
+            // Reattaching restarts the video decoder, and a new AV1 decoder
+            // cannot decode anything until a keyframe brings the sequence header
+            // ("Error parsing OBU data") — seconds of black in an anime encode.
+            // Seeking to where it already is starts again from the keyframe
+            // before, but only if done once playback resumes: seeking here, while
+            // paused, is undone by the decoder restarting on play.
+            refreshAfterReattach = true
         }
     }
 
@@ -1019,6 +1024,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private var videoAttached = false
+    private var refreshAfterReattach = false
 
     private fun attachVideo(mp: MediaPlayer) {
         if (videoAttached) return
