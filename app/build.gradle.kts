@@ -59,9 +59,19 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // 64-bit ARM only. libVLC carries its own decoders for each processor
+            // type, and with all four the app was over 200MB. Every phone and
+            // tablet this is used on runs 64-bit Android. (Not so the television
+            // box: that runs 32-bit Android on a 64-bit chip, so the TV build
+            // needs armeabi-v7a.)
+            ndk { abiFilters += "arm64-v8a" }
             signingConfig =
                 if (System.getenv("KEYSTORE_PATH") != null) signingConfigs.getByName("release")
                 else signingConfigs.getByName("debug")
+        }
+        debug {
+            // Plus x86_64, so a debug build still runs on the emulator.
+            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         }
     }
     compileOptions {
@@ -73,7 +83,13 @@ android {
         compose = true
         buildConfig = true
     }
-    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    packaging {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        // Compress libVLC inside the APK. Stored uncompressed, as Android does by
+        // default, the download was 67MB; the libraries are unpacked at install
+        // instead, which costs nothing anyone notices.
+        jniLibs.useLegacyPackaging = true
+    }
 }
 
 dependencies {
