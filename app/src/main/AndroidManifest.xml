@@ -60,5 +60,12 @@
             android:screenOrientation="sensorLandscape"
             android:supportsPictureInPicture="true"
             android:theme="@style/Theme.Debritsu.Player" />
+        <activity
+            android:name=".player.VlcPlayerActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize"
+            android:screenOrientation="sensorLandscape"
+            android:supportsPictureInPicture="true"
+            android:theme="@style/Theme.Debritsu.Player" />
+
     </application>
 </manifest>

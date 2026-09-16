@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The libVLC player screen.
+
+     The video goes into VLC's own layout, which owns a surface for the picture
+     and a second one for subtitles. That second surface is where libass draws,
+     which is the whole point of this screen: ASS subtitles come out with their
+     colours, positioning and karaoke, as they do in VLC itself.
+
+     The controls are ours, drawn over the top. They borrow media3's button
+     styles and its seek bar, so they look exactly as they did when media3 was
+     also doing the playing — the bar is driven by hand here. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/player_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FF000000">
+
+    <org.videolan.libvlc.util.VLCVideoLayout
+        android:id="@+id/video_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <ProgressBar
+        android:id="@+id/buffering"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_gravity="center"
+        android:indeterminate="true"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/controls"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:background="@drawable/control_pill"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp">
+
+            <ImageButton
+                android:id="@+id/prev_episode"
+                style="@style/ExoStyledControls.Button.Center.Previous"
+                android:contentDescription="Previous episode" />
+
+            <ImageButton
+                android:id="@+id/rewind"
+                style="@style/ExoStyledControls.Button.Center.RewWithAmount"
+                android:contentDescription="Back 15 seconds" />
+
+            <ImageButton
+                android:id="@+id/play_pause"
+                style="@style/ExoStyledControls.Button.Center.PlayPause"
+                android:contentDescription="Play or pause" />
+
+            <ImageButton
+                android:id="@+id/forward"
+                style="@style/ExoStyledControls.Button.Center.FfwdWithAmount"
+                android:contentDescription="Forward 15 seconds" />
+
+            <ImageButton
+                android:id="@+id/next_episode"
+                style="@style/ExoStyledControls.Button.Center.Next"
+                android:contentDescription="Next episode" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:orientation="vertical"
+            android:paddingBottom="16dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:orientation="horizontal"
+                android:background="@drawable/control_pill"
+                android:layout_marginEnd="12dp"
+                android:layout_marginBottom="6dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp">
+
+                <ImageButton
+                    android:id="@+id/subtitle_button"
+                    style="@style/ExoStyledControls.Button.Bottom.CC"
+                    android:contentDescription="Subtitles" />
+
+                <ImageButton
+                    android:id="@+id/audio_button"
+                    style="@style/ExoStyledControls.Button.Bottom.AudioTrack"
+                    android:contentDescription="Audio track" />
+
+                <ImageButton
+                    android:id="@+id/cast_button"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Cast"
+                    android:padding="14dp"
+                    android:src="@drawable/ic_cast" />
+
+                <ImageButton
+                    android:id="@+id/sources_button"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Sources"
+                    android:padding="14dp"
+                    android:src="@drawable/ic_sources" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp">
+
+                <TextView
+                    android:id="@+id/position"
+                    style="@style/ExoStyledControls.TimeText.Position" />
+
+                <androidx.media3.ui.DefaultTimeBar
+                    android:id="@+id/time_bar"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="26dp"
+                    app:bar_height="5dp"
+                    app:scrubber_enabled_size="16dp"
+                    app:played_color="#FFA884FF"
+                    app:scrubber_color="#FFD6C6FF"
+                    app:buffered_color="#66FFFFFF"
+                    app:unplayed_color="#33FFFFFF" />
+
+                <TextView
+                    android:id="@+id/duration"
+                    style="@style/ExoStyledControls.TimeText.Duration" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- Above the video and outside the controls, so it stays put while they fade. -->
+    <TextView
+        android:id="@+id/skip_segment"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="104dp"
+        android:paddingStart="22dp"
+        android:paddingEnd="22dp"
+        android:paddingTop="13dp"
+        android:paddingBottom="13dp"
+        android:textColor="#FFFFFFFF"
+        android:textSize="15sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/gesture_hud"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
+        android:textColor="#FFF1EEF8"
+        android:textSize="15sp"
+        android:visibility="gone" />
+</FrameLayout>

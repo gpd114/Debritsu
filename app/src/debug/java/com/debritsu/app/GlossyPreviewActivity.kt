@@ -110,7 +110,7 @@ class GlossyPreviewActivity : ComponentActivity() {
                 )
             )
             startActivity(
-                android.content.Intent(this, com.debritsu.app.player.PlayerActivity::class.java)
+                android.content.Intent(this, com.debritsu.app.player.VlcPlayerActivity::class.java)
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_URL, clip)
                     .apply {
                         if (sub != null) {
@@ -123,6 +123,7 @@ class GlossyPreviewActivity : ComponentActivity() {
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_EPISODE, 2)
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_EPISODE_COUNT, 12)
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_SOURCE_INDEX, 0)
+                    .putExtra("loop", intent.getBooleanExtra("loop", false))
             )
             finish()
             return
