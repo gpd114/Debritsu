@@ -155,7 +155,7 @@ class PlayerActivity : ComponentActivity() {
         libVlc = vlc
         val mp = MediaPlayer(vlc)
         player = mp
-        mp.attachViews(videoLayout, null, /* enableSubtitles = */ true, /* useTextureView = */ false)
+        attachVideo(mp)
         mp.setEventListener { event -> onPlayerEvent(event) }
 
         resumeAtMs = Progress.position(anilistId, episode)
@@ -948,11 +948,31 @@ class PlayerActivity : ComponentActivity() {
         // Cast routes only exist while something asks for them, and the picker
         // needs them still there when a row is tapped.
         GoogleCast.retainRoutes(this)
+        player?.let { attachVideo(it) }
     }
 
     override fun onStop() {
         super.onStop()
         GoogleCast.releaseRoutes(this)
+        // Android destroys the video surface when the screen goes off or the
+        // app is left. libVLC holds on to the dead one unless told, and on
+        // return plays sound over a black picture ("cannot create EGL window
+        // surface"). Detaching here and attaching in onStart gives it the new one.
+        player?.let { detachVideo(it) }
+    }
+
+    private var videoAttached = false
+
+    private fun attachVideo(mp: MediaPlayer) {
+        if (videoAttached) return
+        mp.attachViews(videoLayout, null, /* enableSubtitles = */ true, /* useTextureView = */ false)
+        videoAttached = true
+    }
+
+    private fun detachVideo(mp: MediaPlayer) {
+        if (!videoAttached) return
+        mp.detachViews()
+        videoAttached = false
     }
 
     override fun onPause() {
@@ -967,7 +987,7 @@ class PlayerActivity : ComponentActivity() {
         releaseAudioFocus()
         player?.let {
             it.stop()
-            it.detachViews()
+            detachVideo(it)
             it.release()
         }
         player = null
