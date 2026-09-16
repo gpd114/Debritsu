@@ -92,7 +92,13 @@ class GlossyPreviewActivity : ComponentActivity() {
         if (screen == "player") {
             // Two sample sources, so the Sources button shows and its picker can
             // be seen. Both point at the same public clip; nothing is resolved.
-            val clip = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4"
+            //
+            // `--es clip <url>` plays something else, and `--es sub <url>` hands
+            // the player a subtitle file as an addon would — for testing how it
+            // copes with a large file or a subtitle link that does not answer.
+            val clip = intent.getStringExtra("clip")
+                ?: "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4"
+            val sub = intent.getStringExtra("sub")
             com.debritsu.app.data.SourceHandoff.offer(
                 listOf(
                     com.debritsu.app.data.StreamOption(
@@ -105,10 +111,14 @@ class GlossyPreviewActivity : ComponentActivity() {
             )
             startActivity(
                 android.content.Intent(this, com.debritsu.app.player.PlayerActivity::class.java)
-                    .putExtra(
-                        com.debritsu.app.player.PlayerActivity.EXTRA_URL,
-                        "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4"
-                    )
+                    .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_URL, clip)
+                    .apply {
+                        if (sub != null) {
+                            putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_SUB_URLS, arrayOf(sub))
+                            putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_SUB_LANGS, arrayOf("en"))
+                            putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_SUB_ADDONS, arrayOf("Sample subs"))
+                        }
+                    }
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_TITLE, "Sample — EP 2")
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_EPISODE, 2)
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_EPISODE_COUNT, 12)

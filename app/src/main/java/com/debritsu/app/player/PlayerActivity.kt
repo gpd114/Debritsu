@@ -35,7 +35,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.PlaybackException
+import androidx.media3.datasource.HttpDataSource
+import kotlinx.coroutines.Job
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -199,7 +202,23 @@ class PlayerActivity : ComponentActivity() {
         val mediaSources = DefaultMediaSourceFactory(this)
             .setSubtitleParserFactory(LenientPgsParser.Factory())
 
-        player = ExoPlayer.Builder(this).setMediaSourceFactory(mediaSources).build().also { exo ->
+        player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(mediaSources)
+            // Behave like a media app towards the rest of the phone: pause for
+            // a call or another app's audio, dip under a notification, and
+            // pause when headphones or Bluetooth disconnect rather than carrying
+            // on out of the speaker. media3 does none of this unless asked, and
+            // it was never asked — measured from its Builder, both flags only
+            // ever change through these two calls.
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(),
+                /* handleAudioFocus = */ true
+            )
+            .setHandleAudioBecomingNoisy(true)
+            .build().also { exo ->
             view.player = exo
             // Prefer English subs by default; the user can override from the CC button.
             //
@@ -244,8 +263,20 @@ class PlayerActivity : ComponentActivity() {
                  */
                 override fun onPlayerError(error: PlaybackException) {
                     Log.w("DebritsuFilter", "playback failed: ${error.errorCodeName}", error)
+                    // Two failures that are not the source's fault, and which
+                    // the source list cannot fix, are dealt with first.
+                    if (dropFailedSubtitle(error)) return
+                    if (recover(error)) return
+                    endRecovery()
                     toast("Couldn't play this source")
                     showSourcePicker()
+                }
+
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == Player.STATE_READY) {
+                        sourceStarted = true
+                        endRecovery()
+                    }
                 }
 
                 // Debug-only instrumentation for a subtitle that renders in VLC
@@ -476,6 +507,8 @@ class PlayerActivity : ComponentActivity() {
         sources = newSources
         // A new episode has its own completion threshold to cross.
         progressPushed = false
+        sourceStarted = false
+        endRecovery()
 
         subtitleConfigs = subtitleTracks(subs)
 
@@ -1133,6 +1166,8 @@ class PlayerActivity : ComponentActivity() {
                     // marks the wrong row as playing.
                     currentUrl = url
                     currentSourceIndex = index
+                    sourceStarted = false
+                    endRecovery()
                     exo.setMediaItem(mediaItem(url))
                     exo.prepare()
                     exo.seekTo(resumeAt)
@@ -1219,6 +1254,126 @@ class PlayerActivity : ComponentActivity() {
             else -> MimeTypes.APPLICATION_SUBRIP
         }
 
+    /** Whether the current source has played at all. Only then is a failure worth retrying. */
+    private var sourceStarted = false
+    private var reconnects = 0
+    private var refreshedLink = false
+    private var reconnectJob: Job? = null
+
+    /**
+     * A subtitle file that will not download is dropped, and the episode
+     * carries on from where it was.
+     *
+     * Side-loaded subtitles are loaded alongside the video, and media3 treats a
+     * failure of any of them as a failure of the whole item. Measured on the
+     * emulator: one addon subtitle link answering 404, or naming a host that
+     * does not exist, left the episode black at 00:00 with "Couldn't play this
+     * source" — and picking another source failed the same way, since every
+     * source carries the same subtitle list. The exception names the address
+     * that failed, so the subtitle can be told from the video.
+     */
+    private fun dropFailedSubtitle(error: PlaybackException): Boolean {
+        val failed = generateSequence<Throwable>(error) { it.cause }
+            .filterIsInstance<HttpDataSource.HttpDataSourceException>()
+            .firstOrNull()?.dataSpec?.uri?.toString() ?: return false
+        val sub = subtitleConfigs.firstOrNull { it.uri.toString() == failed } ?: return false
+        val url = currentUrl ?: return false
+        Log.w("DebritsuSubs", "dropped a subtitle that would not load: $failed")
+        subtitleConfigs = subtitleConfigs - sub
+        reload(url)
+        return true
+    }
+
+    /**
+     * Rides out a lost connection or an expired link on a source that was
+     * playing, rather than giving up on it at once.
+     *
+     * Measured on the emulator with a thin buffer: the connection went at
+     * 21:24:12, playback failed at 21:24:17, and when it came back at 21:24:34
+     * the player stayed stopped — media3 does not try again once it has
+     * reported an error. Now a network failure is retried from the same point
+     * for about half a minute, saying so, before the source list is offered;
+     * a link the server refuses is fetched again once, since debrid links
+     * expire and a fresh one for the same file usually just plays.
+     *
+     * Only for a source that has played. One that fails from the start is
+     * dead, and the list is the right answer straight away.
+     */
+    private fun recover(error: PlaybackException): Boolean {
+        val url = currentUrl ?: return false
+        if (!sourceStarted || !url.startsWith("http")) return false
+        val status = generateSequence<Throwable>(error) { it.cause }
+            .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
+            .firstOrNull()?.responseCode
+        return when {
+            status in LINK_REFUSED -> refreshLink()
+            error.errorCode in NETWORK_ERRORS || (status != null && status >= 500) -> reconnect()
+            else -> false
+        }
+    }
+
+    private fun reconnect(): Boolean {
+        val wait = RECONNECT_DELAYS_MS.getOrNull(reconnects) ?: return false
+        reconnects++
+        recoveryStatus("Reconnecting…")
+        reconnectJob?.cancel()
+        reconnectJob = lifecycleScope.launch {
+            delay(wait)
+            // Prepared again, an item picks up from its current position.
+            player?.let { it.prepare(); it.playWhenReady = true }
+        }
+        return true
+    }
+
+    private fun refreshLink(): Boolean {
+        if (refreshedLink) return false
+        val source = sources.getOrNull(currentSourceIndex) ?: return false
+        refreshedLink = true
+        recoveryStatus("Refreshing the link…")
+        reconnectJob?.cancel()
+        reconnectJob = lifecycleScope.launch {
+            val fresh = runCatching { Debrid.resolve(source) }.getOrNull()
+            if (fresh == null) {
+                endRecovery()
+                toast("Couldn't play this source")
+                showSourcePicker()
+                return@launch
+            }
+            currentUrl = fresh
+            reload(fresh)
+        }
+        return true
+    }
+
+    /** The same item again from where it was, with whatever subtitles remain. */
+    private fun reload(url: String) {
+        val exo = player ?: return
+        exo.setMediaItem(mediaItem(url), exo.currentPosition)
+        exo.prepare()
+        exo.playWhenReady = true
+    }
+
+    private fun endRecovery() {
+        reconnectJob?.cancel()
+        // Only clear the readout if recovery put something there, or a volume
+        // or brightness readout would be cut short by every return to ready.
+        if (reconnects > 0 || refreshedLink) recoveryStatus(null)
+        reconnects = 0
+        refreshedLink = false
+    }
+
+    /** The centred readout, held on screen until cleared rather than fading. */
+    private fun recoveryStatus(text: String?) {
+        val v = hud ?: return
+        v.removeCallbacks(hideHud)
+        if (text == null) {
+            v.visibility = View.GONE
+        } else {
+            v.text = text
+            v.visibility = View.VISIBLE
+        }
+    }
+
     private fun savePosition() {
         val p = player ?: return
         if (p.duration > 0) {
@@ -1253,6 +1408,19 @@ class PlayerActivity : ComponentActivity() {
     }
 
     companion object {
+        /** Waits before each attempt to reconnect: about half a minute in all. */
+        private val RECONNECT_DELAYS_MS = longArrayOf(2_000, 4_000, 8_000, 8_000, 8_000)
+
+        /** Failures that mean the connection went, not that the source is bad. */
+        private val NETWORK_ERRORS = setOf(
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            PlaybackException.ERROR_CODE_TIMEOUT
+        )
+
+        /** Answers that mean the link itself is no longer good — expired, typically. */
+        private val LINK_REFUSED = setOf(401, 403, 404, 410)
+
         const val EXTRA_URL = "url"
         const val EXTRA_TITLE = "title"
         /** Series title on its own, for resolving other episodes. */
