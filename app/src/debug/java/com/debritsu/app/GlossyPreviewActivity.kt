@@ -35,44 +35,6 @@ class GlossyPreviewActivity : ComponentActivity() {
 
     private fun poster(kitsu: Int) = "https://media.kitsu.app/anime/poster_images/$kitsu/medium.jpg"
 
-    /**
-     * `--es screen ssacheck`: feeds an ASS line the way the MKV extractor hands
-     * one over, with a zero duration, to media3's own parser and then to ours,
-     * and logs what each did under DebritsuSubs. The first threw and ended the
-     * episode on a Pixel 10; the second should drop the line and carry on.
-     */
-    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-    private fun ssaCheck() {
-        val init = listOf(
-            "Format: Start, End, ReadOrder, Layer, Style, Name, MarginL, MarginR, MarginV, Effect, Text".toByteArray(),
-            ("[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\n\n" +
-                "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour\n" +
-                "Style: Default,Arial,48,&H00FFFFFF\n").toByteArray()
-        )
-        val format = androidx.media3.common.Format.Builder()
-            .setSampleMimeType(androidx.media3.common.MimeTypes.TEXT_SSA)
-            .setInitializationData(init)
-            .build()
-        fun line(end: String) = "Dialogue: 0:00:00:00,$end,1,0,Default,,0,0,0,,Hello".toByteArray()
-        val all = androidx.media3.extractor.text.SubtitleParser.OutputOptions.allCues()
-
-        fun run(name: String, parser: androidx.media3.extractor.text.SubtitleParser, end: String) {
-            var cues = 0
-            val result = runCatching { parser.parse(line(end), all) { cues += it.cues.size } }
-            android.util.Log.w(
-                "DebritsuSubs",
-                "ssacheck $name end=$end -> " +
-                    (result.exceptionOrNull()?.let { "THREW ${it.javaClass.simpleName}" } ?: "ok, $cues cue(s)")
-            )
-        }
-
-        val ours = com.debritsu.app.player.LenientPgsParser.Factory()
-        run("media3", androidx.media3.extractor.text.ssa.SsaParser(init), "0:00:02:00")
-        run("media3", androidx.media3.extractor.text.ssa.SsaParser(init), "0:00:00:00")
-        run("ours", ours.create(format), "0:00:02:00")
-        run("ours", ours.create(format), "0:00:00:00")
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         applyTheme(intent.getStringExtra("theme") ?: "pastel")
@@ -84,11 +46,6 @@ class GlossyPreviewActivity : ComponentActivity() {
         // `player` opens the real player on a public test clip (Big Buck Bunny,
         // Creative Commons), so its controls can be seen over moving pictures.
         val screen = intent.getStringExtra("screen")
-        if (screen == "ssacheck") {
-            ssaCheck()
-            finish()
-            return
-        }
         if (screen == "player") {
             // Two sample sources, so the Sources button shows and its picker can
             // be seen. Both point at the same public clip; nothing is resolved.
@@ -110,7 +67,7 @@ class GlossyPreviewActivity : ComponentActivity() {
                 )
             )
             startActivity(
-                android.content.Intent(this, com.debritsu.app.player.VlcPlayerActivity::class.java)
+                android.content.Intent(this, com.debritsu.app.player.PlayerActivity::class.java)
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_URL, clip)
                     .apply {
                         if (sub != null) {
@@ -124,6 +81,8 @@ class GlossyPreviewActivity : ComponentActivity() {
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_EPISODE_COUNT, 12)
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_SOURCE_INDEX, 0)
                     .putExtra("loop", intent.getBooleanExtra("loop", false))
+                    .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_ANILIST_ID, intent.getIntExtra("anilist", 0))
+                    .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_SERIES_TITLE, intent.getStringExtra("series").orEmpty())
             )
             finish()
             return

@@ -120,10 +120,10 @@ dependencies {
     // why they look in this app as they do in VLC: colours, karaoke and all.
     implementation("org.videolan.android:libvlc-all:3.6.5")
 
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
+    // Only for the seek bar and control styles the player screen borrows;
+    // libVLC does the playing.
     implementation("androidx.media3:media3-ui:1.4.1")
-    implementation("androidx.media3:media3-cast:1.4.1")
+    implementation("androidx.media3:media3-common:1.4.1")
     implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
     implementation("androidx.mediarouter:mediarouter:1.7.0")
 

@@ -1,408 +1,728 @@
 package com.debritsu.app.player
 
+import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.res.ColorStateList
-import androidx.compose.ui.graphics.toArgb
-import androidx.media3.ui.DefaultTimeBar
-import com.debritsu.app.ui.Ink
-import android.graphics.Color
+import android.content.Intent
+import android.content.IntentFilter
+import android.graphics.drawable.GradientDrawable
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
-import android.util.Log
-import android.util.TypedValue
-import android.app.Dialog
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
-import androidx.core.content.res.ResourcesCompat
 import android.view.GestureDetector
-import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.widget.ImageButton
-import android.widget.LinearLayout
 import android.widget.ProgressBar
-import android.widget.ScrollView
 import android.widget.TextView
-import kotlin.math.abs
-import kotlin.math.roundToInt
 import androidx.activity.ComponentActivity
 import androidx.annotation.OptIn
+import androidx.compose.ui.graphics.toArgb
+import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.media3.common.C
-import androidx.media3.common.Format
-import androidx.media3.common.MediaItem
-import androidx.media3.common.TrackSelectionOverride
-import androidx.media3.common.Tracks
-import androidx.media3.common.MimeTypes
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.PlaybackException
-import androidx.media3.datasource.HttpDataSource
-import kotlinx.coroutines.Job
-import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.ui.CaptionStyleCompat
-import androidx.media3.ui.PlayerView
-import androidx.media3.ui.SubtitleView
-import com.debritsu.app.BuildConfig
-import com.debritsu.app.data.AniList
+import androidx.media3.ui.DefaultTimeBar
+import androidx.media3.ui.TimeBar
 import com.debritsu.app.R
 import com.debritsu.app.cast.CastTarget
 import com.debritsu.app.cast.CastTargets
 import com.debritsu.app.cast.GoogleCast
+import com.debritsu.app.data.AniList
 import com.debritsu.app.data.AniSkip
 import com.debritsu.app.data.AutoPlay
 import com.debritsu.app.data.Debrid
 import com.debritsu.app.data.Downloads
 import com.debritsu.app.data.Mappings
 import com.debritsu.app.data.Progress
+import com.debritsu.app.data.Settings
 import com.debritsu.app.data.SourceHandoff
 import com.debritsu.app.data.StreamMeta
 import com.debritsu.app.data.StreamOption
-import com.debritsu.app.data.minEpisodeSizeMb
 import com.debritsu.app.data.Subtitle
 import com.debritsu.app.data.SyncQueue
-import com.debritsu.app.data.json
-import com.debritsu.app.data.Settings
+import com.debritsu.app.data.minEpisodeSizeMb
+import com.debritsu.app.ui.Ink
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.serialization.builtins.ListSerializer
+import org.videolan.libvlc.LibVLC
+import org.videolan.libvlc.Media
+import org.videolan.libvlc.MediaPlayer
+import org.videolan.libvlc.interfaces.IMedia
+import org.videolan.libvlc.util.VLCVideoLayout
 
-/** Marks the panel subheading so it can be rewritten while the panel is open. */
-private const val SUBHEADING_TAG = "panel_subheading"
-
-/** Written onto every side-loaded subtitle so the menu can spot one. */
-private const val ADDON_MARKER = "From"
-
+/**
+ * The player, on libVLC.
+ *
+ * media3 played most things well enough, but it renders ASS subtitles itself
+ * and only understands the parts of them it was taught: colours from the style
+ * table, and `\an`, `\pos` and `\move` on a line. Everything an anime release
+ * actually uses — karaoke timing on an opening, colour changes mid-line, fades,
+ * typeset signs — it drops. libVLC hands those to libass, the renderer VLC
+ * itself uses, so what appears here is what appears in VLC.
+ *
+ * It also carries its own decoders, which is the other half of the bargain:
+ * DTS and TrueHD audio, and video the device has no decoder for, play rather
+ * than arriving as silence or a black picture.
+ *
+ * The screen is the same one as before: the same controls, the same Sources and
+ * subtitle pickers, the same skip button and gestures. Only what turns bytes
+ * into pictures has changed.
+ */
 @OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity() {
 
-    private var player: ExoPlayer? = null
+    private var libVlc: LibVLC? = null
+    private var player: MediaPlayer? = null
 
-    /** The centred readout, shared by the touch gestures and the remote. */
-    private var hud: TextView? = null
+    private lateinit var videoLayout: VLCVideoLayout
+    private lateinit var controls: View
+    private lateinit var playPause: ImageButton
+    private lateinit var timeBar: DefaultTimeBar
+    private lateinit var positionText: TextView
+    private lateinit var durationText: TextView
+    private lateinit var buffering: ProgressBar
 
-    // The app's rounded face, for the views drawn here in code rather than
-    // Compose. Lazily, because resources are not ready until onCreate.
-    private val roundedMedium by lazy { ResourcesCompat.getFont(this, R.font.mplus_rounded_medium) }
-    private val roundedBold by lazy { ResourcesCompat.getFont(this, R.font.mplus_rounded_bold) }
-    private val roundedHeavy by lazy { ResourcesCompat.getFont(this, R.font.mplus_rounded_extrabold) }
-    private val hideHud = Runnable { hud?.visibility = View.GONE }
+    private var anilistId = 0
+    private var episode = 0
+    private var episodeCount = 0
+    private var episodeMinutes = 0
+    private var seriesTitle = ""
+    private var currentTitle = ""
+    private var currentUrl: String? = null
+    private var currentSourceIndex = -1
+    private var sources: List<StreamOption> = emptyList()
+    private var subtitleUrls: List<String> = emptyList()
+    private var subtitleLangs: List<String> = emptyList()
+    private var subtitleAddons: List<String> = emptyList()
+
+    private var progressPushed = false
+    private var resumeAtMs = 0L
+    private var resumed = false
+    private var scrubbing = false
+    private var pausedByFocus = false
+    private var audioFocus: AudioFocusRequest? = null
+    private var audioManager: AudioManager? = null
+    private var noisyReceiver: BroadcastReceiver? = null
+    private lateinit var hud: TextView
+    private val hideHud = Runnable { hud.visibility = View.GONE }
+    private var segments: List<AniSkip.Segment> = emptyList()
+    private var switchingEpisode = false
+
+    private val hideControls = Runnable { controls.visibility = View.GONE }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val url = intent.getStringExtra(PlayerActivity.EXTRA_URL) ?: run { finish(); return }
+        currentUrl = url
+        currentTitle = intent.getStringExtra(PlayerActivity.EXTRA_TITLE).orEmpty()
+        seriesTitle = intent.getStringExtra(PlayerActivity.EXTRA_SERIES_TITLE).orEmpty()
+        anilistId = intent.getIntExtra(PlayerActivity.EXTRA_ANILIST_ID, 0)
+        episode = intent.getIntExtra(PlayerActivity.EXTRA_EPISODE, 0)
+        episodeCount = intent.getIntExtra(PlayerActivity.EXTRA_EPISODE_COUNT, 0)
+        episodeMinutes = intent.getIntExtra(PlayerActivity.EXTRA_EPISODE_MINUTES, 0)
+        currentSourceIndex = intent.getIntExtra(PlayerActivity.EXTRA_SOURCE_INDEX, -1)
+        // In memory rather than through the Intent, for the same reason as
+        // before: a few hundred sources with long URLs overrun the Binder limit.
+        sources = SourceHandoff.take()
+        subtitleUrls = intent.getStringArrayExtra(PlayerActivity.EXTRA_SUB_URLS).orEmpty().toList()
+        subtitleLangs = intent.getStringArrayExtra(PlayerActivity.EXTRA_SUB_LANGS).orEmpty().toList()
+        subtitleAddons = intent.getStringArrayExtra(PlayerActivity.EXTRA_SUB_ADDONS).orEmpty().toList()
+
+        setContentView(R.layout.activity_player)
+        videoLayout = findViewById(R.id.video_layout)
+        controls = findViewById(R.id.controls)
+        playPause = findViewById(R.id.play_pause)
+        timeBar = findViewById(R.id.time_bar)
+        positionText = findViewById(R.id.position)
+        durationText = findViewById(R.id.duration)
+        buffering = findViewById(R.id.buffering)
+        buffering.indeterminateTintList =
+            android.content.res.ColorStateList.valueOf(Ink.palette.video.toArgb())
+
+        wireControls()
+        start(url)
+        takeAudioFocus()
+    }
+
+    // ----- the player itself -----
+
+    private fun start(url: String) {
+        val vlc = LibVLC(this, vlcOptions())
+        libVlc = vlc
+        val mp = MediaPlayer(vlc)
+        player = mp
+        mp.attachViews(videoLayout, null, /* enableSubtitles = */ true, /* useTextureView = */ false)
+        mp.setEventListener { event -> onPlayerEvent(event) }
+
+        resumeAtMs = Progress.position(anilistId, episode)
+        load(url)
+        trackPosition()
+        installSkipButton()
+        loadSkipSegments()
+    }
+
+    /**
+     * Options for the library itself. Subtitle appearance is set here rather
+     * than per file: these are VLC's own text-rendering options, and they apply
+     * to plain subtitles. ASS files carry their own styling and are left alone,
+     * which is the point of being on libVLC at all.
+     */
+    private fun vlcOptions(): ArrayList<String> {
+        val options = arrayListOf(
+            "--no-video-title-show",
+            // Enough buffer for a debrid link over a home connection without
+            // adding a wait at the start.
+            "--network-caching=3000",
+            "--freetype-rel-fontsize=${fontSizeOption()}",
+            // libass finds no font provider on Android and would otherwise draw
+            // nothing; the system font is what every other app uses anyway.
+            "--freetype-font=/system/fonts/Roboto-Regular.ttf"
+        )
+        if (Settings.subtitleOutline) options += "--freetype-outline-thickness=4"
+        else options += "--freetype-outline-thickness=0"
+        options += when (Settings.subtitleBackground) {
+            2 -> "--freetype-background-opacity=255"
+            1 -> "--freetype-background-opacity=128"
+            else -> "--freetype-background-opacity=0"
+        }
+        options += when (Settings.subtitleColour) {
+            1 -> "--freetype-color=16776960" // pale yellow
+            2 -> "--freetype-color=65535"    // cyan
+            else -> "--freetype-color=16777215"
+        }
+        val audio = Settings.preferredAudioLanguage
+        if (audio.isNotEmpty()) options += "--audio-language=$audio"
+        options += "--sub-language=en"
+        return options
+    }
+
+    /** VLC counts font size as a fraction of video height; smaller number, larger text. */
+    private fun fontSizeOption(): Int = when {
+        Settings.subtitleSizeSp >= 26f -> 12
+        Settings.subtitleSizeSp >= 22f -> 14
+        Settings.subtitleSizeSp >= 18f -> 16
+        else -> 20
+    }
+
+    private fun load(url: String) {
+        val vlc = libVlc ?: return
+        val mp = player ?: return
+        val media = Media(vlc, Uri.parse(url))
+        media.setHWDecoderEnabled(true, false)
+        // Debug only: the preview passes this so a ten-second test clip loops
+        // long enough to watch its subtitles through.
+        if (intent.getBooleanExtra("loop", false)) media.addOption(":input-repeat=65535")
+        mp.media = media
+        media.release()
+        resumed = false
+        mp.play()
+        // Subtitle files from addons are handed over after play starts, which is
+        // when libVLC accepts them. A slave that will not download is simply a
+        // subtitle that never appears — it cannot take the episode with it.
+        subtitleUrls.forEach { sub ->
+            runCatching { mp.addSlave(IMedia.Slave.Type.Subtitle, Uri.parse(sub), true) }
+        }
+    }
+
+    private fun onPlayerEvent(event: MediaPlayer.Event) {
+        when (event.type) {
+            MediaPlayer.Event.Playing -> {
+                buffering.visibility = View.GONE
+                if (reconnects > 0) {
+                    reconnects = 0
+                    recoveryStatus(null)
+                }
+                videoLayout.keepScreenOn = true
+                playPause.setImageResource(androidx.media3.ui.R.drawable.exo_icon_pause)
+                if (!resumed) {
+                    resumed = true
+                    if (resumeAtMs > 0) player?.time = resumeAtMs
+                }
+            }
+            MediaPlayer.Event.Paused -> {
+                videoLayout.keepScreenOn = false
+                playPause.setImageResource(androidx.media3.ui.R.drawable.exo_icon_play)
+            }
+            MediaPlayer.Event.Buffering ->
+                buffering.visibility = if (event.buffering < 100f) View.VISIBLE else View.GONE
+            MediaPlayer.Event.EndReached ->
+                // Debug only: the preview loops a short clip so its subtitles can
+                // be watched through more than once.
+                if (intent.getBooleanExtra("loop", false)) currentUrl?.let { load(it) } else finish()
+            MediaPlayer.Event.EncounteredError -> {
+                if (reconnect()) return
+                // The source list is the useful answer: addons hand back links
+                // that no longer play, and another source usually just works.
+                recoveryStatus(null)
+                toast("Couldn't play this source")
+                if (sources.size > 1) showSourcePicker() else finish()
+            }
+        }
+    }
+
+    /** Drives the seek bar and the clock, and pushes progress once past 85%. */
+    private fun trackPosition() {
+        lifecycleScope.launch {
+            while (true) {
+                val mp = player
+                if (mp != null && !scrubbing) {
+                    val length = mp.length
+                    val time = mp.time
+                    if (length > 0) {
+                        timeBar.setDuration(length)
+                        timeBar.setPosition(time)
+                        positionText.text = clock(time)
+                        durationText.text = clock(length)
+                        maybePushProgress(time, length)
+                    }
+                }
+                delay(500)
+            }
+        }
+    }
+
+    /**
+     * Progress goes at 85%, and only when the file is long enough to be the
+     * episode — a creditless opening is ninety seconds, and 85% of that would
+     * mark an episode watched that nobody watched.
+     */
+    private fun maybePushProgress(time: Long, length: Long) {
+        if (progressPushed || anilistId <= 0 || episode <= 0) return
+        val floorMs = if (episodeMinutes > 0) episodeMinutes * 60_000L / 2 else 4 * 60_000L
+        if (length < floorMs || time <= length * 0.85) return
+        progressPushed = true
+        Progress.clear(anilistId, episode)
+        lifecycleScope.launch {
+            val sent = runCatching { AniList.setProgress(anilistId, episode) }.isSuccess
+            if (!sent) SyncQueue.queue(anilistId, episode)
+        }
+    }
+
+    // ----- controls -----
+
+    private fun wireControls() {
+        installGestures()
+        playPause.setOnClickListener {
+            val mp = player ?: return@setOnClickListener
+            if (mp.isPlaying) mp.pause() else mp.play()
+            showControls()
+        }
+        findViewById<View>(R.id.rewind).setOnClickListener { seekBy(-SEEK_STEP_MS) }
+        findViewById<View>(R.id.forward).setOnClickListener { seekBy(SEEK_STEP_MS) }
+        findViewById<View>(R.id.subtitle_button).setOnClickListener { showSubtitlePicker() }
+        findViewById<View>(R.id.audio_button).setOnClickListener { showAudioPicker() }
+        findViewById<View>(R.id.cast_button).setOnClickListener { showCastPicker() }
+        findViewById<View>(R.id.sources_button).apply {
+            visibility = if (sources.size > 1) View.VISIBLE else View.GONE
+            setOnClickListener { showSourcePicker() }
+        }
+        findViewById<View>(R.id.prev_episode).setOnClickListener { goToEpisode(episode - 1) }
+        findViewById<View>(R.id.next_episode).setOnClickListener { goToEpisode(episode + 1) }
+        updateEpisodeButtons()
+
+        timeBar.addListener(object : TimeBar.OnScrubListener {
+            override fun onScrubStart(timeBar: TimeBar, position: Long) {
+                scrubbing = true
+            }
+
+            override fun onScrubMove(timeBar: TimeBar, position: Long) {
+                positionText.text = clock(position)
+            }
+
+            override fun onScrubStop(timeBar: TimeBar, position: Long, canceled: Boolean) {
+                scrubbing = false
+                if (!canceled) player?.time = position
+                showControls()
+            }
+        })
+        showControls()
+    }
+
+    private fun seekBy(deltaMs: Long, reveal: Boolean = true) {
+        val mp = player ?: return
+        mp.time = (mp.time + deltaMs).coerceIn(0, if (mp.length > 0) mp.length else Long.MAX_VALUE)
+        if (reveal) showControls()
+    }
+
+    private fun toggleControls() {
+        if (controls.visibility == View.VISIBLE) {
+            controls.removeCallbacks(hideControls)
+            controls.visibility = View.GONE
+        } else {
+            showControls()
+        }
+    }
+
+    private fun showControls() {
+        controls.visibility = View.VISIBLE
+        controls.removeCallbacks(hideControls)
+        controls.postDelayed(hideControls, 4_000)
+    }
+
+    // ----- track pickers -----
+
+    private fun showSubtitlePicker() {
+        val mp = player ?: return
+        val tracks = mp.spuTracks?.toList().orEmpty()
+        val current = mp.spuTrack
+        val ids = mutableListOf(-1)
+        val rows = mutableListOf(
+            PanelRow("Off", "No subtitles", if (current == -1) "SELECTED" else null)
+        )
+        tracks.filter { it.id != -1 }.forEach { track ->
+            ids += track.id
+            val (title, detail) = subtitleName(track)
+            rows += PanelRow(title, detail, if (track.id == current) "SELECTED" else null)
+        }
+        val fromAddons = subtitleUrls.size
+        panelDialog(
+            "Subtitles",
+            "${(rows.size - 1 - fromAddons).coerceAtLeast(0)} IN THIS FILE · $fromAddons FROM ADDONS",
+            rows
+        ) { index -> mp.spuTrack = ids[index] }.show()
+    }
+
+    /**
+     * A side-loaded track's own name is its URL, which reads as gibberish on a
+     * picker. Where a track matches one this app handed over, it is named after
+     * the addon it came from, as the old picker did.
+     */
+    private fun subtitleName(track: MediaPlayer.TrackDescription): Pair<String, String> {
+        val name = track.name.orEmpty()
+        val index = subtitleUrls.indexOfFirst { name.contains(it) }
+        if (index < 0) return (name.ifEmpty { "Track ${track.id}" }) to "In this file"
+        val addon = subtitleAddons.getOrNull(index)?.takeIf { it.isNotBlank() } ?: "an addon"
+        val lang = subtitleLangs.getOrNull(index)?.takeIf { it.isNotBlank() } ?: "und"
+        return lang to "From $addon"
+    }
+
+    private fun showAudioPicker() {
+        val mp = player ?: return
+        val tracks = mp.audioTracks?.toList().orEmpty().filter { it.id != -1 }
+        if (tracks.size < 2) {
+            toast("This release has one audio track")
+            return
+        }
+        val current = mp.audioTrack
+        val rows = tracks.map { track ->
+            PanelRow(
+                track.name.orEmpty().ifEmpty { "Track ${track.id}" },
+                "In this file",
+                if (track.id == current) "SELECTED" else null
+            )
+        }
+        panelDialog("Audio", "${tracks.size} TRACKS", rows) { index ->
+            mp.audioTrack = tracks[index].id
+        }.show()
+    }
+
+    /**
+     * Swap source without losing your place, as the old player did: whatever is
+     * playing goes to the top and says so, then the ones that meet the filters,
+     * best first.
+     */
+    private fun showSourcePicker() {
+        if (sources.isEmpty()) return
+        val filter = Settings.sourceFilter
+        val minSize = minEpisodeSizeMb(episodeMinutes)
+        val ordered = sources.indices.sortedWith(
+            compareByDescending<Int> { it == currentSourceIndex }
+                .thenByDescending { filter.accepts(sources[it], StreamMeta.of(sources[it]), minSize) }
+                .thenByDescending { filter.score(sources[it], StreamMeta.of(sources[it])) }
+        )
+        val rows = ordered.map { i ->
+            val s = sources[i]
+            PanelRow(
+                s.name,
+                s.description.replace("\n", " ").take(110),
+                when {
+                    i == currentSourceIndex -> "PLAYING"
+                    s.isDirect -> "DIRECT"
+                    else -> "DEBRID"
+                }
+            )
+        }
+        panelDialog("Sources", "${sources.size} AVAILABLE", rows) { position ->
+            val index = ordered[position]
+            if (index != currentSourceIndex) switchTo(sources[index], index)
+        }.show()
+    }
+
+    private fun switchTo(stream: StreamOption, index: Int) {
+        val mp = player ?: return
+        val resumeAt = mp.time
+        mp.pause()
+        lifecycleScope.launch {
+            runCatching { Debrid.resolve(stream) }
+                .onSuccess { url ->
+                    currentUrl = url
+                    currentSourceIndex = index
+                    resumeAtMs = resumeAt
+                    load(url)
+                }
+                .onFailure {
+                    toast(it.message ?: "Could not switch source")
+                    mp.play()
+                }
+        }
+    }
+
+    private fun toast(message: String) {
+        android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
+    }
+
+    private fun clock(ms: Long): String {
+        val total = ms / 1000
+        val h = total / 3600
+        val m = (total % 3600) / 60
+        val s = total % 60
+        return if (h > 0) String.format(Locale.UK, "%d:%02d:%02d", h, m, s)
+        else String.format(Locale.UK, "%02d:%02d", m, s)
+    }
+
+    // ----- riding out a lost connection -----
+
+    private var reconnects = 0
+
+    /**
+     * Retries a source that was playing, from where it was, for about half a
+     * minute before giving up on it.
+     *
+     * The same fault was measured on the media3 player: a connection that
+     * dropped for a few seconds ended the episode and never came back when the
+     * network did. A source that never played is not retried — it is dead, and
+     * the source list is the right answer at once. So is a downloaded file.
+     */
+    private fun reconnect(): Boolean {
+        val url = currentUrl ?: return false
+        if (!resumed || !url.startsWith("http")) return false
+        val wait = RECONNECT_DELAYS_MS.getOrNull(reconnects) ?: return false
+        reconnects++
+        recoveryStatus("Reconnecting…")
+        val at = player?.time?.takeIf { it > 0 } ?: resumeAtMs
+        lifecycleScope.launch {
+            delay(wait)
+            resumeAtMs = at
+            load(url)
+        }
+        return true
+    }
+
+    /** The centred readout, held on screen until cleared rather than fading. */
+    private fun recoveryStatus(text: String?) {
+        hud.removeCallbacks(hideHud)
+        if (text == null) {
+            hud.visibility = View.GONE
+        } else {
+            hud.text = text
+            hud.visibility = View.VISIBLE
+        }
+    }
+
+    // ----- gestures -----
 
     private fun readout(text: String) {
-        val v = hud ?: return
+        val v = hud
         v.text = text
         v.visibility = View.VISIBLE
         v.removeCallbacks(hideHud)
         v.postDelayed(hideHud, 700)
     }
-    private var progressPushed = false
-    private var anilistId = 0
-    private var episode = 0
-    private var sources: List<StreamOption> = emptyList()
-    private var subtitleConfigs: List<MediaItem.SubtitleConfiguration> = emptyList()
-    private var currentUrl: String? = null
-    private var currentTitle: String = "Debritsu"
-    private var episodeCount = 0
-    private var episodeMinutes = 0
-    private var seriesTitle: String = ""
 
     /**
-     * Whether what is playing is long enough to be the episode it claims.
+     * A tap shows or hides the controls; a double tap on the left or right
+     * third skips back or forward; a vertical drag on the left half sets the
+     * brightness and on the right half the volume.
      *
-     * Progress is pushed at 85% watched, which is right for an episode and
-     * disastrous for anything short: a creditless opening runs about ninety
-     * seconds, so 85% of it arrives after little over a minute and the episode
-     * is marked watched. A season's worth of those marked a whole season
-     * watched that had never been played — reported as "it said I watched all
-     * of season 2, and I have not seen any of it".
-     *
-     * Half of AniList's own minutes-per-episode where it knows, since a file
-     * can legitimately be a little short of the nominal running time. Where it
-     * does not, four minutes — beneath any real episode, above every opening,
-     * ending and trailer. Anime shorts do exist at three minutes an episode,
-     * which is why the known duration is preferred over the floor.
+     * One detector for all of it, because a tap and a double tap have to be
+     * told apart before either acts — a tap listener beside a gesture detector
+     * fires on the first half of every double tap.
      */
-    private fun looksLikeTheEpisode(durationMs: Long): Boolean {
-        val floorMs = if (episodeMinutes > 0) episodeMinutes * 60_000L / 2 else 4 * 60_000L
-        return durationMs >= floorMs
-    }
-    private var switchingEpisode = false
-    private var segments: List<AniSkip.Segment> = emptyList()
-    /** Index into [sources] of what is playing, or -1 when it isn't one of them. */
-    private var currentSourceIndex = -1
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        val url = intent.getStringExtra(EXTRA_URL) ?: run { finish(); return }
-        currentUrl = url
-        if (BuildConfig.DEBUG) Log.d("DebritsuSubs", "playing url=$url")
-        currentTitle = intent.getStringExtra(EXTRA_TITLE) ?: "Debritsu"
-        anilistId = intent.getIntExtra(EXTRA_ANILIST_ID, 0)
-        episode = intent.getIntExtra(EXTRA_EPISODE, 0)
-        episodeCount = intent.getIntExtra(EXTRA_EPISODE_COUNT, 0)
-        episodeMinutes = intent.getIntExtra(EXTRA_EPISODE_MINUTES, 0)
-        seriesTitle = intent.getStringExtra(EXTRA_SERIES_TITLE).orEmpty()
-        currentSourceIndex = intent.getIntExtra(EXTRA_SOURCE_INDEX, -1)
-        // Not an Intent extra: a busy episode returns hundreds of sources, each
-        // carrying a debrid URL of some 1,500 characters, and serialising that
-        // into the launch overruns the Binder transaction limit — which kills
-        // the app during startActivity without raising anything catchable.
-        sources = SourceHandoff.take()
-        val subUrls = intent.getStringArrayExtra(EXTRA_SUB_URLS).orEmpty()
-        val subLangs = intent.getStringArrayExtra(EXTRA_SUB_LANGS).orEmpty()
-        val subAddons = intent.getStringArrayExtra(EXTRA_SUB_ADDONS).orEmpty()
-
-        setContentView(R.layout.activity_player)
-        val view = findViewById<PlayerView>(R.id.player_view)
-        view.setKeepContentOnPlayerReset(true)
-
-        // The Sources button lives in the control bar, so it fades with the
-        // rest of the transport controls rather than sitting over the video.
-        val sourcesButton = findViewById<ImageButton>(R.id.sources_button)
-        sourcesButton.visibility = if (sources.size > 1) View.VISIBLE else View.GONE
-        sourcesButton.setOnClickListener { showSourcePicker() }
-
-        findViewById<ImageButton>(R.id.cast_button).setOnClickListener { showCastPicker() }
-
-        // Take the CC button over from the player's own dialog. PlayerView wires
-        // it during inflation, so this has to replace the listener afterwards.
-        findViewById<ImageButton>(R.id.exo_subtitle).setOnClickListener { showSubtitlePicker() }
-
-        findViewById<ImageButton>(R.id.prev_episode)
-            .setOnClickListener { goToEpisode(episode - 1) }
-        findViewById<ImageButton>(R.id.next_episode)
-            .setOnClickListener { goToEpisode(episode + 1) }
-        updateEpisodeButtons()
-
-        styleBufferingSpinner()
-        styleTimeBar()
-        installGestures(view)
-        installSkipButton()
-        applySubtitleStyle(view.subtitleView)
-
-        subtitleConfigs = subtitleTracks(
-            subUrls.mapIndexed { i, subUrl ->
-                Subtitle(
-                    url = subUrl,
-                    lang = subLangs.getOrNull(i) ?: "und",
-                    addon = subAddons.getOrNull(i)?.takeIf { it.isNotBlank() }
-                )
+    private fun installGestures() {
+        val root = findViewById<View>(R.id.player_root)
+        hud = findViewById<TextView>(R.id.gesture_hud).apply {
+            // Dark in every theme: it is read over the picture, not the page.
+            background = GradientDrawable().apply {
+                setColor(0xE616152B.toInt())
+                cornerRadius = 18 * resources.displayMetrics.density
             }
-        )
-
-        val item = mediaItem(url)
-
-        // Bitmap subtitles go through our own PGS parser, which keeps the
-        // palette between display sets. media3's discards any subtitle that
-        // relies on a palette sent earlier — see LenientPgsParser.
-        val mediaSources = DefaultMediaSourceFactory(this)
-            .setSubtitleParserFactory(LenientPgsParser.Factory())
-
-        player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(mediaSources)
-            // Behave like a media app towards the rest of the phone: pause for
-            // a call or another app's audio, dip under a notification, and
-            // pause when headphones or Bluetooth disconnect rather than carrying
-            // on out of the speaker. media3 does none of this unless asked, and
-            // it was never asked — measured from its Builder, both flags only
-            // ever change through these two calls.
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                    .build(),
-                /* handleAudioFocus = */ true
-            )
-            .setHandleAudioBecomingNoisy(true)
-            .build().also { exo ->
-            view.player = exo
-            // Prefer English subs by default; the user can override from the CC button.
-            //
-            // Audio has to be asked for explicitly. Left alone, ExoPlayer takes
-            // the device language, so an English phone plays the dub on any
-            // dual-audio release — an odd thing for the app to decide silently
-            // while also insisting on English subtitles. Empty means defer to
-            // the device after all, so it is simply not set.
-            exo.trackSelectionParameters = exo.trackSelectionParameters
-                .buildUpon()
-                .setPreferredTextLanguage("en")
-                // Don't let DEFAULT or FORCED decide which subtitle track wins.
-                // A forced track is meant for the occasional foreign line during
-                // a dub, not for someone watching subtitled — but flags alone
-                // cannot pick the right track either, since two tracks then
-                // match equally and the tie breaks on file order. Track titles
-                // are no help: releases exist whose "Dialogue" track holds six
-                // cues and whose "Signs & Songs" track holds all 851.
-                .setIgnoredTextSelectionFlags(
-                    C.SELECTION_FLAG_DEFAULT or C.SELECTION_FLAG_FORCED
-                )
-                .apply {
-                    val audio = Settings.preferredAudioLanguage
-                    if (audio.isNotEmpty()) setPreferredAudioLanguage(audio)
-                }
-                .build()
-            exo.setMediaItem(item)
-            exo.prepare()
-            // Pick up where this episode was left, if anywhere.
-            val resumeAt = Progress.position(anilistId, episode)
-            if (resumeAt > 0) exo.seekTo(resumeAt)
-            exo.playWhenReady = true
-            exo.addListener(object : Player.Listener {
-                /**
-                 * Without this a dead link is a black screen that never
-                 * resolves, which is indistinguishable from one still loading —
-                 * more so now the buffering spinner is on, since it would sit
-                 * there turning forever. Debrid links expire and addons hand
-                 * back sources that no longer play, so this is routine rather
-                 * than exceptional; the source list is the useful thing to
-                 * offer, because another source usually just works.
-                 */
-                override fun onPlayerError(error: PlaybackException) {
-                    Log.w("DebritsuFilter", "playback failed: ${error.errorCodeName}", error)
-                    // Two failures that are not the source's fault, and which
-                    // the source list cannot fix, are dealt with first.
-                    if (dropFailedSubtitle(error)) return
-                    if (recover(error)) return
-                    endRecovery()
-                    toast("Couldn't play this source")
-                    showSourcePicker()
-                }
-
-                override fun onPlaybackStateChanged(state: Int) {
-                    if (state == Player.STATE_READY) {
-                        sourceStarted = true
-                        endRecovery()
-                    }
-                }
-
-                // Debug-only instrumentation for a subtitle that renders in VLC
-                // and not here. Names every text track and reports the cues as
-                // they arrive, which separates "the track has nothing at this
-                // point" from "cues arrive and are not drawn" — the two cases
-                // needing completely different fixes.
-                override fun onTracksChanged(tracks: Tracks) {
-                    preferDialogueSubtitles(tracks)
-                    if (!BuildConfig.DEBUG) return
-                    tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
-                        .forEachIndexed { g, group ->
-                            for (i in 0 until group.length) {
-                                val f = group.getTrackFormat(i)
-                                Log.d(
-                                    "DebritsuSubs",
-                                    "track g$g/$i selected=${group.isTrackSelected(i)} " +
-                                        "lang=${f.language} label=${f.label} " +
-                                        "mime=${f.sampleMimeType} roleFlags=${f.roleFlags} " +
-                                        "selectionFlags=${f.selectionFlags} id=${f.id}"
-                                )
-                            }
-                        }
-                }
-
-                override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
-                    if (!BuildConfig.DEBUG) return
-                    val at = player?.currentPosition ?: 0
-                    if (cueGroup.cues.isEmpty()) {
-                        Log.d("DebritsuSubs", "cues at ${at}ms : none")
-                    } else {
-                        cueGroup.cues.forEach { cue ->
-                            Log.d(
-                                "DebritsuSubs",
-                                "cues at ${at}ms : line=${cue.line} pos=${cue.position} " +
-                                    "anchor=${cue.lineAnchor} text=${cue.text?.toString()?.take(80)}"
-                            )
-                        }
-                    }
-                }
-
-                override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    // Only hold the screen awake while video is actually running,
-                    // so a paused player doesn't drain the battery.
-                    view.keepScreenOn = isPlaying
-                }
-
-                override fun onEvents(p: Player, events: Player.Events) {
-                    val duration = p.duration
-                    if (!progressPushed && anilistId > 0 && episode > 0 &&
-                        duration > 0 && looksLikeTheEpisode(duration) &&
-                        p.currentPosition > duration * 0.85
-                    ) {
-                        progressPushed = true
-                        Progress.clear(anilistId, episode)
-                        lifecycleScope.launch {
-                            // Offline finishes still count — park them for later.
-                            val sent = runCatching {
-                                AniList.setProgress(anilistId, episode)
-                            }.isSuccess
-                            if (!sent) SyncQueue.queue(anilistId, episode)
-                        }
-                    }
-                }
-            })
+            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.mplus_rounded_bold)
         }
 
-        loadSkipSegments()
+        val audio = getSystemService(AUDIO_SERVICE) as AudioManager
+        val maxVolume = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        var dragging = false
+        var startVolume = 0
+        var startBrightness = 0f
+
+        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean {
+                dragging = false
+                startVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+                // -1 means "follow the system", which is the state on first touch.
+                startBrightness = window.attributes.screenBrightness
+                    .takeIf { it >= 0f } ?: systemBrightness()
+                return true
+            }
+
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                toggleControls()
+                return true
+            }
+
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                when {
+                    e.x < root.width / 3f -> {
+                        seekBy(-SEEK_STEP_MS, reveal = false)
+                        readout("−${SEEK_STEP_MS / 1000}s")
+                    }
+                    e.x > root.width * 2f / 3f -> {
+                        seekBy(SEEK_STEP_MS, reveal = false)
+                        readout("+${SEEK_STEP_MS / 1000}s")
+                    }
+                    // The middle is left alone so a double tap there still just
+                    // toggles the controls.
+                    else -> toggleControls()
+                }
+                return true
+            }
+
+            override fun onScroll(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                distanceX: Float,
+                distanceY: Float
+            ): Boolean {
+                val start = e1 ?: return false
+                if (!dragging) {
+                    val dy = abs(e2.y - start.y)
+                    // Wait until the drag is clearly vertical, so horizontal
+                    // movement never nudges the volume.
+                    if (dy < abs(e2.x - start.x) || dy < 24f) return false
+                    dragging = true
+                }
+                val fraction = (start.y - e2.y) / (root.height * 0.7f)
+                if (start.x < root.width / 2f) {
+                    val level = (startBrightness + fraction).coerceIn(0.01f, 1f)
+                    window.attributes = window.attributes.apply { screenBrightness = level }
+                    readout("Brightness  ${(level * 100).roundToInt()}%")
+                } else {
+                    val level = (startVolume + fraction * maxVolume).roundToInt().coerceIn(0, maxVolume)
+                    audio.setStreamVolume(AudioManager.STREAM_MUSIC, level, 0)
+                    readout("Volume  ${(level * 100f / maxVolume).roundToInt()}%")
+                }
+                return true
+            }
+        })
+
+        root.setOnTouchListener { view, event ->
+            detector.onTouchEvent(event)
+            if (event.action == MotionEvent.ACTION_UP) view.performClick()
+            true
+        }
     }
 
-    private fun mediaItem(url: String): MediaItem =
-        MediaItem.Builder()
-            .setUri(url)
-            .setSubtitleConfigurations(subtitleConfigs)
-            .build()
+    /** The system brightness, as a starting point for the first drag. */
+    private fun systemBrightness(): Float = runCatching {
+        android.provider.Settings.System.getInt(
+            contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS
+        ) / 255f
+    }.getOrDefault(0.5f)
+
+    // ----- skipping openings and endings -----
 
     /**
-     * Episode stepping needs an AniList id and a title to resolve against, so
-     * it's hidden for downloads and one-off links, which have nothing to step
-     * through. A null episode count means an ongoing show — allow forward and
-     * let the lookup fail honestly rather than guessing where the series ends.
+     * Shows a skip button whenever playback is inside a known opening or
+     * ending, and seeks past it when tapped. Polled, because nothing announces
+     * that an opening has simply arrived.
+     */
+    private fun installSkipButton() {
+        val button = findViewById<TextView>(R.id.skip_segment)
+        button.background = GradientDrawable().apply {
+            setColor(Ink.palette.action.copy(alpha = 0.95f).toArgb())
+            cornerRadius = 26 * resources.displayMetrics.density
+        }
+        button.typeface = ResourcesCompat.getFont(this, R.font.mplus_rounded_extrabold)
+
+        lifecycleScope.launch {
+            while (true) {
+                val mp = player
+                val time = mp?.time ?: -1L
+                val active = segments.firstOrNull { time in it.startMs..it.endMs }
+                if (active == null) {
+                    button.visibility = View.GONE
+                } else {
+                    button.text = active.label
+                    button.visibility = View.VISIBLE
+                    button.setOnClickListener {
+                        player?.time = active.endMs
+                        button.visibility = View.GONE
+                    }
+                }
+                delay(400)
+            }
+        }
+    }
+
+    /** Looks up opening and ending times for whatever is playing now. */
+    private fun loadSkipSegments() {
+        segments = emptyList()
+        if (anilistId <= 0 || episode <= 0) return
+        val forEpisode = episode
+        lifecycleScope.launch {
+            // The service fits its timings to this particular encode by its
+            // length, so wait a moment for the player to know it.
+            var waited = 0
+            while (waited < 5000 && (player?.length ?: 0L) <= 0L) {
+                delay(250)
+                waited += 250
+            }
+            val mal = runCatching {
+                Mappings.forAniList(anilistId, seriesTitle.ifEmpty { null }).mal?.toIntOrNull()
+            }.getOrNull()
+            val found = AniSkip.segments(mal, forEpisode, (player?.length ?: 0L).coerceAtLeast(0L))
+            // A quick jump to the next episode can land mid-lookup; timings from
+            // the episode just left would be worse than none.
+            if (episode == forEpisode) segments = found
+        }
+    }
+
+    // ----- stepping between episodes -----
+
+    /**
+     * Stepping needs an AniList id and a title to resolve against, so it is
+     * hidden for one-off links. An unknown episode count means an ongoing show:
+     * forward is allowed and the lookup fails honestly if there is nothing.
      */
     private fun updateEpisodeButtons() {
         val navigable = anilistId > 0 && episode > 0 && seriesTitle.isNotEmpty()
-        findViewById<ImageButton>(R.id.prev_episode).visibility =
+        findViewById<View>(R.id.prev_episode).visibility =
             if (navigable && episode > 1) View.VISIBLE else View.GONE
-        findViewById<ImageButton>(R.id.next_episode).visibility =
-            if (navigable && (episodeCount <= 0 || episode < episodeCount)) View.VISIBLE
-            else View.GONE
+        findViewById<View>(R.id.next_episode).visibility =
+            if (navigable && (episodeCount <= 0 || episode < episodeCount)) View.VISIBLE else View.GONE
     }
 
     /**
-     * Resolves an adjacent episode and swaps it in without leaving the player.
-     *
-     * There is no playlist to seek through — every episode is a fresh addon
-     * lookup and debrid resolve — so this repeats what the detail screen does,
-     * ending in the same source picker. Choosing matters here: sources vary by
-     * several gigabytes, language and release group, and picking automatically
-     * would spend someone's mobile data for them.
+     * Resolves an adjacent episode and swaps it in without leaving the player,
+     * by the same rules as pressing play on the detail screen: a downloaded copy
+     * first, then automatic selection within the filters, then the choice.
      */
     private fun goToEpisode(target: Int) {
         if (switchingEpisode) return
         if (target < 1 || (episodeCount > 0 && target > episodeCount)) return
-        val exo = player ?: return
+        val mp = player ?: return
 
         switchingEpisode = true
         savePosition()
-        exo.pause()
+        mp.pause()
 
-        // A downloaded copy plays straight from disk, same as the detail
-        // screen does, and never touches the network.
-        //
-        // Checked before the "finding sources" panel goes up rather than after.
-        // It used to be the other way round, so a downloaded episode put that
-        // panel on screen and took it down again a frame later — claiming to
-        // search for something that was already on the phone.
-        val offline = Downloads.get(anilistId, target)
-            ?.takeIf { Downloads.isComplete(it) }
+        val offline = Downloads.get(anilistId, target)?.takeIf { Downloads.isComplete(it) }
         if (offline != null) {
-            startEpisode(
-                target,
-                Uri.fromFile(Downloads.fileFor(offline)).toString(),
-                emptyList(),
-                emptyList(),
-                -1
-            )
+            startEpisode(target, Uri.fromFile(Downloads.fileFor(offline)).toString(), emptyList(), emptyList(), -1)
             switchingEpisode = false
             return
         }
@@ -411,29 +731,16 @@ class PlayerActivity : ComponentActivity() {
         loading.show()
 
         lifecycleScope.launch {
-            // True once something else is responsible for what plays next,
-            // either because the episode already changed or because the picker
-            // is up and waiting on a choice.
             var handedOff = false
             try {
-                // The same rules as pressing play on the detail screen. Asking
-                // every time made sense before those rules existed; now that a
-                // quality ceiling and a size limit are enforced, stopping to
-                // ask is just an inconsistency between two ways of starting the
-                // same episode.
                 val outcome = AutoPlay.run(
                     anilistId = anilistId,
                     title = seriesTitle,
                     episode = target,
                     isMovie = episodeCount == 1,
                     filter = Settings.sourceFilter,
-                    // Was omitted, which made the claim above untrue: without
-                    // it the plausible-size floor falls back to four minutes
-                    // instead of half the real running time, so skipping to the
-                    // next episode inside the player had weaker protection
-                    // against a creditless opening than starting one from the
-                    // detail screen. That is the fault that marked a season of
-                    // Shield Hero watched.
+                    // Half the real running time is the floor below which a file
+                    // is taken for a creditless opening, not the episode.
                     episodeMinutes = episodeMinutes,
                     autoSelect = Settings.autoPlay
                 ) { step -> setPanelSubheading(loading, stepLabel(step)) }
@@ -441,40 +748,30 @@ class PlayerActivity : ComponentActivity() {
                 val found = outcome.results.flatMap { it.streams }
                 val url = outcome.url
                 if (url != null) {
-                    startEpisode(
-                        target, url, found, outcome.subtitles, found.indexOf(outcome.chosen)
-                    )
+                    startEpisode(target, url, found, outcome.subtitles, found.indexOf(outcome.chosen))
                     handedOff = true
                     return@launch
                 }
-
                 if (found.isEmpty()) {
                     toast(outcome.message ?: "No sources found for episode $target.")
                     return@launch
                 }
 
-                // Nothing matched, nothing resolved, or automatic selection is
-                // switched off — either way the choice comes back to the user.
                 val rows = found.map { s ->
-                    Row(
-                        s.name,
-                        s.description.replace("\n", " ").take(110),
-                        if (s.isDirect) "DIRECT" else "DEBRID"
-                    )
+                    PanelRow(s.name, s.description.replace("\n", " ").take(110), if (s.isDirect) "DIRECT" else "DEBRID")
                 }
                 val picker = panelDialog("Episode $target", "${found.size} AVAILABLE", rows) { index ->
                     val chosen = found[index]
                     lifecycleScope.launch {
                         toast("Resolving link…")
-                        val url2 = runCatching { Debrid.resolve(chosen) }.getOrNull()
-                        if (url2 == null) {
+                        val resolved = runCatching { Debrid.resolve(chosen) }.getOrNull()
+                        if (resolved == null) {
                             toast("Couldn't resolve that source.")
                             player?.play()
                         } else {
                             startEpisode(
-                                target, url2, found,
-                                (chosen.subtitles + outcome.subtitles).distinctBy { it.url },
-                                index
+                                target, resolved, found,
+                                (chosen.subtitles + outcome.subtitles).distinctBy { it.url }, index
                             )
                         }
                     }
@@ -499,277 +796,66 @@ class PlayerActivity : ComponentActivity() {
         subs: List<Subtitle>,
         sourceIndex: Int
     ) {
-        val exo = player ?: return
         episode = target
         currentUrl = url
         currentSourceIndex = sourceIndex
         currentTitle = if (seriesTitle.isNotEmpty()) "$seriesTitle — EP $target" else "EP $target"
         sources = newSources
-        // A new episode has its own completion threshold to cross.
         progressPushed = false
-        sourceStarted = false
-        endRecovery()
-
-        subtitleConfigs = subtitleTracks(subs)
-
-        findViewById<ImageButton>(R.id.sources_button).visibility =
+        subtitleUrls = subs.map { it.url }
+        subtitleLangs = subs.map { it.lang }
+        subtitleAddons = subs.map { it.addon.orEmpty() }
+        findViewById<View>(R.id.sources_button).visibility =
             if (sources.size > 1) View.VISIBLE else View.GONE
         updateEpisodeButtons()
-
-        exo.setMediaItem(mediaItem(url))
-        exo.prepare()
-        val resumeAt = Progress.position(anilistId, target)
-        if (resumeAt > 0) exo.seekTo(resumeAt)
-        exo.playWhenReady = true
+        resumeAtMs = Progress.position(anilistId, target)
+        load(url)
         loadSkipSegments()
     }
 
-
-    /**
-     * Double tap the left or right third to skip, drag up or down the left half
-     * for brightness and the right half for volume.
-     *
-     * The listener only swallows an event once a gesture has actually fired,
-     * otherwise a plain tap would stop toggling the transport controls.
-     */
-    private fun installGestures(view: PlayerView) {
-        hud = findViewById<TextView>(R.id.gesture_hud).apply {
-            // Dark in every theme: it is read over the picture, not the page.
-            background = GradientDrawable().apply {
-                setColor(0xE616152B.toInt())
-                cornerRadius = 18 * resources.displayMetrics.density
-            }
-            typeface = roundedBold
-        }
-
-        val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val maxVolume = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-
-        var consumed = false
-        var dragging = false
-        var startVolume = 0
-        var startBrightness = 0f
-
-        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-
-            override fun onDown(e: MotionEvent): Boolean {
-                consumed = false
-                dragging = false
-                startVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
-                // -1 means "follow the system", which is the state on first touch.
-                startBrightness = window.attributes.screenBrightness
-                    .takeIf { it >= 0f } ?: systemBrightness()
-                return true
-            }
-
-            override fun onDoubleTap(e: MotionEvent): Boolean {
-                val exo = player ?: return false
-                when {
-                    e.x < view.width / 3f -> {
-                        exo.seekBack()
-                        readout("−${exo.seekBackIncrement / 1000}s")
-                    }
-                    e.x > view.width * 2f / 3f -> {
-                        exo.seekForward()
-                        readout("+${exo.seekForwardIncrement / 1000}s")
-                    }
-                    // The middle is left alone so double-tapping the centre
-                    // still just shows the controls.
-                    else -> return false
-                }
-                consumed = true
-                return true
-            }
-
-            override fun onScroll(
-                e1: MotionEvent?,
-                e2: MotionEvent,
-                distanceX: Float,
-                distanceY: Float
-            ): Boolean {
-                val start = e1 ?: return false
-                if (!dragging) {
-                    val dy = abs(e2.y - start.y)
-                    // Wait until the drag is clearly vertical, so horizontal
-                    // movement never nudges the volume.
-                    if (dy < abs(e2.x - start.x) || dy < 24f) return false
-                    dragging = true
-                }
-
-                val fraction = (start.y - e2.y) / (view.height * 0.7f)
-                if (start.x < view.width / 2f) {
-                    val level = (startBrightness + fraction).coerceIn(0.01f, 1f)
-                    window.attributes = window.attributes.apply { screenBrightness = level }
-                    readout("Brightness  ${(level * 100).roundToInt()}%")
-                } else {
-                    val level = (startVolume + fraction * maxVolume)
-                        .roundToInt().coerceIn(0, maxVolume)
-                    audio.setStreamVolume(AudioManager.STREAM_MUSIC, level, 0)
-                    readout("Volume  ${(level * 100f / maxVolume).roundToInt()}%")
-                }
-                consumed = true
-                return true
-            }
-        })
-
-        view.setOnTouchListener { _, event ->
-            detector.onTouchEvent(event)
-            consumed
-        }
+    private fun stepLabel(step: AutoPlay.Step): String = when (step) {
+        AutoPlay.Step.Locating -> "FINDING THIS EPISODE"
+        AutoPlay.Step.Searching -> "SEARCHING YOUR ADDONS"
+        is AutoPlay.Step.Filtering -> "${step.kept} OF ${step.found} MATCH"
+        is AutoPlay.Step.Resolving -> "CHECKING SOURCE ${step.attempt} OF ${step.of}"
+        AutoPlay.Step.Ready -> "STARTING PLAYBACK"
     }
 
-    /**
-     * Recolours and enlarges the buffering spinner.
-     *
-     * It belongs to PlayerView's own layout rather than ours, so there is no
-     * XML of ours to set this in — it is a plain indeterminate ProgressBar that
-     * otherwise picks up the platform accent, which comes out green and is
-     * smaller than it wants to be over a full-screen video.
-     */
-    private fun styleBufferingSpinner() {
-        val spinner = findViewById<ProgressBar>(androidx.media3.ui.R.id.exo_buffering) ?: return
-        spinner.indeterminateTintList = ColorStateList.valueOf(Ink.palette.video.toArgb())
-        val size = (64 * resources.displayMetrics.density).toInt()
-        spinner.layoutParams = spinner.layoutParams.apply {
-            width = size
-            height = size
-        }
-    }
+    // ----- casting -----
 
     /**
-     * The seek bar in the theme's accent. Set here rather than in the layout,
-     * which can only name one fixed colour and there are three themes.
-     */
-    private fun styleTimeBar() {
-        val bar = findViewById<DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress) ?: return
-        bar.setPlayedColor(Ink.palette.video.toArgb())
-        bar.setScrubberColor(Ink.palette.videoKnob.toArgb())
-    }
-
-    /**
-     * Shows a skip button whenever playback is inside a known opening or
-     * ending, and seeks past it when tapped.
-     *
-     * Polling beats listening here: ExoPlayer reports position changes on
-     * seeks and state changes, not as playback advances, so there is no event
-     * that fires when an opening simply arrives.
-     */
-    private fun installSkipButton() {
-        val button = findViewById<TextView>(R.id.skip_segment)
-        // The theme's main-button colour, flat, as everywhere else.
-        button.background = GradientDrawable().apply {
-            setColor(Ink.palette.action.copy(alpha = 0.95f).toArgb())
-            cornerRadius = 26 * resources.displayMetrics.density
-        }
-        button.typeface = roundedHeavy
-
-        lifecycleScope.launch {
-            while (true) {
-                val exo = player
-                val active = if (exo == null) null
-                else segments.firstOrNull { exo.currentPosition in it.startMs..it.endMs }
-
-                if (active == null) {
-                    button.visibility = View.GONE
-                } else {
-                    button.text = active.label
-                    button.visibility = View.VISIBLE
-                    button.setOnClickListener {
-                        exo?.seekTo(active.endMs)
-                        button.visibility = View.GONE
-                    }
-                }
-                delay(400)
-            }
-        }
-    }
-
-    /** Looks up opening and ending times for whatever is playing now. */
-    private fun loadSkipSegments() {
-        segments = emptyList()
-        if (anilistId <= 0 || episode <= 0) return
-
-        val forEpisode = episode
-        lifecycleScope.launch {
-            // Give the player a moment to work out the duration: the service
-            // uses it to fit its timings to this particular encode.
-            var waited = 0
-            while (waited < 5000 && (player?.duration ?: 0L) <= 0L) {
-                delay(250)
-                waited += 250
-            }
-
-            val mal = runCatching {
-                Mappings.forAniList(anilistId, seriesTitle.ifEmpty { null }).mal?.toIntOrNull()
-            }.getOrNull()
-            val found = AniSkip.segments(
-                mal, forEpisode, (player?.duration ?: 0L).coerceAtLeast(0L)
-            )
-
-            // A quick jump to the next episode can land mid-lookup; timings
-            // from the episode we just left would be worse than none.
-            if (episode == forEpisode) segments = found
-        }
-    }
-
-    /** The system brightness, as a starting point for the first drag. */
-    private fun systemBrightness(): Float = runCatching {
-        android.provider.Settings.System.getInt(
-            contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS
-        ) / 255f
-    }.getOrDefault(0.5f)
-
-    /**
-     * Local files can't be cast — a debrid URL is reachable from the TV, a
-     * path inside app storage is not.
+     * Send the stream to a television or another app. A downloaded file can
+     * only be opened by an app on this phone, so it skips the network scan.
      */
     private fun showCastPicker() {
         val url = currentUrl ?: return
         val isLocal = !url.startsWith("http")
-
-        // Local files skip the network scan entirely: only an app on this
-        // device can open them, so there is nothing to discover.
-        //
-        // The scan takes several seconds, and handing the stream to another app
-        // needs none of it. Offering that straight away means someone who only
-        // ever uses VLC is not made to wait for televisions they will not pick.
-        // Set when the stream is handed off before the scan finishes, so the
-        // device list does not then appear over whatever just opened.
+        // Set when the stream is handed to another app before the scan ends, so
+        // the device list does not then appear over whatever just opened.
         var handedOffEarly = false
 
         val loading = if (isLocal) null else panelDialog(
             "Finding devices",
             "SEARCHING YOUR NETWORK",
-            listOf(Row(CastTarget.External.label, CastTarget.External.detail, null))
+            listOf(PanelRow(CastTarget.External.label, CastTarget.External.detail))
         ) {
             handedOffEarly = true
             lifecycleScope.launch {
-                CastTargets.send(
-                    this@PlayerActivity, CastTarget.External, url, currentTitle,
-                    player?.currentPosition ?: 0
-                )?.let { toast(it) }
+                CastTargets.send(this@PlayerActivity, CastTarget.External, url, currentTitle, player?.time ?: 0)
+                    ?.let { toast(it) }
             }
         }
         loading?.show()
 
         lifecycleScope.launch {
-            // If the activity goes away mid-scan the coroutine is cancelled, so
-            // the dismiss has to happen in a finally or the dialog leaks its window.
             val targets = try {
                 runCatching { CastTargets.discover(this@PlayerActivity, isLocal) }
                     .getOrDefault(listOf(CastTarget.External))
             } finally {
-                // Dismissing against a window that's already gone throws.
                 runCatching { loading?.dismiss() }
             }
-
-            // Already handed off while the scan was running — showing the list
-            // now would put it over the app the user has just switched to.
             if (handedOffEarly) return@launch
 
-            val heading = if (isLocal) "Open with" else "Cast to"
-            // "Other app" is always in the list, so counting it reports a
-            // device found when the scan actually came back empty.
             val devices = targets.count { it !is CastTarget.External }
             val sub = when {
                 isLocal -> "DOWNLOADED EPISODE"
@@ -777,18 +863,13 @@ class PlayerActivity : ComponentActivity() {
                 devices == 1 -> "1 DEVICE FOUND"
                 else -> "$devices DEVICES FOUND"
             }
-            val rows = targets.map { Row(it.label, it.detail, null) }
-            panelDialog(heading, sub, rows) { index ->
+            val rows = targets.map { PanelRow(it.label, it.detail) }
+            panelDialog(if (isLocal) "Open with" else "Cast to", sub, rows) { index ->
                 val target = targets[index]
-                val position = player?.currentPosition ?: 0
+                val position = player?.time ?: 0
                 lifecycleScope.launch {
-                    // Cast waits on a session handshake that can take a while
-                    // on a sleeping receiver, so say something first.
                     if (target is CastTarget.Cast) toast("Connecting to ${target.label}…")
-
-                    val error = CastTargets.send(
-                        this@PlayerActivity, target, url, currentTitle, position
-                    )
+                    val error = CastTargets.send(this@PlayerActivity, target, url, currentTitle, position)
                     if (error != null) toast(error) else {
                         player?.pause()
                         if (target !is CastTarget.External) toast("Playing on ${target.label}")
@@ -798,629 +879,103 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    /** Updates a shown panel's subheading in place. */
-    private fun setPanelSubheading(dialog: Dialog, text: String) {
-        runCatching {
-            dialog.window?.decorView
-                ?.findViewWithTag<TextView>(SUBHEADING_TAG)?.text = text
-        }
-    }
-
-    /** What auto-play is doing, for the panel subheading. */
-    private fun stepLabel(step: AutoPlay.Step): String = when (step) {
-        AutoPlay.Step.Locating -> "FINDING THIS EPISODE"
-        AutoPlay.Step.Searching -> "SEARCHING YOUR ADDONS"
-        is AutoPlay.Step.Filtering -> "${step.kept} OF ${step.found} MATCH"
-        is AutoPlay.Step.Resolving -> "CHECKING SOURCE ${step.attempt} OF ${step.of}"
-        AutoPlay.Step.Ready -> "STARTING PLAYBACK"
-    }
-
-    private fun toast(message: String) {
-        android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
-    }
-
-    private data class Row(val title: String, val subtitle: String, val tag: String?)
+    // ----- the rest of the phone -----
 
     /**
-     * The app's panel styling, shared by the source and cast pickers — in the
-     * theme's own sheet and text colours, white on Pastel and dark on Night and
-     * Plum, like every other sheet in the app.
+     * Pause for a call or another app's audio, dip under a notification, and
+     * pause when headphones or Bluetooth disconnect.
+     *
+     * libVLC does none of this: it is a decoder, not a media app, so the
+     * politeness that media3 offered as a pair of flags is written out here.
      */
-    private fun panelDialog(
-        heading: String,
-        subheading: String,
-        rows: List<Row>,
-        onPick: (Int) -> Unit
-    ): Dialog {
-        val dp = resources.displayMetrics.density
-        fun px(v: Int) = (v * dp).toInt()
-
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(px(20), px(18), px(20), px(24))
-            background = GradientDrawable().apply {
-                setColor(Ink.palette.sheet.toArgb())
-                cornerRadius = px(24).toFloat()
-                setStroke(px(1), Ink.palette.hairline.toArgb())
-            }
-        }
-        content.addView(TextView(this).apply {
-            text = heading
-            setTextColor(Ink.palette.bone.toArgb())
-            textSize = 18f
-            typeface = roundedHeavy
-        })
-        content.addView(TextView(this).apply {
-            text = subheading
-            setTextColor(Ink.palette.mist.toArgb())
-            textSize = 10.5f
-            typeface = roundedBold
-            letterSpacing = 0.06f
-            setPadding(0, px(2), 0, px(12))
-            // Tagged so a long-running panel can narrate what it is doing
-            // rather than sitting on one line of text.
-            tag = SUBHEADING_TAG
-        })
-
-        val dialog = Dialog(this, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen)
-
-        rows.forEachIndexed { index, row ->
-            val item = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(0, px(12), 0, px(12))
-                isClickable = true
-                setOnClickListener { dialog.dismiss(); onPick(index) }
-            }
-            item.addView(TextView(this).apply {
-                text = row.title
-                setTextColor(Ink.palette.bone.toArgb())
-                textSize = 13f
-                typeface = roundedBold
-                maxLines = 1
-            })
-            item.addView(TextView(this).apply {
-                text = row.subtitle
-                setTextColor(Ink.palette.mist.toArgb())
-                textSize = 11.5f
-                typeface = roundedMedium
-                maxLines = 2
-            })
-            row.tag?.let { tag ->
-                // The same tags as the sheet on the detail screen: the theme's
-                // tag colour for what is playing, its selected colour for a
-                // direct link, quiet otherwise.
-                val fill = when (tag) {
-                    "PLAYING" -> Ink.palette.tag.toArgb()
-                    "DIRECT" -> Ink.palette.selected.toArgb()
-                    else -> Ink.palette.quiet.toArgb()
-                }
-                item.addView(TextView(this@PlayerActivity).apply {
-                    text = tag.lowercase().replaceFirstChar { it.uppercase() }
-                    setTextColor(if (fill == Ink.palette.quiet.toArgb()) Ink.palette.quietText.toArgb() else 0xFFFFFFFF.toInt())
-                    textSize = 10f
-                    typeface = roundedBold
-                    setPadding(px(9), px(2), px(9), px(3))
-                    background = GradientDrawable().apply {
-                        setColor(fill)
-                        cornerRadius = px(10).toFloat()
+    private fun takeAudioFocus() {
+        val manager = getSystemService(AUDIO_SERVICE) as AudioManager
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+                    .build()
+            )
+            .setOnAudioFocusChangeListener { change ->
+                val mp = player ?: return@setOnAudioFocusChangeListener
+                when (change) {
+                    AudioManager.AUDIOFOCUS_LOSS,
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                        pausedByFocus = mp.isPlaying
+                        mp.pause()
                     }
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { topMargin = px(5) }
-                })
-            }
-            content.addView(item)
-            content.addView(View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, px(1)
-                )
-                setBackgroundColor(Ink.palette.hairline.toArgb())
-            })
-        }
-
-        dialog.setContentView(ScrollView(this).apply { addView(content) })
-        dialog.window?.apply {
-            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0x99000000.toInt()))
-            setLayout(
-                (resources.displayMetrics.widthPixels * 0.62).toInt(),
-                (resources.displayMetrics.heightPixels * 0.80).toInt()
-            )
-            setGravity(Gravity.BOTTOM or Gravity.END)
-        }
-        return dialog
-    }
-
-    /**
-     * Our own subtitle menu, in place of the player's built-in one.
-     *
-     * media3 names a text track from its language and role and ignores the
-     * label unless both are empty, so thirty addon tracks and the file's own
-     * embedded one all render as "English" with no way to tell them apart or
-     * work through them. Since an addon commonly returns several subtitles per
-     * episode and only some are in sync with the release being played, being
-     * able to pick a specific one is the whole point.
-     */
-    /**
-     * Which media item the subtitle correction below has already run for.
-     *
-     * Once per item: track selection changes again the moment the correction
-     * applies an override, and re-running would fight the viewer's own choice
-     * from the CC button for the rest of the episode.
-     */
-    private var dialoguePreferredFor: String? = null
-
-    /**
-     * Steps off an SDH track when the release also ships a plain one.
-     *
-     * SDH is the same dialogue with "[door creaks]" and speaker labels added
-     * for everything the audio carries. Correct subtitles, and not the ones
-     * somebody watching with sound wants — but nothing in the selection rules
-     * separates them from the dialogue track, so when a release ships both,
-     * whichever comes first in the file wins. It routinely is the SDH one.
-     *
-     * Not done through role flags: the flag exists, and whether it is set
-     * depends on the muxer rather than on the content, so a rule built on it
-     * silently does nothing against half of what is out there. The label is
-     * what the release actually wrote, and is the same thing the desktop
-     * player matches on.
-     *
-     * Deliberately conservative: it moves only within the same language, only
-     * to an embedded track, and only away from something that named itself
-     * descriptive. A release with nothing but SDH keeps it.
-     */
-    private fun preferDialogueSubtitles(tracks: Tracks) {
-        val exo = player ?: return
-        val key = exo.currentMediaItem?.localConfiguration?.uri?.toString() ?: return
-        if (dialoguePreferredFor == key) return
-
-        val groups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
-        if (groups.isEmpty()) return
-        dialoguePreferredFor = key
-
-        var language: String? = null
-        var descriptive = false
-        for (group in groups) {
-            for (i in 0 until group.length) {
-                if (!group.isTrackSelected(i)) continue
-                val format = group.getTrackFormat(i)
-                language = format.language
-                descriptive = isDescriptive(format)
-            }
-        }
-        if (!descriptive) return
-
-        for (group in groups) {
-            for (i in 0 until group.length) {
-                val format = group.getTrackFormat(i)
-                // Side-loaded subtitles are a separate decision — the picker
-                // exists for those, and one is not a swap for an embedded track.
-                if (format.label?.startsWith(ADDON_MARKER) == true) continue
-                if (format.language != language) continue
-                if (isDescriptive(format) || isForced(format)) continue
-
-                if (BuildConfig.DEBUG) {
-                    Log.d("DebritsuSubs", "moving off SDH to ${format.label} (${format.language})")
-                }
-                exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
-                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
-                    .build()
-                return
-            }
-        }
-    }
-
-    /** Captions written for viewers who cannot hear the audio. */
-    private fun isDescriptive(format: Format): Boolean {
-        if (format.roleFlags and C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND != 0) return true
-        val label = format.label?.lowercase() ?: return false
-        return "sdh" in label ||
-            "hearing" in label ||
-            "cc" in label.split(' ', '(', ')', '[', ']', '-', '.', '_')
-    }
-
-    /** Signs and songs rather than dialogue, however it says so. */
-    private fun isForced(format: Format): Boolean {
-        if (format.selectionFlags and C.SELECTION_FLAG_FORCED != 0) return true
-        val label = format.label?.lowercase() ?: return false
-        return "forced" in label || "force" in label || "signs" in label || "songs" in label
-    }
-
-    private fun showSubtitlePicker() {
-        val exo = player ?: return
-
-        data class Entry(
-            val group: Tracks.Group,
-            val index: Int,
-            val name: String,
-            val detail: String,
-            val fromAddon: Boolean,
-            val selected: Boolean
-        )
-
-        val entries = mutableListOf<Entry>()
-        exo.currentTracks.groups
-            .filter { it.type == C.TRACK_TYPE_TEXT }
-            .forEach { group ->
-                for (i in 0 until group.length) {
-                    val format = group.getTrackFormat(i)
-                    // The label is ours: subtitleTracks() writes it on every
-                    // side-loaded track, so its presence marks the source.
-                    val label = format.label
-                    val fromAddon = label?.startsWith(ADDON_MARKER) == true
-                    // Show the track's own name for embedded subtitles. A release
-                    // commonly ships "Dialogue" beside "Signs & Songs", and
-                    // without the name they are two identical rows reading
-                    // "English" — which is no help when one of them is the
-                    // wrong one, or empty.
-                    entries += Entry(
-                        group = group,
-                        index = i,
-                        name = displayLanguage(format.language),
-                        detail = when {
-                            fromAddon -> label.orEmpty()
-                            !label.isNullOrBlank() -> "Embedded · $label"
-                            else -> "Embedded in this file"
-                        },
-                        fromAddon = fromAddon,
-                        selected = group.isTrackSelected(i)
-                    )
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> mp.volume = 30
+                    AudioManager.AUDIOFOCUS_GAIN -> {
+                        mp.volume = 100
+                        if (pausedByFocus) {
+                            pausedByFocus = false
+                            mp.play()
+                        }
+                    }
                 }
             }
+            .build()
+        audioFocus = request
+        audioManager = manager
+        manager.requestAudioFocus(request)
 
-        // Embedded first: it is the one people look for, and the addon list can
-        // run to dozens.
-        val ordered = entries.sortedBy { it.fromAddon }
-        val anySelected = ordered.any { it.selected }
-
-        val rows = mutableListOf(Row("Off", "No subtitles", if (!anySelected) "SELECTED" else null))
-        ordered.forEach { e ->
-            rows += Row(e.name, e.detail, if (e.selected) "SELECTED" else null)
-        }
-
-        val embedded = ordered.count { !it.fromAddon }
-        panelDialog(
-            "Subtitles",
-            "$embedded EMBEDDED · ${ordered.size - embedded} FROM ADDONS",
-            rows
-        ) { position ->
-            val params = exo.trackSelectionParameters.buildUpon()
-            if (position == 0) {
-                exo.trackSelectionParameters = params
-                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                    .build()
-            } else {
-                val chosen = ordered[position - 1]
-                exo.trackSelectionParameters = params
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                    .setOverrideForType(
-                        TrackSelectionOverride(chosen.group.mediaTrackGroup, chosen.index)
-                    )
-                    .build()
+        // Unplugging headphones must not put the episode on the loudspeaker.
+        noisyReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                player?.pause()
             }
-        }.show()
-    }
-
-    /** "eng" and "en" both become English where the platform knows the code. */
-    private fun displayLanguage(code: String?): String {
-        val raw = code?.takeIf { it.isNotBlank() && it != "und" } ?: return "Unknown"
-        return runCatching { java.util.Locale(raw).displayLanguage }
-            .getOrNull()
-            ?.takeIf { it.isNotBlank() && !it.equals(raw, ignoreCase = true) }
-            ?: raw.uppercase()
-    }
-
-    /** Swap source without losing your place in the episode. */
-    private fun showSourcePicker() {
-        if (sources.isEmpty()) return
-
-        // Whatever is playing goes to the top and says so. Auto-play picks
-        // silently, and without this there is no way to tell which of forty
-        // near-identical releases you ended up watching.
-        //
-        // Then the ones that meet the filters, best first, and everything else
-        // after. This kept its addons' order before, so swapping source meant
-        // reading forty rows to find another that qualified — the same hunt the
-        // filters exist to avoid.
-        val filter = Settings.sourceFilter
-        val minSize = minEpisodeSizeMb(episodeMinutes)
-        val ordered = sources.indices.sortedWith(
-            compareByDescending<Int> { it == currentSourceIndex }
-                .thenByDescending {
-                    val s = sources[it]
-                    filter.accepts(s, StreamMeta.of(s), minSize)
-                }
-                .thenByDescending {
-                    val s = sources[it]
-                    filter.score(s, StreamMeta.of(s))
-                }
-        )
-        val rows = ordered.map { i ->
-            val s = sources[i]
-            Row(
-                s.name,
-                s.description.replace("\n", " ").take(110),
-                when {
-                    i == currentSourceIndex -> "PLAYING"
-                    s.isDirect -> "DIRECT"
-                    else -> "DEBRID"
-                }
-            )
         }
-        panelDialog("Sources", "${sources.size} AVAILABLE", rows) { position ->
-            val index = ordered[position]
-            if (index != currentSourceIndex) switchTo(sources[index], index)
-        }.show()
+        registerReceiver(noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
     }
 
-    private fun switchTo(stream: StreamOption, index: Int) {
-        val exo = player ?: return
-        val resumeAt = exo.currentPosition
-        exo.pause()
-        lifecycleScope.launch {
-            runCatching { Debrid.resolve(stream) }
-                .onSuccess { url ->
-                    // Keep these in step, or casting after a switch sends the
-                    // stream the user just moved away from, and the picker
-                    // marks the wrong row as playing.
-                    currentUrl = url
-                    currentSourceIndex = index
-                    sourceStarted = false
-                    endRecovery()
-                    exo.setMediaItem(mediaItem(url))
-                    exo.prepare()
-                    exo.seekTo(resumeAt)
-                    exo.playWhenReady = true
-                }
-                .onFailure {
-                    android.widget.Toast.makeText(
-                        this@PlayerActivity,
-                        it.message ?: "Could not switch source",
-                        android.widget.Toast.LENGTH_LONG
-                    ).show()
-                    exo.play()
-                }
-        }
+    private fun releaseAudioFocus() {
+        audioFocus?.let { audioManager?.abandonAudioFocusRequest(it) }
+        audioFocus = null
+        noisyReceiver?.let { runCatching { unregisterReceiver(it) } }
+        noisyReceiver = null
     }
 
-    private fun applySubtitleStyle(subtitleView: SubtitleView?) {
-        val view = subtitleView ?: return
-
-        val foreground = when (Settings.subtitleColour) {
-            1 -> Color.parseColor("#FFF6C84C")
-            2 -> Color.parseColor("#FF6FE7DD")
-            else -> Color.WHITE
-        }
-        val background = when (Settings.subtitleBackground) {
-            0 -> Color.TRANSPARENT
-            2 -> Color.BLACK
-            else -> Color.argb(140, 0, 0, 0)
-        }
-        val edgeType =
-            if (Settings.subtitleOutline) CaptionStyleCompat.EDGE_TYPE_OUTLINE
-            else CaptionStyleCompat.EDGE_TYPE_NONE
-
-        // Ignore styling baked into the subtitle file so these choices actually win.
-        view.setApplyEmbeddedStyles(false)
-        view.setStyle(
-            CaptionStyleCompat(
-                foreground, background, Color.TRANSPARENT,
-                edgeType, Color.BLACK, null
-            )
-        )
-        view.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, Settings.subtitleSizeSp)
-        view.setBottomPaddingFraction(0.08f)
-    }
-
-    /**
-     * Builds the side-loaded subtitle tracks, each labelled.
-     *
-     * Without a label the track picker shows nothing but the language, so an
-     * embedded "English" and thirty addon "English" entries look identical and
-     * the embedded one is impossible to find among them. Numbering repeats of
-     * the same language makes them individually selectable, since an addon
-     * often returns several for one episode and only some will be in sync.
-     */
-    private fun subtitleTracks(subs: List<Subtitle>): List<MediaItem.SubtitleConfiguration> {
-        val seen = mutableMapOf<String, Int>()
-        return subs.map { sub ->
-            val code = sub.lang.ifBlank { "und" }
-            val source = sub.addon?.takeIf { it.isNotBlank() } ?: "stream"
-            // Numbered within a source and language, so "opensubtitles 3" means
-            // the third English one that addon returned rather than the third
-            // overall — which is what you are choosing between when the first
-            // two are out of sync.
-            val key = "$source|$code"
-            val n = (seen[key] ?: 0) + 1
-            seen[key] = n
-
-            MediaItem.SubtitleConfiguration.Builder(Uri.parse(sub.url))
-                .setMimeType(mimeFor(sub.url))
-                .setLanguage(code)
-                // Also the marker the subtitle menu reads to tell a side-loaded
-                // track from one embedded in the file.
-                .setLabel("$ADDON_MARKER $source · $n")
-                .setSelectionFlags(0)
-                .build()
-        }
-    }
-
-    private fun mimeFor(url: String) =
-        when (url.substringAfterLast('.', "").lowercase().take(4)) {
-            "vtt" -> MimeTypes.TEXT_VTT
-            "ass", "ssa" -> MimeTypes.TEXT_SSA
-            "ttml", "xml" -> MimeTypes.APPLICATION_TTML
-            else -> MimeTypes.APPLICATION_SUBRIP
-        }
-
-    /** Whether the current source has played at all. Only then is a failure worth retrying. */
-    private var sourceStarted = false
-    private var reconnects = 0
-    private var refreshedLink = false
-    private var reconnectJob: Job? = null
-
-    /**
-     * A subtitle file that will not download is dropped, and the episode
-     * carries on from where it was.
-     *
-     * Side-loaded subtitles are loaded alongside the video, and media3 treats a
-     * failure of any of them as a failure of the whole item. Measured on the
-     * emulator: one addon subtitle link answering 404, or naming a host that
-     * does not exist, left the episode black at 00:00 with "Couldn't play this
-     * source" — and picking another source failed the same way, since every
-     * source carries the same subtitle list. The exception names the address
-     * that failed, so the subtitle can be told from the video.
-     */
-    private fun dropFailedSubtitle(error: PlaybackException): Boolean {
-        val failed = generateSequence<Throwable>(error) { it.cause }
-            .filterIsInstance<HttpDataSource.HttpDataSourceException>()
-            .firstOrNull()?.dataSpec?.uri?.toString() ?: return false
-        val sub = subtitleConfigs.firstOrNull { it.uri.toString() == failed } ?: return false
-        val url = currentUrl ?: return false
-        Log.w("DebritsuSubs", "dropped a subtitle that would not load: $failed")
-        subtitleConfigs = subtitleConfigs - sub
-        reload(url)
-        return true
-    }
-
-    /**
-     * Rides out a lost connection or an expired link on a source that was
-     * playing, rather than giving up on it at once.
-     *
-     * Measured on the emulator with a thin buffer: the connection went at
-     * 21:24:12, playback failed at 21:24:17, and when it came back at 21:24:34
-     * the player stayed stopped — media3 does not try again once it has
-     * reported an error. Now a network failure is retried from the same point
-     * for about half a minute, saying so, before the source list is offered;
-     * a link the server refuses is fetched again once, since debrid links
-     * expire and a fresh one for the same file usually just plays.
-     *
-     * Only for a source that has played. One that fails from the start is
-     * dead, and the list is the right answer straight away.
-     */
-    private fun recover(error: PlaybackException): Boolean {
-        val url = currentUrl ?: return false
-        if (!sourceStarted || !url.startsWith("http")) return false
-        val status = generateSequence<Throwable>(error) { it.cause }
-            .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
-            .firstOrNull()?.responseCode
-        return when {
-            status in LINK_REFUSED -> refreshLink()
-            error.errorCode in NETWORK_ERRORS || (status != null && status >= 500) -> reconnect()
-            else -> false
-        }
-    }
-
-    private fun reconnect(): Boolean {
-        val wait = RECONNECT_DELAYS_MS.getOrNull(reconnects) ?: return false
-        reconnects++
-        recoveryStatus("Reconnecting…")
-        reconnectJob?.cancel()
-        reconnectJob = lifecycleScope.launch {
-            delay(wait)
-            // Prepared again, an item picks up from its current position.
-            player?.let { it.prepare(); it.playWhenReady = true }
-        }
-        return true
-    }
-
-    private fun refreshLink(): Boolean {
-        if (refreshedLink) return false
-        val source = sources.getOrNull(currentSourceIndex) ?: return false
-        refreshedLink = true
-        recoveryStatus("Refreshing the link…")
-        reconnectJob?.cancel()
-        reconnectJob = lifecycleScope.launch {
-            val fresh = runCatching { Debrid.resolve(source) }.getOrNull()
-            if (fresh == null) {
-                endRecovery()
-                toast("Couldn't play this source")
-                showSourcePicker()
-                return@launch
-            }
-            currentUrl = fresh
-            reload(fresh)
-        }
-        return true
-    }
-
-    /** The same item again from where it was, with whatever subtitles remain. */
-    private fun reload(url: String) {
-        val exo = player ?: return
-        exo.setMediaItem(mediaItem(url), exo.currentPosition)
-        exo.prepare()
-        exo.playWhenReady = true
-    }
-
-    private fun endRecovery() {
-        reconnectJob?.cancel()
-        // Only clear the readout if recovery put something there, or a volume
-        // or brightness readout would be cut short by every return to ready.
-        if (reconnects > 0 || refreshedLink) recoveryStatus(null)
-        reconnects = 0
-        refreshedLink = false
-    }
-
-    /** The centred readout, held on screen until cleared rather than fading. */
-    private fun recoveryStatus(text: String?) {
-        val v = hud ?: return
-        v.removeCallbacks(hideHud)
-        if (text == null) {
-            v.visibility = View.GONE
-        } else {
-            v.text = text
-            v.visibility = View.VISIBLE
-        }
-    }
+    // ----- lifecycle -----
 
     private fun savePosition() {
-        val p = player ?: return
-        if (p.duration > 0) {
-            Progress.save(anilistId, episode, p.currentPosition, p.duration)
-        }
+        val mp = player ?: return
+        if (mp.length > 0) Progress.save(anilistId, episode, mp.time, mp.length)
     }
 
     override fun onStart() {
         super.onStart()
-        // Routes only exist while something is asking for them, and the cast
-        // picker needs them to still be there when a row is tapped.
+        // Cast routes only exist while something asks for them, and the picker
+        // needs them still there when a row is tapped.
         GoogleCast.retainRoutes(this)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        GoogleCast.releaseRoutes(this)
     }
 
     override fun onPause() {
         super.onPause()
         savePosition()
-    }
-
-    override fun onStop() {
-        super.onStop()
         player?.pause()
-        savePosition()
-        GoogleCast.releaseRoutes(this)
     }
 
     override fun onDestroy() {
         super.onDestroy()
         savePosition()
-        player?.release()
+        releaseAudioFocus()
+        player?.let {
+            it.stop()
+            it.detachViews()
+            it.release()
+        }
         player = null
+        libVlc?.release()
+        libVlc = null
     }
 
     companion object {
-        /** Waits before each attempt to reconnect: about half a minute in all. */
-        private val RECONNECT_DELAYS_MS = longArrayOf(2_000, 4_000, 8_000, 8_000, 8_000)
-
-        /** Failures that mean the connection went, not that the source is bad. */
-        private val NETWORK_ERRORS = setOf(
-            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
-            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
-            PlaybackException.ERROR_CODE_TIMEOUT
-        )
-
-        /** Answers that mean the link itself is no longer good — expired, typically. */
-        private val LINK_REFUSED = setOf(401, 403, 404, 410)
-
         const val EXTRA_URL = "url"
         const val EXTRA_TITLE = "title"
         /** Series title on its own, for resolving other episodes. */
@@ -1437,5 +992,11 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_SUB_LANGS = "sub_langs"
         /** Which addon each subtitle came from, parallel to the arrays above. */
         const val EXTRA_SUB_ADDONS = "sub_addons"
+
+        // How far the rewind and forward buttons, and a double tap, move.
+        private const val SEEK_STEP_MS = 10_000L
+
+        // Waits before each attempt to reconnect: about half a minute in all.
+        private val RECONNECT_DELAYS_MS = longArrayOf(2_000, 4_000, 8_000, 8_000, 8_000)
     }
 }
