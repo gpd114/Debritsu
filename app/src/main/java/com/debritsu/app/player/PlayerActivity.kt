@@ -996,7 +996,16 @@ class PlayerActivity : ComponentActivity() {
         // Cast routes only exist while something asks for them, and the picker
         // needs them still there when a row is tapped.
         GoogleCast.retainRoutes(this)
-        player?.let { attachVideo(it) }
+        player?.let { mp ->
+            if (videoAttached) return@let
+            attachVideo(mp)
+            // A fresh surface has no picture until the decoder reaches the next
+            // keyframe — several seconds of black in an anime encode, or grey
+            // smears where it decodes without one. Seeking to where it already
+            // is restarts decoding from the keyframe before, so the picture is
+            // back at once.
+            if (mp.length > 0) mp.time = mp.time
+        }
     }
 
     override fun onStop() {
