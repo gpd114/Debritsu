@@ -219,13 +219,57 @@ class PlayerActivity : ComponentActivity() {
         mp.media = media
         media.release()
         resumed = false
+        subtitlePickedByHand = false
         mp.play()
         // Subtitle files from addons are handed over after play starts, which is
         // when libVLC accepts them. A slave that will not download is simply a
         // subtitle that never appears — it cannot take the episode with it.
         subtitleUrls.forEach { sub ->
-            runCatching { mp.addSlave(IMedia.Slave.Type.Subtitle, Uri.parse(sub), true) }
+            runCatching { mp.addSlave(IMedia.Slave.Type.Subtitle, Uri.parse(sub), false) }
         }
+    }
+
+    /** Set once somebody picks a track by hand; automatic choice stops then. */
+    private var subtitlePickedByHand = false
+
+    /**
+     * Picks the dialogue track, not the one the file marks as default.
+     *
+     * Releases routinely ship two English tracks and flag "Signs & Songs" as
+     * DEFAULT and FORCED — it only translates on-screen text and lyrics, so it
+     * reads as subtitles that keep going missing. libVLC honours that flag.
+     * Runs again as tracks arrive (addon files land after playback starts), and
+     * leaves a hand-picked track alone. Only moves when it finds a track worth
+     * choosing; otherwise libVLC's own choice stands.
+     */
+    private fun chooseSubtitleTrack() {
+        if (subtitlePickedByHand) return
+        val mp = player ?: return
+        val tracks = mp.spuTracks?.filter { it.id != -1 }.orEmpty()
+        val best = tracks.maxByOrNull { subtitleScore(it) } ?: return
+        // Only an English track is worth overriding libVLC for; an untitled
+        // track in some other language is not an improvement on its choice.
+        if (subtitleScore(best) < ENGLISH_SCORE || mp.spuTrack == best.id) return
+        mp.spuTrack = best.id
+    }
+
+    private fun subtitleScore(track: MediaPlayer.TrackDescription): Int {
+        val name = track.name.orEmpty().lowercase()
+        val addonIndex = subtitleUrls.indexOfFirst { track.name.orEmpty().contains(it) }
+        var score = 0
+        val english = if (addonIndex >= 0) {
+            subtitleLangs.getOrNull(addonIndex).orEmpty().lowercase().let { it.startsWith("en") }
+        } else {
+            ENGLISH_TRACK.containsMatchIn(name)
+        }
+        if (english) score += ENGLISH_SCORE
+        // "Full Subtitles + Songs" is the dialogue track, whatever else it says.
+        if (FULL_TRACK.containsMatchIn(name)) score += 10
+        else if (PARTIAL_TRACK.containsMatchIn(name)) score -= 100
+        // The file's own track is timed to this release; an addon's may be
+        // timed to another one.
+        if (addonIndex < 0) score += 5
+        return score
     }
 
     private fun onPlayerEvent(event: MediaPlayer.Event) {
@@ -243,6 +287,7 @@ class PlayerActivity : ComponentActivity() {
                     if (resumeAtMs > 0) player?.time = resumeAtMs
                 }
             }
+            MediaPlayer.Event.ESAdded -> chooseSubtitleTrack()
             MediaPlayer.Event.Paused -> {
                 videoLayout.keepScreenOn = false
                 playPause.setImageResource(androidx.media3.ui.R.drawable.exo_icon_play)
@@ -383,7 +428,10 @@ class PlayerActivity : ComponentActivity() {
             "Subtitles",
             "${(rows.size - 1 - fromAddons).coerceAtLeast(0)} IN THIS FILE · $fromAddons FROM ADDONS",
             rows
-        ) { index -> mp.spuTrack = ids[index] }.show()
+        ) { index ->
+            subtitlePickedByHand = true
+            mp.spuTrack = ids[index]
+        }.show()
     }
 
     /**
@@ -1015,6 +1063,13 @@ class PlayerActivity : ComponentActivity() {
 
         // How far the rewind and forward buttons, and a double tap, move.
         private const val SEEK_STEP_MS = 10_000L
+
+        // How subtitle tracks are told apart by name. libVLC names an embedded
+        // track "<title> - [<language>]", e.g. "Signs & Songs - [English]".
+        private val ENGLISH_TRACK = Regex("""\benglish\b|\[eng?\]|\beng\b""")
+        private val PARTIAL_TRACK = Regex("""sign|song|forced|\bs&s\b|commentary""")
+        private val FULL_TRACK = Regex("""full|dialogue""")
+        private const val ENGLISH_SCORE = 20
 
         // Waits before each attempt to reconnect: about half a minute in all.
         private val RECONNECT_DELAYS_MS = longArrayOf(2_000, 4_000, 8_000, 8_000, 8_000)

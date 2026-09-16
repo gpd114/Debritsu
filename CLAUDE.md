@@ -94,7 +94,9 @@ Both are wrapped in `BuildConfig.DEBUG` and cost nothing in release.
 - **Anime releases ship two English subtitle tracks**, and the signs-and-songs one
   is routinely flagged DEFAULT and FORCED, so it wins unless those flags are
   ignored. It shows text periodically, so it reads as broken subtitles rather
-  than the wrong track.
+  than the wrong track. The player picks by track name instead: English, not
+  "sign", "song" or "forced" unless it also says "full" or "dialogue", and the
+  file's own track over an addon's. A track picked by hand is left alone.
 - **OpenSubtitles indexes by IMDb**, and answers a Kitsu id with `200` and an
   empty list. Subtitle addons are queried under both ids. It also genuinely has
   no English for a lot of simulcast anime — verify what an addon returns before
