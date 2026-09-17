@@ -101,6 +101,14 @@ Both are wrapped in `BuildConfig.DEBUG` and cost nothing in release.
   empty list. Subtitle addons are queried under both ids. It also genuinely has
   no English for a lot of simulcast anime — verify what an addon returns before
   investigating the app.
+- **An addon's `fileIdx` does not survive the trip to a debrid provider.**
+  It counts every file in the torrent; the provider reports its own list, so
+  the same number lands on a different file — inside a multi-season pack, that
+  is another season's episode, which plays perfectly and looks like the app
+  fetched the wrong thing. Match `behaviorHints.filename` instead. On
+  Real-Debrid, a magnet already in the account comes back with every file
+  selected, so `links.first()` is the pack's first episode, not the one asked
+  for. Sizes need `long()`: an Int is null above 2 GB.
 - **Most televisions cannot fetch HTTPS**, and debrid links are always HTTPS, so
   DLNA casting fails on them. Not fixable from this side without proxying the
   stream through the phone.
