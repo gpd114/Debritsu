@@ -491,8 +491,12 @@ class PlayerActivity : ComponentActivity() {
             PanelRow(
                 s.name,
                 s.description.replace("\n", " ").take(110),
+                // What is playing still says where its link comes from: a
+                // direct link is the addon's own choice of file, and a wrong
+                // episode in one is nothing this app picked.
                 when {
-                    i == currentSourceIndex -> "PLAYING"
+                    i == currentSourceIndex && s.isDirect -> "PLAYING · DIRECT"
+                    i == currentSourceIndex -> "PLAYING · DEBRID"
                     s.isDirect -> "DIRECT"
                     else -> "DEBRID"
                 }

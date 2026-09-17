@@ -12,6 +12,7 @@ import okhttp3.FormBody
 import okhttp3.MultipartBody
 import okhttp3.Request
 import okhttp3.RequestBody
+import java.net.URLDecoder
 import java.net.URLEncoder
 import kotlin.math.abs
 
@@ -42,7 +43,18 @@ private val BARE_EPISODE = Regex("""[\s._-]-[\s._-](\d{1,3})(?:v\d)?[\s._\[(-]""
 object Debrid {
 
     suspend fun resolve(stream: StreamOption): String = withContext(Dispatchers.IO) {
-        stream.url?.let { if (it.startsWith("http")) return@withContext it }
+        stream.url?.let {
+            if (it.startsWith("http")) {
+                // Nothing below runs for these: the addon resolved the file
+                // itself and handed back a link. Logged because a wrong episode
+                // then comes from the addon, not from anything here.
+                BuildInfo.log(
+                    "DebritsuResolve",
+                    "addon link · wanted ${stream.filename ?: "(no name)"} · serving ${linkFile(it)}"
+                )
+                return@withContext it
+            }
+        }
 
         val hash = stream.infoHash
             ?: throw DebridException("This stream has no playable link or infoHash.")
@@ -277,6 +289,20 @@ object Debrid {
     }
 
     private fun String.padded() = trimStart('0').ifEmpty { "0" }.padStart(2, '0')
+
+    /**
+     * The file a link points at, for the log: the last part of the path, and
+     * only when it reads as a filename.
+     *
+     * Deliberately not the link. A debrid link carries the account's own token,
+     * which has no business in a log.
+     */
+    private fun linkFile(url: String): String {
+        val path = url.substringBefore('?').substringBefore('#')
+        val last = runCatching { URLDecoder.decode(path.substringAfterLast('/'), "UTF-8") }
+            .getOrDefault(path.substringAfterLast('/'))
+        return if (last.extension() in VIDEO) last else "(link names no file)"
+    }
 
     private fun magnet(hash: String) = "magnet:?xt=urn:btih:$hash"
     private fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")

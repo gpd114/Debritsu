@@ -94,13 +94,19 @@ fun Activity.panelDialog(
         })
         row.tag?.let { tag ->
             val quiet = Ink.palette.quiet.toArgb()
-            val fill = when (tag) {
-                "PLAYING" -> Ink.palette.tag.toArgb()
-                "DIRECT", "SELECTED" -> Ink.palette.selected.toArgb()
+            val fill = when {
+                // A tag can say more than one thing ("PLAYING · DIRECT"); what
+                // it leads with is what it is coloured by.
+                tag.startsWith("PLAYING") -> Ink.palette.tag.toArgb()
+                tag == "DIRECT" || tag == "SELECTED" -> Ink.palette.selected.toArgb()
                 else -> quiet
             }
             item.addView(TextView(this).apply {
-                text = tag.lowercase().replaceFirstChar { it.uppercase() }
+                // Each word of its own, so "PLAYING · DIRECT" does not come out
+                // as "Playing · direct".
+                text = tag.split(" ").joinToString(" ") { word ->
+                    word.lowercase().replaceFirstChar { it.uppercase() }
+                }
                 setTextColor(if (fill == quiet) Ink.palette.quietText.toArgb() else 0xFFFFFFFF.toInt())
                 textSize = 10f
                 typeface = bold
