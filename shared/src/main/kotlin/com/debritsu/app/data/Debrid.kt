@@ -45,16 +45,16 @@ object Debrid {
         }
 
         when (Settings.debridProvider) {
-            DebridProvider.REAL_DEBRID -> realDebrid(hash, stream.fileIdx, token)
-            DebridProvider.ALL_DEBRID -> allDebrid(hash, stream.fileIdx, token)
-            DebridProvider.PREMIUMIZE -> premiumize(hash, stream.fileIdx, token)
-            DebridProvider.TORBOX -> torbox(hash, stream.fileIdx, token)
+            DebridProvider.REAL_DEBRID -> realDebrid(hash, stream.fileIdx, stream.filename, token)
+            DebridProvider.ALL_DEBRID -> allDebrid(hash, stream.fileIdx, stream.filename, token)
+            DebridProvider.PREMIUMIZE -> premiumize(hash, stream.fileIdx, stream.filename, token)
+            DebridProvider.TORBOX -> torbox(hash, stream.fileIdx, stream.filename, token)
         }
     }
 
     // ---------- provider implementations ----------
 
-    private suspend fun realDebrid(hash: String, fileIdx: Int?, token: String): String {
+    private suspend fun realDebrid(hash: String, fileIdx: Int?, filename: String?, token: String): String {
         val api = "https://api.real-debrid.com/rest/1.0"
         val added = post("$api/torrents/addMagnet", bearer(token), form("magnet" to magnet(hash)))
         val id = added.str("id") ?: throw DebridException("Real-Debrid rejected the magnet.")
@@ -67,7 +67,27 @@ object Debrid {
             val status = info.str("status")
             val links = info.arr("links")
             if (status == "downloaded" && !links.isNullOrEmpty()) {
-                val link = (links.first() as JsonPrimitive).content
+                // One link per selected file, in file order. Adding a magnet
+                // already in the account returns that torrent as it stands —
+                // every file selected, if anything ever took the whole thing —
+                // so the first link is the pack's first episode rather than
+                // the one asked for.
+                val selected = info.arr("files").orEmpty().filter { it.int("selected") == 1 }
+                val wanted = pick(
+                    selected.map {
+                        RemoteFile(
+                            it.int("id")?.toString() ?: "0",
+                            it.str("path").orEmpty(),
+                            it.long("bytes") ?: 0L,
+                            null
+                        )
+                    },
+                    fileIdx?.takeIf { selected.size > 1 },
+                    filename
+                )
+                val at = selected.indexOfFirst { it.int("id")?.toString() == wanted.id }
+                val link = (links.getOrNull(at.coerceAtLeast(0)) as? JsonPrimitive)?.content
+                    ?: (links.first() as JsonPrimitive).content
                 val un = post("$api/unrestrict/link", bearer(token), form("link" to link))
                 return un.str("download") ?: throw DebridException("Real-Debrid returned no download URL.")
             }
@@ -79,7 +99,7 @@ object Debrid {
         throw DebridException("Not cached on Real-Debrid — pick a different stream.")
     }
 
-    private suspend fun allDebrid(hash: String, fileIdx: Int?, token: String): String {
+    private suspend fun allDebrid(hash: String, fileIdx: Int?, filename: String?, token: String): String {
         val api = "https://api.alldebrid.com/v4"
         val auth = "agent=debritsu&apikey=${enc(token)}"
 
@@ -97,9 +117,9 @@ object Debrid {
             val links = m.arr("links")
             if (ready && !links.isNullOrEmpty()) {
                 val files = links.map {
-                    RemoteFile("", it.str("filename") ?: "", it.int("size")?.toLong() ?: 0L, it.str("link"))
+                    RemoteFile("", it.str("filename") ?: "", it.long("size") ?: 0L, it.str("link"))
                 }
-                val chosen = pick(files, fileIdx).link
+                val chosen = pick(files, fileIdx, filename).link
                     ?: throw DebridException("AllDebrid returned no link for that file.")
                 val un = get("$api/link/unlock?$auth&link=${enc(chosen)}", emptyMap())
                 return un.obj("data").str("link")
@@ -117,7 +137,7 @@ object Debrid {
      * Premiumize resolves cached magnets in a single call — directdl returns
      * every file in the torrent with a ready link, no transfer created.
      */
-    private fun premiumize(hash: String, fileIdx: Int?, token: String): String {
+    private fun premiumize(hash: String, fileIdx: Int?, filename: String?, token: String): String {
         val res = post(
             "https://www.premiumize.me/api/transfer/directdl?apikey=${enc(token)}",
             emptyMap(),
@@ -127,13 +147,13 @@ object Debrid {
             throw DebridException(res.str("message") ?: "Premiumize could not resolve this magnet.")
         }
         val files = res.arr("content")?.map {
-            RemoteFile("", it.str("path") ?: "", it.int("size")?.toLong() ?: 0L, it.str("link"))
+            RemoteFile("", it.str("path") ?: "", it.long("size") ?: 0L, it.str("link"))
         }.orEmpty()
         if (files.isEmpty()) throw DebridException("Not cached on Premiumize — pick a different stream.")
-        return pick(files, fileIdx).link ?: throw DebridException("Premiumize returned no link.")
+        return pick(files, fileIdx, filename).link ?: throw DebridException("Premiumize returned no link.")
     }
 
-    private suspend fun torbox(hash: String, fileIdx: Int?, token: String): String {
+    private suspend fun torbox(hash: String, fileIdx: Int?, filename: String?, token: String): String {
         val api = "https://api.torbox.app/v1/api"
         val created = post(
             "$api/torrents/createtorrent", bearer(token),
@@ -148,10 +168,10 @@ object Debrid {
             val list = get("$api/torrents/mylist?id=$id&bypass_cache=true", bearer(token))
             val d = list.obj("data")
             val files = d.arr("files")?.map {
-                RemoteFile(it.int("id")?.toString() ?: "0", it.str("name") ?: "", it.int("size")?.toLong() ?: 0L, null)
+                RemoteFile(it.int("id")?.toString() ?: "0", it.str("name") ?: "", it.long("size") ?: 0L, null)
             }.orEmpty()
             if (d.str("download_finished") == "true" && files.isNotEmpty()) {
-                val chosen = pick(files, fileIdx)
+                val chosen = pick(files, fileIdx, filename)
                 val dl = get(
                     "$api/torrents/requestdl?token=${enc(token)}&torrent_id=$id&file_id=${chosen.id}",
                     bearer(token)
@@ -166,9 +186,24 @@ object Debrid {
 
     // ---------- helpers ----------
 
-    /** Honour the addon's fileIdx when present, otherwise take the largest file. */
-    private fun pick(files: List<RemoteFile>, fileIdx: Int?): RemoteFile {
+    /**
+     * The file the addon meant: by name where it gave one, then by its index,
+     * then the largest video.
+     *
+     * The name comes first because the index does not survive the trip. An
+     * addon counts every file in the torrent; a provider lists only what it
+     * kept, so the same number lands on a different file — and in a pack of
+     * several seasons that is another season's episode, which plays perfectly
+     * and is not what was asked for.
+     */
+    private fun pick(files: List<RemoteFile>, fileIdx: Int?, filename: String? = null): RemoteFile {
         if (files.isEmpty()) throw DebridException("No files in that torrent.")
+        filename?.let { wanted ->
+            val target = wanted.substringAfterLast('/').substringAfterLast('\\').lowercase()
+            files.firstOrNull {
+                it.name.substringAfterLast('/').substringAfterLast('\\').lowercase() == target
+            }?.let { return it }
+        }
         fileIdx?.let { if (it in files.indices) return files[it] }
         val video = files.filter {
             it.name.substringAfterLast('.', "").lowercase() in setOf("mkv", "mp4", "avi", "m4v", "webm")

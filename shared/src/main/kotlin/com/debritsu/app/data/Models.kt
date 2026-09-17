@@ -54,6 +54,15 @@ data class StreamOption(
     val url: String?,
     val infoHash: String?,
     val fileIdx: Int?,
+    /**
+     * The file the addon means inside the torrent, from `behaviorHints.filename`.
+     *
+     * Worth more than [fileIdx]: that counts every file in the torrent, and a
+     * debrid provider lists only the ones it kept, so the same number points at
+     * a different file. Inside a multi-season pack that is another season's
+     * episode, which plays perfectly and is the wrong thing.
+     */
+    val filename: String? = null,
     val subtitles: List<Subtitle> = emptyList()
 ) {
     /** True when the link is already an HTTP(S) stream (e.g. a debrid direct link). */
