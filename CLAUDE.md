@@ -15,6 +15,9 @@ gradle assembleDebug --no-daemon
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
+`gradle :shared:test` runs the only tests here: the file a debrid provider is
+asked for, which cannot be checked any other way without an account.
+
 **Debug and release cannot replace each other.** Different signing keys, so
 installing one over the other fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` and
 needs an uninstall — which takes the user's downloads and settings with it. Check
