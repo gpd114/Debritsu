@@ -28,7 +28,13 @@ data class Anime(
     val format: String? = null,
     val seasonLabel: String? = null,
     val airingStatus: String? = null,
-    val durationMins: Int? = null
+    val durationMins: Int? = null,
+    /**
+     * Romaji, English and AniList's synonyms. A release is named after one of
+     * these; a side series sharing a pack with this show is named after none of
+     * them, which is what [TitleMatch] reads.
+     */
+    val altTitles: List<String> = emptyList()
 )
 
 /** A prequel, sequel or side story hanging off a title. */

@@ -41,6 +41,7 @@ import com.debritsu.app.data.StreamMeta
 import com.debritsu.app.data.StreamOption
 import com.debritsu.app.data.Subtitle
 import com.debritsu.app.data.SyncQueue
+import com.debritsu.app.data.TitleMatch
 import com.debritsu.app.data.minEpisodeSizeMb
 import com.debritsu.app.ui.Ink
 import java.util.Locale
@@ -91,6 +92,7 @@ class PlayerActivity : ComponentActivity() {
     private var episodeCount = 0
     private var episodeMinutes = 0
     private var seriesTitle = ""
+    private var altTitles: List<String> = emptyList()
     private var currentTitle = ""
     private var currentUrl: String? = null
     private var currentSourceIndex = -1
@@ -120,6 +122,7 @@ class PlayerActivity : ComponentActivity() {
         currentUrl = url
         currentTitle = intent.getStringExtra(PlayerActivity.EXTRA_TITLE).orEmpty()
         seriesTitle = intent.getStringExtra(PlayerActivity.EXTRA_SERIES_TITLE).orEmpty()
+        altTitles = intent.getStringArrayExtra(PlayerActivity.EXTRA_ALT_TITLES).orEmpty().toList()
         anilistId = intent.getIntExtra(PlayerActivity.EXTRA_ANILIST_ID, 0)
         episode = intent.getIntExtra(PlayerActivity.EXTRA_EPISODE, 0)
         episodeCount = intent.getIntExtra(PlayerActivity.EXTRA_EPISODE_COUNT, 0)
@@ -481,9 +484,10 @@ class PlayerActivity : ComponentActivity() {
         if (sources.isEmpty()) return
         val filter = Settings.sourceFilter
         val minSize = minEpisodeSizeMb(episodeMinutes)
+        val titleWords = TitleMatch.known(listOf(seriesTitle) + altTitles)
         val ordered = sources.indices.sortedWith(
             compareByDescending<Int> { it == currentSourceIndex }
-                .thenByDescending { filter.accepts(sources[it], StreamMeta.of(sources[it]), minSize) }
+                .thenByDescending { filter.accepts(sources[it], StreamMeta.of(sources[it]), minSize, titleWords) }
                 .thenByDescending { filter.score(sources[it], StreamMeta.of(sources[it])) }
         )
         val rows = ordered.map { i ->
@@ -792,6 +796,7 @@ class PlayerActivity : ComponentActivity() {
                 val outcome = AutoPlay.run(
                     anilistId = anilistId,
                     title = seriesTitle,
+                    altTitles = altTitles,
                     episode = target,
                     isMovie = episodeCount == 1,
                     filter = Settings.sourceFilter,
@@ -1067,6 +1072,8 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_TITLE = "title"
         /** Series title on its own, for resolving other episodes. */
         const val EXTRA_SERIES_TITLE = "series_title"
+        /** Every name the show goes by, so a side series is not taken for it. */
+        const val EXTRA_ALT_TITLES = "alt_titles"
         /** Total episodes, or 0 when unknown — an ongoing show, say. */
         const val EXTRA_EPISODE_COUNT = "episode_count"
         /** Which entry in the handed-over source list is playing. */

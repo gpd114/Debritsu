@@ -70,6 +70,10 @@ private val STATUS_LABELS = listOf(
     "REPEATING" to "Rewatching"
 )
 
+/** Every word this show's names use, for spotting a side series' release. */
+private fun titleWordsOf(anime: Anime?): Set<String> =
+    TitleMatch.known(listOfNotNull(anime?.title) + anime?.altTitles.orEmpty())
+
 private fun statusLabel(raw: String?) =
     STATUS_LABELS.firstOrNull { it.first == raw }?.second ?: "Not on list"
 
@@ -113,7 +117,7 @@ fun DetailScreen(
         val filter = Settings.sourceFilter
         results.flatMap { it.streams }
             .map { it to StreamMeta.of(it) }
-            .filter { (s, m) -> filter.accepts(s, m, minEpisodeSizeMb(anime?.durationMins ?: 0)) }
+            .filter { (s, m) -> filter.accepts(s, m, minEpisodeSizeMb(anime?.durationMins ?: 0), titleWordsOf(anime)) }
             .maxByOrNull { (s, m) -> filter.score(s, m) }
             ?.first
     }
@@ -133,7 +137,7 @@ fun DetailScreen(
             .map { it to StreamMeta.of(it) }
             .sortedWith(
                 compareByDescending<Pair<StreamOption, StreamMeta>> { (s, m) ->
-                    filter.accepts(s, m, minSize)
+                    filter.accepts(s, m, minSize, titleWordsOf(anime))
                 }.thenByDescending { (s, m) -> filter.score(s, m) }
             )
             .map { it.first }
@@ -270,6 +274,7 @@ fun DetailScreen(
                 .putExtra(PlayerActivity.EXTRA_URL, url)
                 .putExtra(PlayerActivity.EXTRA_TITLE, "${anime?.title} — EP $episode")
                 .putExtra(PlayerActivity.EXTRA_SERIES_TITLE, anime?.title.orEmpty())
+                .putExtra(PlayerActivity.EXTRA_ALT_TITLES, anime?.altTitles.orEmpty().toTypedArray())
                 .putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, anime?.episodes ?: 0)
                 .putExtra(PlayerActivity.EXTRA_EPISODE_MINUTES, anime?.durationMins ?: 0)
                 .putExtra(PlayerActivity.EXTRA_ANILIST_ID, anilistId)
@@ -315,6 +320,7 @@ fun DetailScreen(
             val outcome = AutoPlay.run(
                 anilistId = anilistId,
                 title = anime?.title,
+                altTitles = anime?.altTitles.orEmpty(),
                 episode = episode,
                 isMovie = (anime?.episodes ?: 1) <= 1,
                 filter = Settings.sourceFilter,
@@ -364,6 +370,7 @@ fun DetailScreen(
                 )
                 .putExtra(PlayerActivity.EXTRA_TITLE, "${anime?.title} — EP $episode")
                 .putExtra(PlayerActivity.EXTRA_SERIES_TITLE, anime?.title.orEmpty())
+                .putExtra(PlayerActivity.EXTRA_ALT_TITLES, anime?.altTitles.orEmpty().toTypedArray())
                 .putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, anime?.episodes ?: 0)
                 .putExtra(PlayerActivity.EXTRA_EPISODE_MINUTES, anime?.durationMins ?: 0)
                 .putExtra(PlayerActivity.EXTRA_ANILIST_ID, anilistId)

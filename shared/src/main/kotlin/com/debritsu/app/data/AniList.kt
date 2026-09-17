@@ -88,6 +88,17 @@ object AniList {
         return Anime(
             id = m.int("id") ?: 0,
             title = t.str("english") ?: t.str("romaji") ?: "Unknown",
+            // Every name the show goes by, which is how a release named after
+            // one of them is told from a side series named after none.
+            altTitles = buildList {
+                t.str("romaji")?.let { add(it) }
+                t.str("english")?.let { add(it) }
+                (m as? JsonObject)?.get("synonyms")?.let { list ->
+                    (list as? kotlinx.serialization.json.JsonArray)?.forEach { s ->
+                        (s as? JsonPrimitive)?.content?.let { add(it) }
+                    }
+                }
+            },
             cover = m.obj("coverImage").str("large"),
             banner = m.str("bannerImage"),
             episodes = m.int("episodes"),
@@ -102,7 +113,7 @@ object AniList {
     }
 
     private const val MEDIA_FIELDS =
-        "id title { romaji english } coverImage { large } bannerImage episodes description " +
+        "id title { romaji english } synonyms coverImage { large } bannerImage episodes description " +
             "averageScore nextAiringEpisode { episode timeUntilAiring }"
 
     /** One page of results plus whether another page exists. */
