@@ -16,7 +16,9 @@ val anilistProps = Properties().apply {
 
 android {
     namespace = "com.debritsu.app"
-    compileSdk = 34
+    // 35 because media3 1.8 requires it to compile against; the app still
+    // targets 34, so nothing about how it behaves on a box changes.
+    compileSdk = 35
 
     defaultConfig {
         // The television build is its own application, so it installs beside
@@ -67,20 +69,15 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            // libVLC ships a decoder library per processor type, and with all
-            // four the app is over 200MB. Both arm flavours are needed here and
-            // the phone's 64-bit-only list is not enough: the Mi Box runs
-            // 32-bit Android on a 64-bit chip, so armeabi-v7a is what it
-            // installs. x86 televisions are not a thing anyone ships.
-            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
             signingConfig =
                 if (System.getenv("KEYSTORE_PATH") != null) signingConfigs.getByName("release")
                 else signingConfigs.getByName("debug")
         }
         debug {
-            // Plus both x86 flavours, so a debug build runs on the emulators:
-            // the Google TV image is 32-bit x86, the phone one x86_64.
-            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
+            // Its own application, beside the release rather than over it: the
+            // two are signed with different keys, so one could only replace the
+            // other by uninstalling it, taking settings and downloads along.
+            applicationIdSuffix = ".debug"
         }
     }
     compileOptions {
@@ -94,8 +91,8 @@ android {
     }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        // Compress libVLC inside the APK; stored uncompressed, as Android does
-        // by default, the download is far larger. Unpacked at install instead.
+        // Native libraries compressed inside the APK (libass and its font
+        // stack), unpacked at install instead: a smaller download.
         jniLibs.useLegacyPackaging = true
     }
 }
@@ -132,16 +129,19 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.1")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
-    // libVLC plays the video. It carries its own decoders, so it plays what
-    // the device cannot — which on a television box is most of what a modern
-    // release uses — and renders ASS subtitles through libass, so they look
-    // here as they do in VLC: colours, karaoke and all.
-    implementation("org.videolan.android:libvlc-all:3.6.5")
+    // media3 plays the video, with Android's own audio timing. libVLC did this
+    // briefly, for its subtitle rendering, and lost 1-2 seconds of sound after
+    // resuming — see CLAUDE.md. Pinned to exactly 1.8.0: ass-media is built
+    // against it and reaches into its MKV extractor by reflection.
+    implementation("androidx.media3:media3-exoplayer:1.8.0")
+    implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
+    implementation("androidx.media3:media3-ui:1.8.0")
 
-    // Only for the seek bar and control styles the player screen borrows;
-    // libVLC does the playing.
-    implementation("androidx.media3:media3-ui:1.4.1")
-    implementation("androidx.media3:media3-common:1.4.1")
+    // ASS subtitles drawn by libass, the renderer VLC uses, fed by media3: the
+    // karaoke, colours and typesetting media3's own parser drops, and the
+    // fonts an MKV carries as attachments.
+    implementation("io.github.peerless2012:ass-media:0.5.1")
+
     implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
     implementation("androidx.mediarouter:mediarouter:1.7.0")
 

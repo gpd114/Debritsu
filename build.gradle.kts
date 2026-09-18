@@ -1,5 +1,5 @@
 plugins {
-    id("com.android.application") version "8.5.2" apply false
+    id("com.android.application") version "8.7.3" apply false
     // Kotlin, the Compose compiler plugin and the serialization plugin move as
     // one — the Compose compiler plugin is versioned with Kotlin, not with
     // Compose, and Compose Multiplatform requires it at the same version as the

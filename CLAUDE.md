@@ -102,12 +102,15 @@ Both are wrapped in `BuildConfig.DEBUG` and cost nothing in release.
 - **Most televisions cannot fetch HTTPS**, and debrid links are always HTTPS, so
   DLNA casting fails on them. Not fixable from this side without proxying the
   stream through the phone.
-- **The player is libVLC, and the controls are this app's own.** media3 renders
-  ASS subtitles itself and drops what a release actually uses, and it plays only
-  what the box has a decoder for — the sharper limit on a television. What was
-  learned about `PlayerView`'s focus behaviour went with it; the controls are
-  plain views in `activity_player.xml` now, and "are they up" is
-  `controls.visibility`.
+- **The player is media3 with libass drawing ASS, and the controls are this
+  app's own.** The same player as the phone's: libass-android
+  (`io.github.peerless2012:ass-media`) draws karaoke, typesetting and an MKV's
+  own fonts over media3. libVLC was tried first and lost 1-2 seconds of sound
+  after resuming (see the phone branch's notes). media3 is pinned to exactly
+  1.8.0, which ass-media is built against. The cost: only the box's own
+  decoders, so a format it cannot decode does not play. `PlayerView` runs with
+  its controller off; the controls are plain views in `activity_player.xml`,
+  and "are they up" is `controls.visibility`.
 - **The hide countdown has to restart on every key while the controls are up.**
   Moving between buttons runs no handler of ours, so without it the controls
   disappear from under the remote mid-navigation. Found on the emulator, where
@@ -115,13 +118,13 @@ Both are wrapped in `BuildConfig.DEBUG` and cost nothing in release.
 - **Focus has to be obvious from a sofa.** media3's button styles carry a touch
   ripple, which reads as a grey smudge across a room; each control is given a
   ring in the theme's accent instead.
-- **The video needs somewhere to park focus.** `VLCVideoLayout` is made
+- **The video needs somewhere to park focus.** The `PlayerView` is made
   focusable and takes focus whenever the controls go down, which is what puts
   the d-pad back on seeking rather than on whatever Android focused last.
-- **Both arm ABIs ship.** The Mi Box runs 32-bit Android on a 64-bit chip, so
-  `armeabi-v7a` is what it installs; the phone's arm64-only list would give it
-  an app with no decoders. Debug adds x86 (the Google TV emulator is 32-bit x86)
-  and x86_64 (the phone emulator).
+- **The Mi Box runs 32-bit Android on a 64-bit chip.** No ABI filter is set, so
+  libass ships for every processor type, `armeabi-v7a` included; a filter
+  copied from anywhere 64-bit-only would leave the box without it. Debug builds
+  install as `com.debritsu.tv.debug`, beside the release.
 
 ## Working notes
 

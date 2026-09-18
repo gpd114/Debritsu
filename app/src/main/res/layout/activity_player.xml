@@ -1,14 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The libVLC player screen.
+<!-- The player screen.
 
-     The video goes into VLC's own layout, which owns a surface for the picture
-     and a second one for subtitles. That second surface is where libass draws,
-     which is the whole point of this screen: ASS subtitles come out with their
-     colours, positioning and karaoke, as they do in VLC itself.
+     media3 plays into its own view, with its controller switched off. Inside
+     that view is a subtitle layer, and libass draws into it: ASS subtitles come
+     out with their colours, positioning and karaoke, as they do in VLC.
 
      The controls are ours, drawn over the top. They borrow media3's button
-     styles and its seek bar, so they look exactly as they did when media3 was
-     also doing the playing — the bar is driven by hand here. -->
+     styles and its seek bar, driven by hand. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/player_root"
@@ -16,10 +14,14 @@
     android:layout_height="match_parent"
     android:background="#FF000000">
 
-    <org.videolan.libvlc.util.VLCVideoLayout
+    <androidx.media3.ui.PlayerView
         android:id="@+id/video_layout"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        app:use_controller="false"
+        app:resize_mode="fit"
+        app:surface_type="surface_view"
+        app:shutter_background_color="#FF000000" />
 
     <ProgressBar
         android:id="@+id/buffering"
@@ -95,11 +97,6 @@
                     android:contentDescription="Subtitles" />
 
                 <ImageButton
-                    android:id="@+id/audio_button"
-                    style="@style/ExoStyledControls.Button.Bottom.AudioTrack"
-                    android:contentDescription="Audio track" />
-
-                <ImageButton
                     android:id="@+id/cast_button"
                     android:layout_width="52dp"
                     android:layout_height="52dp"
@@ -116,6 +113,13 @@
                     android:contentDescription="Sources"
                     android:padding="14dp"
                     android:src="@drawable/ic_sources" />
+
+                <!-- The gear, last, as the media3 player had it before libVLC:
+                     it opens the audio tracks. -->
+                <ImageButton
+                    android:id="@+id/audio_button"
+                    style="@style/ExoStyledControls.Button.Bottom.Settings"
+                    android:contentDescription="Audio track" />
             </LinearLayout>
 
             <LinearLayout
