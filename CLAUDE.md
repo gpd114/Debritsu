@@ -114,7 +114,10 @@ Both are wrapped in `BuildConfig.DEBUG` and cost nothing in release.
   Real-Debrid, a magnet already in the account comes back with every file
   selected, so `links.first()` is the pack's first episode, not the one asked
   for. Sizes need `long()`: an Int is null above 2 GB.
-- **libVLC 3 plays 1-2 seconds of silence after some resumes.**
+- **The player is media3, with libass drawing ASS** (libass-android,
+  `io.github.peerless2012:ass-media`). libVLC was used for v1.3.33-1.3.41 for
+  its subtitle rendering and dropped for this: **libVLC 3 plays 1-2 seconds of
+  silence after some resumes.**
   Its own verbose log says so: "playback way too late: flushing buffers", then
   "way too early (-1.5 s): inserting zeroes". It misreads the audio output's
   delay when audio restarts. It is not Bluetooth-specific: the speaker does it
@@ -123,6 +126,11 @@ Both are wrapped in `BuildConfig.DEBUG` and cost nothing in release.
   keeping the output awake with silence while paused, restarting the audio
   track, and seeking on resume (which also made streams reload every time). The
   VLC app (3.0.23) does the same on a local file, so it is libVLC's, not ours.
+  media3 on the same phone, same buds: no drops. ass-media 0.5.1 is built
+  against media3 1.8.0 and reaches into `MatroskaExtractor`'s private fields by
+  reflection, so media3 stays pinned to exactly the version it names. The cost
+  of media3 is decoders: only the device's own, so a format it cannot decode
+  does not play (the Galaxy Tab A7's black episodes under the old media3).
 - **Most televisions cannot fetch HTTPS**, and debrid links are always HTTPS, so
   DLNA casting fails on them. Not fixable from this side without proxying the
   stream through the phone.
