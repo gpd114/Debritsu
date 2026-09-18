@@ -467,7 +467,7 @@ class PlayerActivity : ComponentActivity() {
         findViewById<View>(R.id.rewind).setOnClickListener { seekBy(-SEEK_STEP_MS) }
         findViewById<View>(R.id.forward).setOnClickListener { seekBy(SEEK_STEP_MS) }
         findViewById<View>(R.id.subtitle_button).setOnClickListener { showSubtitlePicker() }
-        findViewById<View>(R.id.audio_button).setOnClickListener { showAudioPicker() }
+        findViewById<View>(R.id.audio_button).setOnClickListener { showSettings() }
         findViewById<View>(R.id.cast_button).setOnClickListener { showCastPicker() }
         findViewById<View>(R.id.sources_button).apply {
             visibility = if (sources.size > 1) View.VISIBLE else View.GONE
@@ -571,6 +571,43 @@ class PlayerActivity : ComponentActivity() {
         code?.takeIf { it.isNotBlank() && it != "und" }
             ?.let { Locale.forLanguageTag(it).displayLanguage.ifBlank { it } }
             ?: "Unknown language"
+
+    /**
+     * The gear: audio track and playback speed, as media3's own settings menu
+     * offered them before the player drew its own controls.
+     */
+    private fun showSettings() {
+        val mp = player ?: return
+        val audio = tracksOf(C.TRACK_TYPE_AUDIO)
+        val current = audio.firstOrNull { (g, i) -> g.isTrackSelected(i) }
+            ?.let { (g, i) -> g.getTrackFormat(i) }
+        val audioDetail = when {
+            audio.size < 2 -> "Only one in this release"
+            current != null -> current.label?.takeIf { it.isNotBlank() } ?: displayLanguage(current.language)
+            else -> "${audio.size} tracks"
+        }
+        val rows = listOf(
+            PanelRow("Audio track", audioDetail),
+            PanelRow("Playback speed", speedLabel(mp.playbackParameters.speed))
+        )
+        panelDialog("Settings", "PLAYBACK", rows) { index ->
+            if (index == 0) showAudioPicker() else showSpeedPicker()
+        }.show()
+    }
+
+    private fun showSpeedPicker() {
+        val mp = player ?: return
+        val current = mp.playbackParameters.speed
+        val rows = SPEEDS.map { speed ->
+            PanelRow(speedLabel(speed), if (speed == 1f) "As recorded" else "", if (speed == current) "SELECTED" else null)
+        }
+        panelDialog("Playback speed", "UNTIL YOU CLOSE THE PLAYER", rows) { index ->
+            mp.setPlaybackSpeed(SPEEDS[index])
+        }.show()
+    }
+
+    private fun speedLabel(speed: Float): String =
+        if (speed == 1f) "Normal" else "${String.format(Locale.UK, "%.2f", speed).trimEnd('0').trimEnd('.')}×"
 
     private fun showAudioPicker() {
         val mp = player ?: return
@@ -1199,7 +1236,10 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_SUB_ADDONS = "sub_addons"
 
         // How far the rewind and forward buttons, and a double tap, move.
-        private const val SEEK_STEP_MS = 10_000L
+        private const val SEEK_STEP_MS = 10_000L
+
+        // The speeds media3's own settings menu offered.
+        private val SPEEDS = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 
         // How subtitle tracks are told apart by the title a release gives them,
         // e.g. "Signs & Songs" against "Full Subtitles".

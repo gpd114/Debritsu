@@ -97,11 +97,6 @@
                     android:contentDescription="Subtitles" />
 
                 <ImageButton
-                    android:id="@+id/audio_button"
-                    style="@style/ExoStyledControls.Button.Bottom.AudioTrack"
-                    android:contentDescription="Audio track" />
-
-                <ImageButton
                     android:id="@+id/cast_button"
                     android:layout_width="52dp"
                     android:layout_height="52dp"
@@ -118,6 +113,13 @@
                     android:contentDescription="Sources"
                     android:padding="14dp"
                     android:src="@drawable/ic_sources" />
+
+                <!-- The gear, last, as the media3 player had it before libVLC:
+                     it opens the audio tracks. -->
+                <ImageButton
+                    android:id="@+id/audio_button"
+                    style="@style/ExoStyledControls.Button.Bottom.Settings"
+                    android:contentDescription="Audio track" />
             </LinearLayout>
 
             <LinearLayout
