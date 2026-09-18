@@ -48,7 +48,12 @@ class TvPreviewActivity : ComponentActivity() {
         // Buck Bunny, Creative Commons) with two sample sources, so its Sources
         // picker can be seen. Both point at the same clip; nothing is resolved.
         if (intent.getStringExtra("screen") == "player") {
-            val clip = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4"
+            // `--es clip <url>` plays something else — a real release, say, to
+            // see how the remote handles one. The default is a public domain
+            // clip on archive.org: test-videos.co.uk closes the connection on
+            // libVLC ("http stream: Stream closed") and plays nothing.
+            val clip = intent.getStringExtra("clip")
+                ?: "https://archive.org/download/BigBuckBunny_124/Content/big_buck_bunny_720p_surround.mp4"
             com.debritsu.app.data.SourceHandoff.offer(
                 listOf(
                     com.debritsu.app.data.StreamOption(

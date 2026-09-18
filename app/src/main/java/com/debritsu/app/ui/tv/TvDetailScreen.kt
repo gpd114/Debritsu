@@ -227,6 +227,7 @@ fun TvDetailScreen(
                 .putExtra(PlayerActivity.EXTRA_URL, url)
                 .putExtra(PlayerActivity.EXTRA_TITLE, "${anime?.title} — EP $episode")
                 .putExtra(PlayerActivity.EXTRA_SERIES_TITLE, anime?.title.orEmpty())
+                .putExtra(PlayerActivity.EXTRA_ALT_TITLES, anime?.altTitles.orEmpty().toTypedArray())
                 .putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, anime?.episodes ?: 0)
                 .putExtra(PlayerActivity.EXTRA_EPISODE_MINUTES, anime?.durationMins ?: 0)
                 .putExtra(PlayerActivity.EXTRA_ANILIST_ID, anilistId)
@@ -271,6 +272,7 @@ fun TvDetailScreen(
             val outcome = AutoPlay.run(
                 anilistId = anilistId,
                 title = anime?.title,
+                altTitles = anime?.altTitles.orEmpty(),
                 episode = episode,
                 isMovie = (anime?.episodes ?: 1) <= 1,
                 filter = Settings.sourceFilter,

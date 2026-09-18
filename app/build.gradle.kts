@@ -67,9 +67,20 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // libVLC ships a decoder library per processor type, and with all
+            // four the app is over 200MB. Both arm flavours are needed here and
+            // the phone's 64-bit-only list is not enough: the Mi Box runs
+            // 32-bit Android on a 64-bit chip, so armeabi-v7a is what it
+            // installs. x86 televisions are not a thing anyone ships.
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
             signingConfig =
                 if (System.getenv("KEYSTORE_PATH") != null) signingConfigs.getByName("release")
                 else signingConfigs.getByName("debug")
+        }
+        debug {
+            // Plus both x86 flavours, so a debug build runs on the emulators:
+            // the Google TV image is 32-bit x86, the phone one x86_64.
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
         }
     }
     compileOptions {
@@ -81,7 +92,12 @@ android {
         compose = true
         buildConfig = true
     }
-    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    packaging {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        // Compress libVLC inside the APK; stored uncompressed, as Android does
+        // by default, the download is far larger. Unpacked at install instead.
+        jniLibs.useLegacyPackaging = true
+    }
 }
 
 dependencies {
@@ -116,10 +132,16 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.1")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
+    // libVLC plays the video. It carries its own decoders, so it plays what
+    // the device cannot — which on a television box is most of what a modern
+    // release uses — and renders ASS subtitles through libass, so they look
+    // here as they do in VLC: colours, karaoke and all.
+    implementation("org.videolan.android:libvlc-all:3.6.5")
+
+    // Only for the seek bar and control styles the player screen borrows;
+    // libVLC does the playing.
     implementation("androidx.media3:media3-ui:1.4.1")
-    implementation("androidx.media3:media3-cast:1.4.1")
+    implementation("androidx.media3:media3-common:1.4.1")
     implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
     implementation("androidx.mediarouter:mediarouter:1.7.0")
 
