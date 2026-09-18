@@ -136,7 +136,9 @@ fun DetailScreen(anilistId: Int, onBack: () -> Unit, onOpen: (Int) -> Unit = {})
         selectedEpisode = ((anime?.progress ?: 0) + 1).coerceAtLeast(1)
     }
     LaunchedEffect(anilistId) {
-        relations = runCatching { AniList.relations(anilistId) }.getOrDefault(emptyList())
+        // One query for relations and recommendations both; this screen only
+        // draws the first of them.
+        relations = runCatching { AniList.extras(anilistId).relations }.getOrDefault(emptyList())
     }
     // Wait for the title: calling the mapper without it would cache a
     // kitsu-less result that findStreams() would then reuse.

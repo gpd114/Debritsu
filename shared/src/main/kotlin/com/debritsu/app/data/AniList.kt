@@ -41,15 +41,24 @@ object AniList {
             // slowly: measured on 2026-08-30, one request in five never came
             // back at all while the other four took one to two seconds. Held
             // open on the long client that was two and a half minutes of
-            // nothing; timed out at ten seconds and asked again, the second
-            // attempt almost always lands.
+            // nothing; timed out and asked again, the second attempt almost
+            // always lands, which turns a one-in-five stall into roughly one
+            // in twenty-five.
             //
-            // A reply that arrives carrying no data is retried too, not just a
-            // connection that fails. An answer with no data is
-            // indistinguishable, to everything above this, from a show with no
-            // title, no score and no episodes — which is how Berserk came to be
-            // reported as a manga entry. If the second attempt is empty as
-            // well, the caller gets the same empty answer as before.
+            // A reply that arrives carrying no data is retried as well, not
+            // just a connection that fails.
+            //
+            // This was left alone at first, on the reasoning that a 429 is an
+            // answer and asking again would only make it worse. That was true
+            // of the request and wrong about the screen: an answer with no
+            // data is indistinguishable, to everything above this, from a show
+            // with no title, no score and no episodes. Berserk arrived that way
+            // and was reported as a manga entry — which is exactly what it
+            // looked like.
+            //
+            // One more go, after a longer pause than the connection retry. If
+            // that is empty too the caller gets the same empty answer it got
+            // before, so being wrong costs a single request.
             var last: Throwable? = null
             repeat(2) { attempt ->
                 try {
@@ -79,6 +88,17 @@ object AniList {
         return Anime(
             id = m.int("id") ?: 0,
             title = t.str("english") ?: t.str("romaji") ?: "Unknown",
+            // Every name the show goes by, which is how a release named after
+            // one of them is told from a side series named after none.
+            altTitles = buildList {
+                t.str("romaji")?.let { add(it) }
+                t.str("english")?.let { add(it) }
+                (m as? JsonObject)?.get("synonyms")?.let { list ->
+                    (list as? kotlinx.serialization.json.JsonArray)?.forEach { s ->
+                        (s as? JsonPrimitive)?.content?.let { add(it) }
+                    }
+                }
+            },
             cover = m.obj("coverImage").str("large"),
             banner = m.str("bannerImage"),
             episodes = m.int("episodes"),
@@ -93,7 +113,7 @@ object AniList {
     }
 
     private const val MEDIA_FIELDS =
-        "id title { romaji english } coverImage { large } bannerImage episodes description " +
+        "id title { romaji english } synonyms coverImage { large } bannerImage episodes description " +
             "averageScore nextAiringEpisode { episode timeUntilAiring }"
 
     /** One page of results plus whether another page exists. */
@@ -300,7 +320,8 @@ object AniList {
      *
      * One query for both. They are different fields of the same Media, and
      * asking separately would spend two of AniList's thirty requests a minute
-     * where one does.
+     * where one does — which matters, since opening the app already costs four
+     * and each show costs two more.
      *
      * Relations are a graph of every edge AniList models, most of which are
      * not worth showing a viewer, so only these five kinds survive.
@@ -337,9 +358,6 @@ object AniList {
 
         return Extras(relations, recommended)
     }
-
-    /** Kept for the phone screen, which this build does not show. */
-    suspend fun relations(id: Int): List<Relation> = extras(id).relations
 
     /** Set list status, progress or score in one call. */
     suspend fun saveEntry(

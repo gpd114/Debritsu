@@ -34,7 +34,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
+        with:
+          # Not the default "tools platform-tools": Google has removed the legacy
+          # "tools" package, and asking for it fails the step. Gradle installs the
+          # platform and build-tools it needs by itself.
+          packages: platform-tools
 
       - uses: gradle/actions/setup-gradle@v4
         with:

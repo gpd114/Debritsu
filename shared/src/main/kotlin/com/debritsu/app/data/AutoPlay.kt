@@ -49,6 +49,8 @@ object AutoPlay {
     suspend fun run(
         anilistId: Int,
         title: String?,
+        /** The show's other names, so a side series in the same pack is not taken for it. */
+        altTitles: List<String> = emptyList(),
         episode: Int,
         isMovie: Boolean,
         filter: SourceFilter,
@@ -84,6 +86,7 @@ object AutoPlay {
         val parsed = streams.map { it to StreamMeta.of(it) }
 
         val minSize = minEpisodeSizeMb(episodeMinutes)
+        val titleWords = TitleMatch.known(listOfNotNull(title) + altTitles)
 
         // Parsing addon free text is guesswork, so make it inspectable: every
         // source, what was read out of it, and whether it survived. Kept out of
@@ -93,7 +96,7 @@ object AutoPlay {
         if (BuildInfo.debug) parsed.forEach { (stream, meta) ->
             BuildInfo.log(
                 "DebritsuFilter",
-                "accept=${filter.accepts(stream, meta, minSize)} score=${filter.score(stream, meta)} " +
+                "accept=${filter.accepts(stream, meta, minSize, titleWords)} score=${filter.score(stream, meta)} " +
                     "res=${meta.resolution} size=${meta.sizeMb}MB pack=${meta.packSizeMb}MB " +
                     "isPack=${meta.isPack} fileIdx=${stream.fileIdx} direct=${stream.isDirect} " +
                     "unplayable=${meta.unplayable} cached=${meta.cached} " +
@@ -104,7 +107,7 @@ object AutoPlay {
         }
 
         val ranked = parsed
-            .filter { (stream, meta) -> filter.accepts(stream, meta, minSize) }
+            .filter { (stream, meta) -> filter.accepts(stream, meta, minSize, titleWords) }
             .sortedByDescending { (stream, meta) -> filter.score(stream, meta) }
         onStep(Step.Filtering(streams.size, ranked.size))
 

@@ -72,8 +72,9 @@ data class StreamMeta(
          *
          * Deliberately narrow. NCOP, NCED, creditless and textless are release
          * conventions that mean one thing; "opening" and "ending" on their own
-         * are not, since they turn up in episode titles. A missed extra is one
-         * bad tap; a wrongly rejected episode is a show that will not play.
+         * are not, since they turn up in episode titles — Bleach alone has
+         * several. A missed extra is one bad tap; a wrongly rejected episode is
+         * a show that will not play at all.
          */
         private val EXTRA = Regex(
             """\b(nc(op|ed)\d*|creditless|textless|clean\s+(opening|ending)|""" +
@@ -154,6 +155,70 @@ data class StreamMeta(
 }
 
 /**
+ * How much of a release name the show's own names account for.
+ *
+ * A spin-off shares an id with nothing and a name with almost everything: an
+ * addon answered episode 11 of DanMachi's second season with
+ * `[Sokudo] DanMachi Sword Oratoria - 11`, a file from the side series inside
+ * the same pack. It played, and it was the wrong show.
+ *
+ * Counting words the title cannot explain does not work on its own, because
+ * release names carry the episode's own title as well —
+ * `... - S02E11 - Rakia Army's Advance` is three such words and is correct.
+ * What separates them is the proportion: a wrong show matches a little of the
+ * name and misses most of it.
+ */
+object TitleMatch {
+
+    /** Words that describe the file rather than the show. */
+    private val RELEASE_WORDS = (
+        "bd bdrip blu ray bluray web webrip webdl dl dvd dvdrip hdtv remux hevc avc x264 x265 " +
+            "h264 h265 av1 aac ac3 eac3 ddp dts hd truehd flac opus mp3 bit hi10p hdr sdr dv " +
+            "dual audio multi sub subs subbed dub dubbed eng jpn jap english japanese season " +
+            "part cour batch complete uncensored censored repack final extended uncut raw " +
+            "ita spa ger fre por rus tv sd fhd uhd 4k fps crf yuv mkv mp4 avi remastered " +
+            "proper internal nf amzn crunchyroll funi hulu disney netflix"
+        ).split(" ").toSet()
+
+    /** Numbers, episode markers, resolutions, checksums: not words at all. */
+    private val NOT_A_WORD =
+        Regex("""^(s\d{1,2}e\d{1,3}|s\d{1,2}|e\d{1,3}|\d+|v\d|\d+p|[a-f0-9]{8})$""", RegexOption.IGNORE_CASE)
+
+    private val EXTENSION = Regex("""\.[a-z0-9]{2,4}$""", RegexOption.IGNORE_CASE)
+    private val BRACKETED = Regex("""\[[^\]]*\]|\([^)]*\)""")
+    private val TRAILING_GROUP = Regex("""-\s*[A-Za-z0-9]+$""")
+
+    /**
+     * The words of a name, with everything that describes the file stripped:
+     * the extension, bracketed tags (which hold the group and the encode), and
+     * a trailing `-GROUP`.
+     */
+    fun words(text: String): List<String> =
+        text.replace(EXTENSION, "")
+            .replace(BRACKETED, " ")
+            .replace(TRAILING_GROUP, " ")
+            .replace(Regex("""[^A-Za-z0-9]+"""), " ")
+            .lowercase()
+            .split(" ")
+            .filter { it.length > 1 && it !in RELEASE_WORDS && !NOT_A_WORD.matches(it) }
+
+    /** Every word any of this show's names uses. */
+    fun known(titles: List<String>): Set<String> =
+        titles.flatMap { words(it) }.toSet()
+
+    /**
+     * How much of [filename] the show's names explain, from 0 to 1. Names that
+     * say nothing at all (a bare "11.mkv") come back as 1: there is nothing to
+     * disagree with, and rejecting those would reject whole release groups.
+     */
+    fun share(filename: String, known: Set<String>): Double {
+        val words = words(filename)
+        if (words.isEmpty() || known.isEmpty()) return 1.0
+        return words.count { it in known }.toDouble() / words.size
+    }
+}
+
+/**
  * The rules auto-play picks by.
  *
  * Resolution is a ceiling rather than a target — capping it is what keeps a
@@ -171,8 +236,22 @@ data class SourceFilter(
      * @param minSizeMb the smallest this episode could plausibly be, from its
      *   running time. Zero where that is unknown, which skips the check.
      */
-    fun accepts(stream: StreamOption, meta: StreamMeta, minSizeMb: Int = 0): Boolean {
+    fun accepts(
+        stream: StreamOption,
+        meta: StreamMeta,
+        minSizeMb: Int = 0,
+        /** Every word this show's names use, from [TitleMatch.known]. Empty skips the check. */
+        titleWords: Set<String> = emptySet()
+    ): Boolean {
         if (meta.unplayable) return false
+
+        // A file from another show in the same pack. Addons that resolve the
+        // file themselves hand back a finished link, so this is the only place
+        // it can be caught: a side series shares a pack, a name and an episode
+        // number with the show asked for, and plays perfectly.
+        stream.filename?.let {
+            if (titleWords.isNotEmpty() && TitleMatch.share(it, titleWords) < WRONG_SHOW) return false
+        }
 
         // Far too small to be the episode.
         //
@@ -245,6 +324,14 @@ data class SourceFilter(
     }
 
     companion object {
+        /**
+         * Below this share of the filename explained by the show's own names,
+         * the file is taken to be another show's. Half is deliberately lenient:
+         * a release name carries the episode's title too, and only a name that
+         * mostly is not this show falls under it.
+         */
+        const val WRONG_SHOW = 0.5
+
         /** What the settings screen starts from. */
         val Default = SourceFilter(maxResolution = 1080, maxSizeMb = 600, preferEnglish = true)
     }
