@@ -115,15 +115,15 @@ Both are wrapped in `BuildConfig.DEBUG` and cost nothing in release.
   Real-Debrid, a magnet already in the account comes back with every file
   selected, so `links.first()` is the pack's first episode, not the one asked
   for. Sizes need `long()`: an Int is null above 2 GB.
-- **libVLC 3 over Bluetooth plays 1-2 seconds of silence after a resume.**
+- **libVLC 3 plays 1-2 seconds of silence after some resumes.**
   Its own verbose log says so: "playback way too late: flushing buffers", then
-  "way too early (-1.5 s): inserting zeroes". It misreads the Bluetooth output's
-  delay whenever audio starts mid-playback — and even at a fresh start. Tried
+  "way too early (-1.5 s): inserting zeroes". It misreads the audio output's
+  delay when audio restarts. It is not Bluetooth-specific: the speaker does it
+  too (about one resume in eight, measured), Bluetooth far more often. Tried
   and ruled out on a Pixel 10 with Pixel Buds: OpenSL ES instead of AudioTrack,
   keeping the output awake with silence while paused, restarting the audio
   track, and seeking on resume (which also made streams reload every time). The
   VLC app (3.0.23) does the same on a local file, so it is libVLC's, not ours.
-  The phone speaker is unaffected.
 - **Most televisions cannot fetch HTTPS**, and debrid links are always HTTPS, so
   DLNA casting fails on them. Not fixable from this side without proxying the
   stream through the phone.
