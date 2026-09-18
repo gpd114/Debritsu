@@ -81,6 +81,9 @@ class GlossyPreviewActivity : ComponentActivity() {
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_EPISODE_COUNT, 12)
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_SOURCE_INDEX, 0)
                     .putExtra("loop", intent.getBooleanExtra("loop", false))
+                    // `--ez vlclog true` and `--es aout opensles`: see vlcOptions().
+                    .putExtra("vlclog", intent.getBooleanExtra("vlclog", false))
+                    .apply { intent.getStringExtra("aout")?.let { putExtra("aout", it) } }
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_ANILIST_ID, intent.getIntExtra("anilist", 0))
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_SERIES_TITLE, intent.getStringExtra("series").orEmpty())
             )

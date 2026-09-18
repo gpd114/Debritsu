@@ -200,6 +200,13 @@ class PlayerActivity : ComponentActivity() {
         val audio = Settings.preferredAudioLanguage
         if (audio.isNotEmpty()) options += "--audio-language=$audio"
         options += "--sub-language=en"
+        // Debug only, from the preview: libVLC's own account of itself, which a
+        // release keeps to errors and so says nothing about timing; and a choice
+        // of audio output, to try OpenSL ES against the default AudioTrack.
+        if (com.debritsu.app.BuildConfig.DEBUG) {
+            if (intent.getBooleanExtra("vlclog", false)) options += "-vv"
+            intent.getStringExtra("aout")?.let { options += "--aout=$it" }
+        }
         return options
     }
 

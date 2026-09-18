@@ -72,6 +72,12 @@ android {
         debug {
             // Plus x86_64, so a debug build still runs on the emulator.
             ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+            // Its own application, beside the release rather than over it. The
+            // two are signed with different keys, so one could only replace the
+            // other by uninstalling it — taking the user's settings and
+            // downloads with it. Separate, a debug build can go on the real
+            // phone to reproduce something there.
+            applicationIdSuffix = ".debug"
         }
     }
     compileOptions {
