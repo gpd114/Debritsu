@@ -16,7 +16,9 @@ val anilistProps = Properties().apply {
 
 android {
     namespace = "com.debritsu.app"
-    compileSdk = 34
+    // 35 because media3 1.8 requires it to compile against; the app still
+    // targets 34, so nothing about how it behaves on a phone changes.
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.debritsu.app"
@@ -59,19 +61,11 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            // 64-bit ARM only. libVLC carries its own decoders for each processor
-            // type, and with all four the app was over 200MB. Every phone and
-            // tablet this is used on runs 64-bit Android. (Not so the television
-            // box: that runs 32-bit Android on a 64-bit chip, so the TV build
-            // needs armeabi-v7a.)
-            ndk { abiFilters += "arm64-v8a" }
             signingConfig =
                 if (System.getenv("KEYSTORE_PATH") != null) signingConfigs.getByName("release")
                 else signingConfigs.getByName("debug")
         }
         debug {
-            // Plus x86_64, so a debug build still runs on the emulator.
-            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
             // Its own application, beside the release rather than over it. The
             // two are signed with different keys, so one could only replace the
             // other by uninstalling it — taking the user's settings and
@@ -91,9 +85,9 @@ android {
     }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        // Compress libVLC inside the APK. Stored uncompressed, as Android does by
-        // default, the download was 67MB; the libraries are unpacked at install
-        // instead, which costs nothing anyone notices.
+        // Native libraries compressed inside the APK (libass and its font
+        // stack), unpacked at install instead: a smaller download for a cost
+        // nobody notices.
         jniLibs.useLegacyPackaging = true
     }
 }
@@ -121,15 +115,18 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.1")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
-    // libVLC plays the video. It carries its own decoders, so it plays what
-    // the device cannot -- and renders ASS subtitles through libass, which is
-    // why they look in this app as they do in VLC: colours, karaoke and all.
-    implementation("org.videolan.android:libvlc-all:3.6.5")
+    // media3 plays the video, on the device's own decoders and with Android's own
+    // audio timing. libVLC did this for a while, for its subtitle rendering, and
+    // lost 1-2 seconds of sound after resuming — see CLAUDE.md.
+    implementation("androidx.media3:media3-exoplayer:1.8.0")
+    implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
+    implementation("androidx.media3:media3-ui:1.8.0")
 
-    // Only for the seek bar and control styles the player screen borrows;
-    // libVLC does the playing.
-    implementation("androidx.media3:media3-ui:1.4.1")
-    implementation("androidx.media3:media3-common:1.4.1")
+    // ASS subtitles drawn by libass, the renderer VLC uses, fed by media3: the
+    // karaoke, colours and typesetting media3's own parser drops, and the
+    // fonts an MKV carries as attachments.
+    implementation("io.github.peerless2012:ass-media:0.5.1")
+
     implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
     implementation("androidx.mediarouter:mediarouter:1.7.0")
 

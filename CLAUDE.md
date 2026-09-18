@@ -23,8 +23,7 @@ two are signed with different keys, so one could only replace the other by
 uninstalling it, which takes the user's downloads and settings with it. With the
 suffix a debug build can go onto the real phone to reproduce something there;
 `adb shell am start -n com.debritsu.app.debug/com.debritsu.app.GlossyPreviewActivity
---es screen player --es clip <url>` plays a clip with no account, and `--ez
-vlclog true` turns on libVLC's own verbose log, which a release never shows.
+--es screen player --es clip <url>` plays a clip with no account.
 
 **Debug builds are markedly slower** than release. `debuggable=true` holds back
 ART optimisation and skips R8 entirely, and Compose pays heavily for both. Don't
