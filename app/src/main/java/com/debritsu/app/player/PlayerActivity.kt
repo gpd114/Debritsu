@@ -1236,7 +1236,7 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_SUB_ADDONS = "sub_addons"
 
         // How far the rewind and forward buttons, and a double tap, move.
-        private const val SEEK_STEP_MS = 10_000L
+        private const val SEEK_STEP_MS = 10_000L
 
         // The speeds media3's own settings menu offered.
         private val SPEEDS = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
