@@ -12,6 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -240,12 +244,7 @@ fun Shelf(
                 }
             }
         }
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 28.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(list) { anime -> PosterCard(anime) { onOpen(anime) } }
-        }
+        ShelfRow(list, onOpen)
     }
 }
 
@@ -361,5 +360,65 @@ private fun PosterCard(anime: Anime, onOpen: () -> Unit) {
                 color = ShelfViolet
             )
         }
+    }
+}
+
+/**
+ * A shelf's posters, with an arrow at each end while the pointer is over the
+ * row and there is more that way.
+ *
+ * A wheel scrolls the page, not the row, so without these a mouse could reach
+ * only the first handful of each shelf; a trackpad's sideways swipe was the
+ * only way along. Each press moves most of a window's width, leaving the last
+ * poster or so in view so the eye has somewhere to land.
+ */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@Composable
+private fun ShelfRow(list: List<Anime>, onOpen: (Anime) -> Unit) {
+    val row = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var hovered by remember { androidx.compose.runtime.mutableStateOf(false) }
+    val back by remember { derivedStateOf { row.canScrollBackward } }
+    val forward by remember { derivedStateOf { row.canScrollForward } }
+    val page = { direction: Int ->
+        scope.launch {
+            row.animateScrollBy(direction * row.layoutInfo.viewportSize.width * 0.8f)
+        }
+    }
+
+    Box(
+        Modifier
+            .onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Enter) { hovered = true }
+            .onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Exit) { hovered = false }
+    ) {
+        LazyRow(
+            state = row,
+            contentPadding = PaddingValues(horizontal = 28.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(list) { anime -> PosterCard(anime) { onOpen(anime) } }
+        }
+        // Centred on the posters, not the whole card: the titles beneath make
+        // the card taller than the artwork.
+        if (hovered && back) {
+            ShelfArrow("‹", Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 73.dp)) { page(-1) }
+        }
+        if (hovered && forward) {
+            ShelfArrow("›", Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 73.dp)) { page(1) }
+        }
+    }
+}
+
+@Composable
+private fun ShelfArrow(glyph: String, modifier: Modifier, onClick: () -> Unit) {
+    Box(
+        modifier
+            .size(40.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(Ink.Base.copy(alpha = 0.88f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(glyph, color = Ink.Bone, style = MaterialTheme.typography.headlineSmall)
     }
 }
