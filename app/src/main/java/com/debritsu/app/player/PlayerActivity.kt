@@ -59,6 +59,7 @@ import com.debritsu.app.data.SyncQueue
 import com.debritsu.app.data.TitleMatch
 import com.debritsu.app.data.minEpisodeSizeMb
 import com.debritsu.app.ui.Ink
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import io.github.peerless2012.ass.media.AssHandler
 import io.github.peerless2012.ass.media.extractor.AssMatroskaExtractor
 import io.github.peerless2012.ass.media.kt.withAssSupport
@@ -179,7 +180,17 @@ class PlayerActivity : ComponentActivity() {
 
         val exo = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSources)
-            .setRenderersFactory(DefaultRenderersFactory(this).withAssSupport(handler))
+            // The device's own decoders first, FFmpeg's after them. media3 takes
+            // whichever declares it can play the format, so FFmpeg only steps in
+            // where nothing on the device does: 10-bit HEVC on a Galaxy Tab A7,
+            // whose HEVC decoders all stop at 8-bit, and was "Couldn't play this
+            // source". Hardware keeps everything it can decode.
+            .setRenderersFactory(
+                NextRenderersFactory(this)
+                    .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                    .setEnableDecoderFallback(true)
+                    .withAssSupport(handler)
+            )
             // Behave like a media app towards the rest of the phone: pause for
             // a call or another app's audio, dip under a notification, and
             // pause when headphones or Bluetooth disconnect rather than carrying
