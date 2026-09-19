@@ -1070,11 +1070,29 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun installSkipButton() {
         val button = findViewById<TextView>(R.id.skip_segment)
-        button.background = GradientDrawable().apply {
-            setColor(Ink.palette.action.copy(alpha = 0.95f).toArgb())
-            cornerRadius = 26 * resources.displayMetrics.density
+        val radius = 26 * resources.displayMetrics.density
+        // The theme's main-button colour at rest, near-white with dark text
+        // once the remote is on it. Inverted rather than ringed: this is read
+        // from a sofa, and the whole button changing colour is not a guess.
+        button.background = android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), GradientDrawable().apply {
+                setColor(0xFFF1EEF8.toInt())
+                cornerRadius = radius
+            })
+            addState(intArrayOf(), GradientDrawable().apply {
+                setColor(Ink.palette.action.copy(alpha = 0.95f).toArgb())
+                cornerRadius = radius
+            })
         }
+        button.setTextColor(
+            android.content.res.ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_focused), intArrayOf()),
+                intArrayOf(0xFF2A2140.toInt(), 0xFFF1EEF8.toInt())
+            )
+        )
         button.typeface = ResourcesCompat.getFont(this, R.font.mplus_rounded_extrabold)
+        // The remote has to be able to land on it.
+        button.isFocusable = true
 
         lifecycleScope.launch {
             while (true) {
@@ -1082,13 +1100,23 @@ class PlayerActivity : ComponentActivity() {
                 val time = mp?.currentPosition ?: -1L
                 val active = segments.firstOrNull { time in it.startMs..it.endMs }
                 if (active == null) {
-                    button.visibility = View.GONE
+                    hideSkipButton(button)
                 } else {
                     button.text = active.label
                     button.visibility = View.VISIBLE
                     button.setOnClickListener {
                         player?.seekTo(active.endMs)
-                        button.visibility = View.GONE
+                        hideSkipButton(button)
+                    }
+                    // Put the remote on it as soon as it appears: reaching it
+                    // otherwise costs more presses than the opening is worth.
+                    // Taken only from the video, which holds focus whenever the
+                    // controls are down, never from a control someone is using.
+                    // Rechecked every pass, so if the controls were up when the
+                    // opening began it takes focus once they go.
+                    val holder = currentFocus
+                    if (!button.hasFocus() && (holder == null || holder === videoLayout)) {
+                        button.requestFocus()
                     }
                 }
                 delay(400)
@@ -1096,9 +1124,27 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Takes the button away, handing focus back to the video first: a gone
+     * view cannot keep it, and Android would otherwise pass it to whatever it
+     * finds next.
+     */
+    private fun hideSkipButton(button: View) {
+        if (button.visibility == View.GONE) return
+        val hadFocus = button.hasFocus()
+        button.visibility = View.GONE
+        if (hadFocus) videoLayout.requestFocus()
+    }
+
     /** Looks up opening and ending times for whatever is playing now. */
     private fun loadSkipSegments() {
         segments = emptyList()
+        // Debug only: a pretend opening from 0 to this many ms, so the skip
+        // button can be tried on a clip AniSkip knows nothing about.
+        if (com.debritsu.app.BuildConfig.DEBUG && intent.hasExtra("debug_opening_ms")) {
+            segments = listOf(AniSkip.Segment("op", 0L, intent.getLongExtra("debug_opening_ms", 0L)))
+            return
+        }
         if (anilistId <= 0 || episode <= 0) return
         val forEpisode = episode
         lifecycleScope.launch {

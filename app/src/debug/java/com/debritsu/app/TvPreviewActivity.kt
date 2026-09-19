@@ -71,6 +71,7 @@ class TvPreviewActivity : ComponentActivity() {
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_EPISODE, 2)
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_EPISODE_COUNT, 12)
                     .putExtra(com.debritsu.app.player.PlayerActivity.EXTRA_SOURCE_INDEX, 0)
+                    .apply { if (intent.hasExtra("opening_ms")) putExtra("debug_opening_ms", intent.getLongExtra("opening_ms", 0L)) }
             )
             finish()
             return
