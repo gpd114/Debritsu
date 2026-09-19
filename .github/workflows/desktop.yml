@@ -36,7 +36,18 @@ jobs:
       # project in the build before running anything, and :app is an Android
       # one — without an SDK it fails at configuration, long before it gets
       # near the task actually asked for.
-      - uses: android-actions/setup-android@v3
+      #
+      # The runner image already has one, so this only says where. It used
+      # android-actions/setup-android, which on 2026-09-19 began failing on a
+      # licence Google had just added (the XR emulator's) before any of our
+      # code ran.
+      - name: Point Gradle at the runner's own Android SDK
+        shell: pwsh
+        run: |
+          $sdk = "C:\Android\android-sdk"
+          if (-not (Test-Path "$sdk\platforms")) { throw "No Android SDK on this runner" }
+          "ANDROID_HOME=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Get-ChildItem "$sdk\platforms" | Select-Object -ExpandProperty Name
 
       - uses: gradle/actions/setup-gradle@v4
         with:
