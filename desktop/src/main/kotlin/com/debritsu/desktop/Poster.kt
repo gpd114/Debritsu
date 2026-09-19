@@ -66,5 +66,5 @@ fun RemoteImage(
     }
 }
 
-private val PosterPlaceholder = androidx.compose.ui.graphics.Color(0xFF2A2140)
-private val PosterInk = androidx.compose.ui.graphics.Color(0xFF6B6480)
+private val PosterPlaceholder get() = Ink.Veil
+private val PosterInk get() = Ink.Dim

@@ -830,6 +830,18 @@ private fun App(
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                     contentPadding = PaddingValues(bottom = 28.dp)
                 ) {
+                    // The phone's hero: what you are most likely to carry on with,
+                    // and Resume. Part of the list, so it scrolls away and gives
+                    // the room back to the shelves.
+                    item {
+                        val underway = watching.isNotEmpty()
+                        HomeHero(
+                            shows = (if (underway) watching else trending.filter { it.id !in onMyList }).take(5),
+                            underway = underway,
+                            onOpen = { detailOf = it },
+                            onResume = { anime, episode -> play(anime, episode) }
+                        )
+                    }
                     items(shelves) { shelf ->
                         Shelf(
                             title = shelf.first,
