@@ -67,23 +67,18 @@ import kotlinx.coroutines.withContext
 import java.awt.Desktop
 import java.net.URI
 
-private val Violet = Color(0xFF8B5CF6)
-private val Ink = Color(0xFF16121F)
-private val Panel = Color(0xFF1E1830)
-private val Paper = Color(0xFFF1EEF8)
-private val Muted = Color(0xFF948CAB)
-
-/** For a download that is on disk. Semantic, and deliberately not the accent. */
-private val Keep = Color(0xFF6FC79B)
-
-/** Filler and recaps: worth marking, not worth hiding. */
-private val Warn = Color(0xFFE29075)
+// Colours are the theme's, from Theme.kt: Ink.* by role, plus Keep and Warn.
+private val Violet get() = Ink.Iris
+private val Panel get() = Ink.Veil
+private val Paper get() = Ink.Bone
+private val Muted get() = Ink.Mist
 
 fun main() {
     Settings.store = FileStore.default()
     Progress.store = FileStore.progress()
     DownloadIndex.store = FileStore.named("downloads")
     SyncQueue.store = FileStore.named("sync-queue")
+    applyTheme(Settings.theme)
     BuildInfo.anilistClientId = ANILIST_CLIENT_ID
 
     // On by default, to a file. The standalone build has no console to print
@@ -205,16 +200,8 @@ fun main() {
             icon = painterResource("icon.png"),
             state = windowState
         ) {
-            MaterialTheme(
-                colorScheme = darkColorScheme(
-                    primary = Violet,
-                    background = Ink,
-                    surface = Panel,
-                    onBackground = Paper,
-                    onSurface = Paper
-                )
-            ) {
-                Surface(Modifier.fillMaxSize(), color = Ink) {
+            DebritsuTheme {
+                Surface(Modifier.fillMaxSize(), color = Ink.Base) {
                     App(
                         appScope = this@application,
                         fullscreen = fullscreen,
@@ -252,15 +239,7 @@ fun main() {
                         "fullscreen ${screen.width}x${screen.height} at ${screen.x},${screen.y}"
                     )
                 }
-                MaterialTheme(
-                    colorScheme = darkColorScheme(
-                        primary = Violet,
-                        background = Ink,
-                        surface = Panel,
-                        onBackground = Paper,
-                        onSurface = Paper
-                    )
-                ) {
+                DebritsuTheme {
                     Surface(Modifier.fillMaxSize(), color = Color.Black) { fullscreenPlayer(true) }
                 }
             }

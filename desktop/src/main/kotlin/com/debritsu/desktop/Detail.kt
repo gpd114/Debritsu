@@ -127,7 +127,19 @@ fun DetailScreen(
                 corner = 0,
                 contentScale = ContentScale.Crop
             )
-            TextButton(onClick = onBack, modifier = Modifier.padding(12.dp)) {
+            // The banner fades into the page, as on the phone, rather than
+            // stopping at a hard edge.
+            Box(
+                Modifier.fillMaxWidth().height(90.dp).align(Alignment.BottomCenter)
+                    .background(Ink.Dusk)
+            )
+            // On a plate of the page colour: the banner can be any brightness,
+            // and bare text in the theme's colour vanished on a light one.
+            TextButton(
+                onClick = onBack,
+                modifier = Modifier.padding(12.dp),
+                colors = ButtonDefaults.textButtonColors(containerColor = Ink.Base.copy(alpha = 0.85f))
+            ) {
                 Text("← Back", color = DetailPaper)
             }
         }
@@ -165,7 +177,7 @@ fun DetailScreen(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { onPlay(anime, next) }) {
+                    PrimaryButton(onClick = { onPlay(anime, next) }) {
                         Text(
                             if (Progress.fraction(anime.id, next) > 0f) "Resume episode $next"
                             else "Play episode $next"
@@ -304,11 +316,11 @@ fun DetailScreen(
     }
 }
 
-private val DetailPaper = androidx.compose.ui.graphics.Color(0xFFF1EEF8)
-private val DetailMuted = androidx.compose.ui.graphics.Color(0xFF948CAB)
-private val DetailViolet = androidx.compose.ui.graphics.Color(0xFF8B5CF6)
-private val DetailEdge = androidx.compose.ui.graphics.Color(0xFF2A2340)
-private val DetailWarn = androidx.compose.ui.graphics.Color(0xFFE29075)
+private val DetailPaper get() = Ink.Bone
+private val DetailMuted get() = Ink.Mist
+private val DetailViolet get() = Ink.Iris
+private val DetailEdge get() = Ink.Edge
+private val DetailWarn get() = Warn
 
 private val STATUSES = listOf(
     "CURRENT" to "Watching",
@@ -422,7 +434,7 @@ private fun ListEntryEditor(anime: Anime, onSaved: (Anime) -> Unit) {
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
+            PrimaryButton(
                 enabled = !saving,
                 onClick = {
                     scope.launch {

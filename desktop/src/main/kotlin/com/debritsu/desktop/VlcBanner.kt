@@ -29,9 +29,9 @@ import androidx.compose.ui.unit.dp
 import com.debritsu.app.data.Settings
 import kotlinx.coroutines.launch
 
-private val WarnPlate = Color(0x3FE29075)
-private val WarnInk = Color(0xFFE29075)
-private val BannerMuted = Color(0xFF948CAB)
+private val WarnPlate get() = Warn.copy(alpha = 0.25f)
+private val WarnInk get() = Warn
+private val BannerMuted get() = Ink.Mist
 
 /**
  * Says mpv is missing, and offers to fetch it.
@@ -93,7 +93,7 @@ fun VlcBanner(onInstalled: () -> Unit) {
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(
+            PrimaryButton(
                 enabled = !busy && winget != false,
                 onClick = {
                     busy = true

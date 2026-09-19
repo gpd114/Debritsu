@@ -45,9 +45,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.debritsu.app.data.Anime
 
-private val ShelfViolet = Color(0xFF8B5CF6)
-private val ShelfPaper = Color(0xFFF1EEF8)
-private val ShelfMuted = Color(0xFF948CAB)
+private val ShelfViolet get() = Ink.Iris
+private val ShelfPaper get() = Ink.Bone
+private val ShelfMuted get() = Ink.Mist
 
 /**
  * "in 2d 4h", "in 5h 12m", "in 48m" — as much as is worth reading.
@@ -68,18 +68,11 @@ fun airsIn(seconds: Int): String {
 }
 
 /**
- * Green, amber or rust by how well regarded a show is.
- *
- * AniList scores cluster hard in the seventies and eighties, so the boundaries
- * are set where the distribution actually is rather than at halfway — a 70%
- * anime is unremarkable, not good, and colouring it green would say nothing.
- * Semantic, and deliberately not the app's violet, which means "yours" here.
+ * The score pill over a poster: one translucent tint of the theme's accent, as
+ * on the phone, whatever the score. It was green, amber or rust by band.
  */
-private fun ScoreColour(score: Int): Color = when {
-    score >= 80 -> Color(0xCC2F7D5B)
-    score >= 70 -> Color(0xCC8A6A2F)
-    else -> Color(0xCC8A4433)
-}
+@Suppress("UNUSED_PARAMETER")
+private fun ScoreColour(score: Int): Color = Ink.palette.badge
 
 /**
  * What is airing soon, soonest first, along the top bar.
@@ -344,7 +337,7 @@ private fun PosterCard(anime: Anime, onOpen: () -> Unit) {
                 Text(
                     "$score%",
                     style = MaterialTheme.typography.bodySmall,
-                    color = ShelfPaper,
+                    color = Color.White,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(6.dp)

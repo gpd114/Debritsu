@@ -60,7 +60,9 @@ import com.debritsu.app.data.Progress
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private val Violet = Color(0xFF8B5CF6)
+// The accent over video follows the theme; the rest is light-on-dark whatever
+// the theme, because it sits over the picture.
+private val Violet get() = Ink.palette.video
 private val Paper = Color(0xFFF1EEF8)
 private val Muted = Color(0xFFC4BCD8)
 

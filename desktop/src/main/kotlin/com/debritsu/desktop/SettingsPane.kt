@@ -39,9 +39,9 @@ import com.debritsu.app.data.Settings
 import java.awt.Desktop
 import java.net.URI
 
-private val SetViolet = Color(0xFF8B5CF6)
-private val SetPanel = Color(0xFF1E1830)
-private val SetMuted = Color(0xFF948CAB)
+private val SetViolet get() = Ink.Iris
+private val SetPanel get() = Ink.Sheet
+private val SetMuted get() = Ink.Mist
 
 /**
  * Settings, in the sections the phone uses: AniList, addons, debrid, playback.
@@ -74,6 +74,9 @@ fun SettingsPane(
             Text("Settings", style = MaterialTheme.typography.titleLarge)
             TextButton(onClick = onClose) { Text("Done", color = SetMuted) }
         }
+
+        SectionHeading("Appearance")
+        AppearanceSection()
 
         SectionHeading("AniList")
         AniListSection(onChanged)
@@ -166,7 +169,7 @@ private fun AniListSection(onChanged: () -> Unit) {
     )
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Button(
+        PrimaryButton(
             enabled = Settings.aniListClientId.isNotBlank(),
             onClick = {
                 runCatching {
@@ -248,7 +251,7 @@ private fun AddonsSection() {
             singleLine = true,
             modifier = Modifier.weight(1f)
         )
-        Button(
+        PrimaryButton(
             enabled = entry.isNotBlank(),
             onClick = {
                 Settings.addAddon(entry)
@@ -295,6 +298,24 @@ private fun DebridSection() {
         label = "${provider.label} API token",
         help = "From ${provider.tokenHint}"
     )
+}
+
+/** The phone's three themes. Applied at once: every colour is read from [Ink]. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AppearanceSection() {
+    var theme by remember { mutableStateOf(Settings.theme) }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        listOf("pastel" to "Pastel", "night" to "Night", "plum" to "Plum").forEach { (key, label) ->
+            TextButton(onClick = { theme = key; Settings.theme = key; applyTheme(key) }) {
+                Text(
+                    label,
+                    color = if (key == theme) SetViolet else SetMuted,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -417,7 +438,7 @@ private fun FilesSection() {
     Text(
         found?.let { "Found: ${it.absolutePath}" }
             ?: "Not found — winget install VideoLAN.VLC",
-        color = if (found == null) Color(0xFFE29075) else SetMuted,
+        color = if (found == null) Warn else SetMuted,
         style = MaterialTheme.typography.bodySmall
     )
 

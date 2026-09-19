@@ -27,10 +27,10 @@ import androidx.compose.ui.unit.dp
 import com.debritsu.app.data.DownloadIndex
 import com.debritsu.app.data.Downloaded
 
-private val DlPanel = Color(0xFF1E1830)
-private val DlPaper = Color(0xFFF1EEF8)
-private val DlMuted = Color(0xFF948CAB)
-private val DlKeep = Color(0xFF6FC79B)
+private val DlPanel get() = Ink.palette.chip
+private val DlPaper get() = Ink.Bone
+private val DlMuted get() = Ink.Mist
+private val DlKeep get() = Keep
 
 /**
  * What is on disk.
@@ -127,13 +127,13 @@ private fun DownloadRow(
                         append("  ·  ${item.sourceName.lineSequence().first().take(48)}")
                     }
                 },
-                color = if (complete) DlMuted else Color(0xFFE29075),
+                color = if (complete) DlMuted else Warn,
                 style = MaterialTheme.typography.bodySmall
             )
         }
         if (complete) {
             Text("✓", color = DlKeep, modifier = Modifier.padding(end = 12.dp))
-            Button(onClick = { onPlay(item) }) { Text("Play") }
+            PrimaryButton(onClick = { onPlay(item) }) { Text("Play") }
         }
         TextButton(onClick = onDelete) { Text("Delete", color = DlMuted) }
     }

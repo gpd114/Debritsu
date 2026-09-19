@@ -24,14 +24,14 @@ import com.debritsu.app.data.SourceFilter
 import com.debritsu.app.data.StreamMeta
 import com.debritsu.app.data.StreamOption
 
-private val SrcPanel = Color(0xFF1E1830)
-private val SrcMuted = Color(0xFF948CAB)
-private val SrcWarn = Color(0xFFE29075)
-private val SrcKeep = Color(0xFF6FC79B)
-private val SrcAccent = Color(0xFFB79BF7)
+private val SrcPanel get() = Ink.palette.chip
+private val SrcMuted get() = Ink.Mist
+private val SrcWarn get() = Warn
+private val SrcKeep get() = Keep
+private val SrcAccent get() = Ink.Iris
 
 /** The row for what is on screen: the panel colour lifted towards the accent. */
-private val SrcPlaying = Color(0xFF2F2350)
+private val SrcPlaying get() = Ink.Quiet
 
 /**
  * Sources in the order they should be read: everything that meets the filters

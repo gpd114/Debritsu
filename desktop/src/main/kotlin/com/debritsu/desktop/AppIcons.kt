@@ -119,7 +119,7 @@ fun IconAction(
     icon: ImageVector,
     name: String,
     onClick: () -> Unit,
-    tint: Color = Color(0xFF948CAB),
+    tint: Color = Ink.Mist,
     /** Written beside the glyph, for a count worth knowing without opening it. */
     badge: String? = null
 ) {
