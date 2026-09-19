@@ -107,8 +107,9 @@ Both are wrapped in `BuildConfig.DEBUG` and cost nothing in release.
   (`io.github.peerless2012:ass-media`) draws karaoke, typesetting and an MKV's
   own fonts over media3. libVLC was tried first and lost 1-2 seconds of sound
   after resuming (see the phone branch's notes). media3 is pinned to exactly
-  1.8.0, which ass-media is built against. The cost: only the box's own
-  decoders, so a format it cannot decode does not play. `PlayerView` runs with
+  1.8.0, which ass-media is built against. Formats the box has no decoder
+  for (10-bit HEVC, on many chips) fall through to FFmpeg, from nextlib-media3ext,
+  whose version is tied to media3's the same way. `PlayerView` runs with
   its controller off; the controls are plain views in `activity_player.xml`,
   and "are they up" is `controls.visibility`.
 - **The hide countdown has to restart on every key while the controls are up.**

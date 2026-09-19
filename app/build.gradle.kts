@@ -142,6 +142,11 @@ dependencies {
     // fonts an MKV carries as attachments.
     implementation("io.github.peerless2012:ass-media:0.5.1")
 
+    // FFmpeg decoders for what the box has none for, tried after its own: 10-bit
+    // HEVC, say, which many cheaper chips cannot decode in hardware. Built by
+    // Next Player's author for exactly this media3 version.
+    implementation("io.github.anilbeesetti:nextlib-media3ext:1.8.0-0.9.0")
+
     implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
     implementation("androidx.mediarouter:mediarouter:1.7.0")
 
