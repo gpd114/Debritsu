@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicReference
  * reach a Skia bitmap before it can be drawn. At 1080p that is about eight
  * megabytes a frame. It is the price of owning the pixels.
  */
-class VlcPlayer(vlcDirectory: java.io.File) {
+class VlcPlayer(vlcDirectory: java.io.File, extraOptions: List<String> = emptyList()) {
 
     private val factory: MediaPlayerFactory = MediaPlayerFactory(
         // Not quiet: libVLC's own messages are the only thing that says why a
@@ -59,7 +59,14 @@ class VlcPlayer(vlcDirectory: java.io.File) {
 
         // Network streams need a longer buffer than the default: a debrid link
         // is a long way away and a short cache stutters on it.
-        "--network-caching=3000"
+        "--network-caching=3000",
+
+        // Sound through DirectSound rather than VLC's default, WASAPI: libVLC 3
+        // misjudges how much audio is queued after a resume and either plays
+        // silence or drops sound to catch up ("playback way too early/late" in
+        // the log). Being tried against that; the setting puts it back.
+        "--aout=${com.debritsu.app.data.Settings.store.getString("vlc_aout", "directsound")}",
+        *extraOptions.toTypedArray()
     )
 
     private val player: EmbeddedMediaPlayer = factory.mediaPlayers().newEmbeddedMediaPlayer()
@@ -287,6 +294,7 @@ class VlcPlayer(vlcDirectory: java.io.File) {
 
     init {
         Vlc.prepare(vlcDirectory.absolutePath)
+        BuildInfo.log("DebritsuVlc", "audio output " + com.debritsu.app.data.Settings.store.getString("vlc_aout", "directsound"))
         player.videoSurface().set(
             factory.videoSurfaces().newVideoSurface(bufferFormatCallback, renderCallback, true)
         )

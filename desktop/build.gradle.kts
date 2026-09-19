@@ -167,3 +167,16 @@ tasks.register<JavaExec>("probe") {
         project.findProperty("probePin") as String? ?: ""
     )
 }
+
+// Throwaway: counts the silence libVLC inserts after each resume, per audio output.
+// gradle :desktop:resumeProbe -PprobeFile="C:\path\to\file.mkv" -PprobeAouts=mmdevice,directsound,waveout
+tasks.register<JavaExec>("resumeProbe") {
+    mainClass.set("com.debritsu.desktop.ResumeProbeKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    jvmArgs = listOf("--add-opens", "java.base/java.nio=ALL-UNNAMED", "--add-opens", "java.base/sun.nio.ch=ALL-UNNAMED")
+    args = listOf(
+        project.findProperty("probeFile") as String? ?: "",
+        project.findProperty("probeAouts") as String? ?: "",
+        project.findProperty("probeCycles") as String? ?: ""
+    )
+}
