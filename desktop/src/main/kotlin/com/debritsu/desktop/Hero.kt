@@ -86,12 +86,14 @@ fun HomeHero(
     androidx.compose.foundation.layout.BoxWithConstraints(
         Modifier
             .fillMaxWidth()
-            .height(HERO_HEIGHT)
             .onPointerEvent(PointerEventType.Enter) { hovered = true }
             .onPointerEvent(PointerEventType.Exit) { hovered = false }
     ) {
-        val wordsWidth = (maxWidth - HERO_HEIGHT * 16f / 9f - 28.dp - 12.dp).coerceIn(300.dp, 560.dp)
-        Crossfade(anime, animationSpec = tween(600), modifier = Modifier.fillMaxSize()) { shown ->
+        // Grows with the window: at a fixed 320 a maximised window gave the
+        // picture well under half its width, which read as a crop.
+        val heroHeight = (maxWidth * 0.3f).coerceIn(320.dp, 440.dp)
+        val wordsWidth = (maxWidth - heroHeight * 16f / 9f - 28.dp - 12.dp).coerceIn(300.dp, 560.dp)
+        Crossfade(anime, animationSpec = tween(600), modifier = Modifier.fillMaxWidth().height(heroHeight)) { shown ->
             Box(Modifier.fillMaxSize()) {
                 HeroArt(shown, Modifier.align(Alignment.TopEnd).fillMaxHeight().aspectRatio(16f / 9f))
                 HeroWords(
@@ -127,8 +129,6 @@ fun HomeHero(
     }
 }
 
-private val HERO_HEIGHT = 320.dp
-
 /**
  * TVDB's fanart where ani.zip has it, else AniList's banner, else the cover,
  * faded out along its left and bottom edges so it melts into the page.
@@ -145,11 +145,11 @@ private fun HeroArt(anime: Anime, modifier: Modifier) {
             .drawWithContent {
                 drawContent()
                 drawRect(
-                    Brush.horizontalGradient(0f to Color.Transparent, 0.12f to Color.Black),
+                    Brush.horizontalGradient(0f to Color.Transparent, 0.06f to Color.Black),
                     blendMode = BlendMode.DstIn
                 )
                 drawRect(
-                    Brush.verticalGradient(0.82f to Color.Black, 1f to Color.Transparent),
+                    Brush.verticalGradient(0.93f to Color.Black, 1f to Color.Transparent),
                     blendMode = BlendMode.DstIn
                 )
             }
