@@ -187,7 +187,7 @@ object Watch {
         }
 
         onState(State.Preparing("Locating"))
-        val outcome = find(anilistId, title, episode, episodeMinutes, isMovie, Settings.autoPlay, onState)
+        val outcome = find(anilistId, title, episode, episodeMinutes, isMovie, Settings.autoPlay, anime?.altTitles.orEmpty(), onState)
 
         // Automatic selection switched off: hand the list back and let the
         // caller choose. Both routes go through the same finding, so a manual
@@ -259,10 +259,12 @@ object Watch {
         episode: Int,
         episodeMinutes: Int,
         isMovie: Boolean,
+        /** The show's other names, so a spin-off sharing its pack is refused. */
+        altTitles: List<String> = emptyList(),
         onState: (State) -> Unit
     ) {
         onState(State.Preparing("Locating"))
-        val outcome = find(anilistId, title, episode, episodeMinutes, isMovie, false, onState)
+        val outcome = find(anilistId, title, episode, episodeMinutes, isMovie, false, altTitles, onState)
         if (outcome.results.flatMap { it.streams }.isEmpty()) {
             onState(State.Failed(outcome.message ?: "No sources were found."))
             return
@@ -278,11 +280,13 @@ object Watch {
         episodeMinutes: Int,
         isMovie: Boolean,
         autoSelect: Boolean,
+        altTitles: List<String>,
         onState: (State) -> Unit
     ): AutoPlay.Outcome {
         return AutoPlay.run(
             anilistId = anilistId,
             title = title,
+            altTitles = altTitles,
             episode = episode,
             isMovie = isMovie,
             filter = Settings.sourceFilter,

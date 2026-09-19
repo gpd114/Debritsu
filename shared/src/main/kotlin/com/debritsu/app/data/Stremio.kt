@@ -155,6 +155,7 @@ object Stremio {
                         url = s.str("url"),
                         infoHash = s.str("infoHash"),
                         fileIdx = s.int("fileIdx"),
+                        filename = s.obj("behaviorHints").str("filename") ?: s.str("filename"),
                         subtitles = s.arr("subtitles")?.mapNotNull { sub ->
                             sub.str("url")?.let { Subtitle(it, sub.str("lang") ?: "und") }
                         } ?: emptyList()

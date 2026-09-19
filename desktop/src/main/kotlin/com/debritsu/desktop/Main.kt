@@ -455,6 +455,7 @@ private fun App(
             Watch.sources(
                 anilistId = anime.id,
                 title = anime.title,
+                altTitles = anime.altTitles,
                 episode = ep,
                 episodeMinutes = anime.durationMins ?: 0,
                 isMovie = (anime.episodes ?: 0) == 1

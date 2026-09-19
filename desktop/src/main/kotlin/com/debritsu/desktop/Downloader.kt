@@ -126,6 +126,7 @@ object Downloader {
         val outcome = AutoPlay.run(
             anilistId = anime.id,
             title = anime.title,
+            altTitles = anime.altTitles,
             episode = episode,
             isMovie = (anime.episodes ?: 0) == 1,
             filter = Settings.sourceFilter,

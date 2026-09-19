@@ -26,7 +26,13 @@ object Mappings {
         val kitsu: String?,
         val imdb: String?,
         val mal: String?,
-        val season: Int? = null
+        val season: Int? = null,
+        /**
+         * TVDB's background art for the series, from ani.zip: normally
+         * 1920x1080, where AniList's banner is 400 pixels tall and its cover
+         * a poster. Only ani.zip carries it, so null when it lacks the entry.
+         */
+        val fanart: String? = null
     ) {
         val any: Boolean get() = kitsu != null || imdb != null || mal != null
     }
@@ -49,7 +55,8 @@ object Mappings {
                 ids.mal ?: fribb.mal,
                 // Fribb's table has no season column, so whatever ani.zip knew
                 // is kept rather than overwritten with nothing.
-                ids.season
+                ids.season,
+                ids.fanart
             )
         }
 
@@ -60,6 +67,24 @@ object Mappings {
 
         if (ids.any) cache[anilistId] = ids
         ids
+    }
+
+    private val fanartCache = mutableMapOf<Int, String?>()
+
+    /**
+     * Wide artwork for a hero: TVDB's fanart where ani.zip has it, else null
+     * so the caller falls back to AniList's banner or cover.
+     *
+     * Asks ani.zip alone rather than going through [forAniList]: that falls
+     * back to downloading Fribb's whole mapping table when ani.zip lacks a
+     * Kitsu id, which is a price worth paying to play something and not to
+     * decorate a home screen. Remembered either way, misses included, so each
+     * show is asked about once a session; a show already mapped costs nothing.
+     */
+    suspend fun fanart(anilistId: Int): String? = withContext(Dispatchers.IO) {
+        cache[anilistId]?.fanart?.let { return@withContext it }
+        if (fanartCache.containsKey(anilistId)) return@withContext fanartCache[anilistId]
+        aniZip(anilistId).fanart.also { fanartCache[anilistId] = it }
     }
 
     private fun aniZip(anilistId: Int): Ids = runCatching {
@@ -75,11 +100,15 @@ object Mappings {
             // which every entry has; the specials are keyed "S1" and so are
             // skipped by asking for "1" directly.
             val season = root.obj("episodes").obj("1").int("seasonNumber")
+            val fanart = root.arr("images")
+                ?.firstOrNull { it.str("coverType") == "Fanart" }
+                .str("url")
             Ids(
                 kitsu = m.int("kitsu_id")?.toString() ?: m.str("kitsu_id"),
                 imdb = m.str("imdb_id"),
                 mal = m.int("mal_id")?.toString(),
-                season = season
+                season = season,
+                fanart = fanart
             )
         }
     }.getOrDefault(Ids(null, null, null))

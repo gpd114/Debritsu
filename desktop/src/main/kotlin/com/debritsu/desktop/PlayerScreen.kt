@@ -415,6 +415,7 @@ fun PlayerScreen(
         Watch.sources(
             anilistId = target.anilistId,
             title = target.title,
+            altTitles = target.anime?.altTitles.orEmpty(),
             episode = target.episode,
             episodeMinutes = target.episodeMinutes,
             isMovie = target.isMovie

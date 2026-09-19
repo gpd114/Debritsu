@@ -16,4 +16,8 @@ dependencies {
     api("com.squareup.okhttp3:okhttp:4.12.0")
     api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
+
+    // The file a debrid provider hands back cannot be checked without an
+    // account, but choosing it is pure logic and is tested.
+    testImplementation(kotlin("test"))
 }

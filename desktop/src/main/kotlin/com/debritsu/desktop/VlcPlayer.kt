@@ -356,6 +356,9 @@ class VlcPlayer(vlcDirectory: java.io.File) {
         // ignored deliberately.
         fun isForced(name: String): Boolean {
             val n = name.lowercase()
+            // Unless it also says it is the whole thing: "Full (Signs & Songs
+            // included)" is dialogue, and the phone reads it the same way.
+            if ("full" in n || "dialog" in n) return false
             return "force" in n || "forced" in n || "signs" in n || "songs" in n
         }
 
