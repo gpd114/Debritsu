@@ -1,7 +1,14 @@
 <!--
-  Debritsu's icon, the master copy. An onigiri on its side is a play button:
-  glossy rice on a thicker lavender edge, nori on the flat side, a happy face
-  and a scatter of light sesame.
+  Debritsu's icon, the master copy. An onigiri lying on its side, which makes
+  it a play button: glossy rice on a thicker lavender edge, a nori band around
+  the back, a happy face and a little sesame.
+
+  The outline is a proper onigiri — a rounded triangle with bowed sides, drawn
+  standing up and then turned a quarter clockwise, which is why its curves map
+  (x,y) -> (108-y,x) from the upright form. Earlier versions were a straight
+  triangle with a stripe down one side, and read as a play button that happened
+  to be white rather than as a rice ball. The band stops short of both ends so
+  rice shows past it, as a real wrapper does.
 
   This is the full 108-unit adaptive-icon canvas: a launcher shows only the
   central 72 (a circle of radius 36 at 54,54 on round masks) and every part
@@ -13,9 +20,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="1080" height="1080">
 <defs>
 <linearGradient id="bg" x1="18" y1="18" x2="90" y2="90" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1E0F4A"/><stop offset="1" stop-color="#7C4DEB"/></linearGradient>
-<linearGradient id="rice" x1="0" y1="33.24" x2="0" y2="74.76" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DCD3F2"/></linearGradient>
-<linearGradient id="nori" x1="30" y1="0" x2="43.5" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#15201B"/><stop offset="1" stop-color="#2E4238"/></linearGradient>
-<path id="ob" d="M44.8 34.8L71.2 49.2Q80 54 71.2 58.8L44.8 73.2Q36 78 36 68L36 40Q36 30 44.8 34.8Z"/>
+<linearGradient id="rice" x1="0" y1="27.6" x2="0" y2="80.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DCD3F2"/></linearGradient>
+<linearGradient id="nori" x1="28" y1="0" x2="48" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#15201B"/><stop offset="1" stop-color="#2E4238"/></linearGradient>
+<path id="ob" d="M77.5 54Q77.5 59.5 72.4 62Q58 70 41.4 77Q33.4 80.4 31.4 71.6Q29.4 54 31.4 36.4Q33.4 27.6 41.4 31Q58 38 72.4 46Q77.5 48.5 77.5 54Z"/>
 <clipPath id="obc"><use href="#ob"/></clipPath>
 <path id="spk" d="M0 -4Q0.6 -0.6 4 0Q0.6 0.6 0 4Q-0.6 0.6 -4 0Q-0.6 -0.6 0 -4Z"/>
 <ellipse id="seed" rx="0.8" ry="1.5"/>
@@ -24,28 +31,29 @@
 <g id="background">
 <rect width="108" height="108" fill="url(#bg)"/>
 <g fill="#FFFFFF" fill-opacity="0.85">
-<use href="#spk" transform="translate(29 36) scale(0.9)"/>
-<use href="#spk" transform="translate(81 68) scale(0.7)"/>
-<use href="#spk" transform="translate(77 32) scale(0.5)"/>
+<use href="#spk" transform="translate(29 34) scale(0.9)"/>
+<use href="#spk" transform="translate(83 70) scale(0.7)"/>
+<use href="#spk" transform="translate(79 30) scale(0.5)"/>
 </g>
 </g>
 
 <g id="foreground">
-<ellipse cx="57" cy="84" rx="20" ry="3.2" fill="#000" fill-opacity="0.32"/>
+<ellipse cx="56" cy="86" rx="21" ry="3.2" fill="#000" fill-opacity="0.32"/>
 <use href="#ob" fill="#9C8BC9" transform="translate(0 5)"/>
 <use href="#ob" fill="url(#rice)"/>
-<g clip-path="url(#obc)"><rect x="30" y="41" width="13.5" height="26" fill="url(#nori)"/></g>
+<g clip-path="url(#obc)"><rect x="28" y="41" width="20" height="26" fill="url(#nori)"/></g>
+<!-- The face sits on the rice past the band, so it is drawn smaller and to
+     the right of centre rather than in the middle of the canvas. -->
+<g transform="translate(14.98 8.1) scale(0.85)">
 <g fill="#CFC3EE" fill-opacity="0.55">
 <use href="#seed" transform="translate(50 43.5) rotate(30)"/>
-<use href="#seed" transform="translate(56.5 45) rotate(-25)"/>
-<use href="#seed" transform="translate(62 47.5) rotate(65)"/>
-<use href="#seed" transform="translate(49.5 64) rotate(10)"/>
-<use href="#seed" transform="translate(55.5 65.5) rotate(-40)"/>
-<use href="#seed" transform="translate(60 61.5) rotate(70)"/>
+<use href="#seed" transform="translate(57 45.5) rotate(-25)"/>
+<use href="#seed" transform="translate(49.5 63) rotate(10)"/>
 </g>
 <path d="M49 51q3 -4 6 0M58 51q3 -4 6 0" stroke="#2A1466" stroke-width="2.4" stroke-linecap="round" fill="none"/>
 <path d="M53.5 56.5q2.5 2.8 5 0" stroke="#E0457B" stroke-width="2.2" stroke-linecap="round" fill="none"/>
 <circle cx="48.5" cy="57" r="2.3" fill="#FF6B8B" fill-opacity="0.7"/>
 <circle cx="64" cy="57" r="2.3" fill="#FF6B8B" fill-opacity="0.7"/>
+</g>
 </g>
 </svg>
