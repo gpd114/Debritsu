@@ -268,14 +268,28 @@ class LenientPgsParser : SubtitleParser {
             MimeTypes.APPLICATION_PGS.equals(format.sampleMimeType, ignoreCase = true)
 
         override fun supportsFormat(format: Format): Boolean =
-            isPgs(format) || fallback.supportsFormat(format)
+            (isPgs(format) || fallback.supportsFormat(format)).also {
+                if (BuildConfig.DEBUG && !it) {
+                    Log.d("DebritsuSubs", "no parser for mime=${format.sampleMimeType} lang=${format.language}")
+                }
+            }
 
         override fun getCueReplacementBehavior(format: Format): @Format.CueReplacementBehavior Int =
             if (isPgs(format)) Format.CUE_REPLACEMENT_BEHAVIOR_REPLACE
             else fallback.getCueReplacementBehavior(format)
 
-        override fun create(format: Format): SubtitleParser =
-            Forgiving(if (isPgs(format)) LenientPgsParser() else fallback.create(format), format)
+        override fun create(format: Format): SubtitleParser {
+            val parser = if (isPgs(format)) LenientPgsParser() else fallback.create(format)
+            if (BuildConfig.DEBUG) {
+                Log.d(
+                    "DebritsuSubs",
+                    "parser ${parser.javaClass.simpleName} for mime=${format.sampleMimeType} " +
+                        "lang=${format.language} label=${format.label} " +
+                        "codecs=${format.codecs} init=${format.initializationData.size}"
+                )
+            }
+            return Forgiving(parser, format)
+        }
     }
 
     /**

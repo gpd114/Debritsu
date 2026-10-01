@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.media.AudioManager
 import android.net.Uri
+import android.util.Log
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.GestureDetector
@@ -17,6 +18,7 @@ import androidx.annotation.OptIn
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.lifecycleScope
+import com.debritsu.app.BuildConfig
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -230,6 +232,42 @@ class PlayerActivity : ComponentActivity() {
         // enough to watch its subtitles through.
         if (intent.getBooleanExtra("loop", false)) exo.repeatMode = Player.REPEAT_MODE_ONE
         exo.addListener(listener)
+        if (BuildConfig.DEBUG) {
+            // Which decoder actually took the video: libass's overlay attaches to
+            // media3's own video renderer, so a file that falls through to the
+            // FFmpeg one would play with no subtitles and nothing said about it.
+            exo.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+                override fun onVideoInputFormatChanged(
+                    eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                    format: Format,
+                    decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?
+                ) {
+                    Log.d(
+                        "DebritsuSubs",
+                        "video ${format.sampleMimeType} ${format.width}x${format.height} " +
+                            "codecs=${format.codecs} colour=${format.colorInfo} luma=${format.colorInfo?.lumaBitdepth}"
+                    )
+                }
+
+                override fun onVideoDecoderInitialized(
+                    eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                    decoderName: String,
+                    initializedTimestampMs: Long,
+                    initializationDurationMs: Long
+                ) {
+                    Log.d("DebritsuSubs", "video decoder $decoderName")
+                }
+
+                override fun onAudioDecoderInitialized(
+                    eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                    decoderName: String,
+                    initializedTimestampMs: Long,
+                    initializationDurationMs: Long
+                ) {
+                    Log.d("DebritsuSubs", "audio decoder $decoderName")
+                }
+            })
+        }
 
         resumeAtMs = Progress.position(anilistId, episode)
         load(url)
@@ -353,6 +391,7 @@ class PlayerActivity : ComponentActivity() {
      * track worth choosing; otherwise media3's own choice stands.
      */
     private fun chooseSubtitleTrack(tracks: Tracks) {
+        logTextTracks(tracks)
         if (subtitlePickedByHand || !awaitingSubtitleChoice) return
         val exo = player ?: return
         // Nothing known about the item yet: wait for the tracks to arrive.
@@ -366,6 +405,28 @@ class PlayerActivity : ComponentActivity() {
             ?.takeIf { (g, i) -> subtitleScore(g.getTrackFormat(i)) >= ENGLISH_SCORE }
             ?.let { (g, i) -> builder.setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i)) }
         exo.trackSelectionParameters = builder.build()
+    }
+
+/**
+     * Every text track as it arrives, and whether it was chosen: the only way
+     * to tell a track that was never selected from one that was selected and
+     * produced nothing. Costs nothing in release.
+     */
+    private fun logTextTracks(tracks: Tracks) {
+        if (!BuildConfig.DEBUG) return
+        tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.forEach { group ->
+            (0 until group.length).forEach { i ->
+                val f = group.getTrackFormat(i)
+                Log.d(
+                    "DebritsuSubs",
+                    "track mime=${f.sampleMimeType} lang=${f.language} label=${f.label} " +
+                        "default=${f.selectionFlags and C.SELECTION_FLAG_DEFAULT != 0} " +
+                        "forced=${f.selectionFlags and C.SELECTION_FLAG_FORCED != 0} " +
+                        "supported=${group.isTrackSupported(i)} selected=${group.isTrackSelected(i)} " +
+                        "score=${subtitleScore(f)}"
+                )
+            }
+        }
     }
 
     /** Set by [load] while subtitles are held off for [chooseSubtitleTrack]. */
@@ -411,6 +472,19 @@ class PlayerActivity : ComponentActivity() {
         }
 
         override fun onTracksChanged(tracks: Tracks) = chooseSubtitleTrack(tracks)
+
+        // Cues as they are handed to the view. Silence here with a track
+        // selected means the parser produced nothing; cues here and nothing on
+        // screen means the renderer is at fault, and the two look identical
+        // from the sofa.
+        override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+            if (!BuildConfig.DEBUG) return
+            Log.d(
+                "DebritsuSubs",
+                "cues=${cueGroup.cues.size} at ${cueGroup.presentationTimeUs / 1000}ms" +
+                    cueGroup.cues.take(2).joinToString("") { " | ${it.text ?: "(bitmap)"}" }
+            )
+        }
 
         /**
          * A dead link would otherwise be a black screen that never resolves.
