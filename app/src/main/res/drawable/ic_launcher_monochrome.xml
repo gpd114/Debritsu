@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   The onigiri as one flat shape for themed icons, which the system tints. The
-  nori and the face are cut out of it — the nori leaving a thin rim of rice at
-  the flat edge — so it still reads as the rice ball, not a plain play button.
+  nori band and the face are cut out of it — the band leaving a rim of rice
+  around it — so it still reads as a rice ball, not a plain play button.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -13,5 +13,5 @@
     <path
         android:fillColor="#FFFFFFFF"
         android:fillType="evenOdd"
-        android:pathData="M44.8,34.8L71.2,49.2Q80,54 71.2,58.8L44.8,73.2Q36,78 36,68L36,40Q36,30 44.8,34.8zM40,43h2a1.5,1.5 0 0,1 1.5,1.5v19a1.5,1.5 0 0,1 -1.5,1.5h-2a1.5,1.5 0 0,1 -1.5,-1.5v-19a1.5,1.5 0 0,1 1.5,-1.5zM48,51.6Q52,45.2 56,51.6L54.2,51.9Q52,48.8 49.8,51.9zM57,51.6Q61,45.2 65,51.6L63.2,51.9Q61,48.8 58.8,51.9zM53.3,56.3Q56,60.6 58.7,56.3L57.5,56Q56,58.4 54.5,56z" />
+        android:pathData="M77.5,54Q77.5,59.5 72.4,62Q58,70 41.4,77Q33.4,80.4 31.4,71.6Q29.4,54 31.4,36.4Q33.4,27.6 41.4,31Q58,38 72.4,46Q77.5,48.5 77.5,54zM31,42.5h14a1.5,1.5 0 0,1 1.5,1.5v21a1.5,1.5 0 0,1 -1.5,1.5h-14a1.5,1.5 0 0,1 -1.5,-1.5v-21a1.5,1.5 0 0,1 1.5,-1.5zM55.78,51.96Q59.18,46.52 62.58,51.96L61.05,52.22Q59.18,49.58 57.31,52.22zM63.43,51.96Q66.83,46.52 70.23,51.96L68.7,52.22Q66.83,49.58 64.96,52.22zM60.29,55.96Q62.58,59.61 64.88,55.96L63.86,55.7Q62.58,57.74 61.3,55.7z" />
 </vector>

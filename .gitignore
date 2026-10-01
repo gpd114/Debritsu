@@ -7,5 +7,7 @@ captures/
 .externalNativeBuild/
 .cxx/
 .kotlin/
+
+# JVM crash dumps, which land wherever a build or probe was run from.
 hs_err_pid*.log
 replay_pid*.log
