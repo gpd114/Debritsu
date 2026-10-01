@@ -102,6 +102,16 @@ Both are wrapped in `BuildConfig.DEBUG` and cost nothing in release.
   than the wrong track. The player picks by track name instead: English, not
   "sign", "song" or "forced" unless it also says "full" or "dialogue", and the
   file's own track over an addon's. A track picked by hand is left alone.
+- **A Matroska track can be zlib-compressed, and media3 does not support it.**
+  It only handles header stripping (`ContentCompAlgo 3`); a track compressed
+  with zlib arrives still compressed, and nothing says so. On an MKV whose nine
+  subtitle tracks were compressed this way, every language was selectable and
+  none ever appeared: libass and media3 both saw a zlib blob. The tell is in the
+  `DebritsuSubs` samples — `Dialogue: 0:00:00:00,0:00:02:67,` followed by bytes
+  starting `78 da`, which inflate to the real line. VLC and mpv decompress it,
+  so the file plays correctly elsewhere, and the external player is the way out.
+  libass is fed by the extractor, upstream of anything this app wraps, so a fix
+  here could only draw such files as plain subtitles.
 - **OpenSubtitles indexes by IMDb**, and answers a Kitsu id with `200` and an
   empty list. Subtitle addons are queried under both ids. It also genuinely has
   no English for a lot of simulcast anime — verify what an addon returns before
