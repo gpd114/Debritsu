@@ -373,7 +373,13 @@ fun TvDetailScreen(
     LazyColumn(
         state = page,
         modifier = Modifier.fillMaxSize().pageBackground(),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        // Room under the last row. A list cannot scroll past its own end, so
+        // Recommended — pinned to the top like the row above it — could only
+        // rise as far as the content allowed, and sat half off the bottom.
+        // Room under the last row, so it can rise clear of the bottom edge
+        // and show its captions rather than stopping flush against it.
+        contentPadding = PaddingValues(bottom = 48.dp)
     ) {
         item {
         // A hero across the full width, the way a television expects, rather
@@ -777,7 +783,12 @@ fun TvDetailScreen(
         // use here than there. The row simply goes away if that leaves
         // nothing, which is the honest outcome.
         item {
-        CompositionLocalProvider(LocalBringIntoViewSpec provides pinRow) {
+        // Not pinned, unlike Related: nothing sits below this row to reveal,
+        // and pinning asks for a scroll the list has not got. Focus here takes
+        // the page to its end instead, which is the only thing that shows the
+        // whole card: what takes focus is the poster, and the poster already
+        // fits, so nothing scrolled and the captions under it stayed beneath
+        // the screen's edge.
         val unseen = recommended.filter { it.id !in listed }
         if (unseen.isNotEmpty()) {
             Text(
@@ -788,7 +799,13 @@ fun TvDetailScreen(
             )
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = PaddingValues(horizontal = OVERSCAN, vertical = 10.dp)
+                contentPadding = PaddingValues(horizontal = OVERSCAN, vertical = 10.dp),
+                modifier = Modifier.onFocusChanged {
+                    if (it.hasFocus) scope.launch {
+                        delay(120)
+                        page.animateScrollToItem(page.layoutInfo.totalItemsCount - 1)
+                    }
+                }
             ) {
                 items(unseen) { rec ->
                     Column(Modifier.width(124.dp)) {
@@ -823,7 +840,6 @@ fun TvDetailScreen(
                     }
                 }
             }
-        }
         }
         }
 
