@@ -41,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.SpanStyle
@@ -59,6 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRestorer
 import androidx.tv.material3.Card
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -85,6 +87,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.debritsu.app.ui.Ink
 import com.debritsu.app.ui.pageBackground
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -172,6 +175,10 @@ fun TvDetailScreen(
      * from under a remote already travelling along it.
      */
     val episodeRow = rememberLazyListState()
+    // The page itself, so focus arriving back on the buttons can take the hero
+    // with it. Nothing in the hero is focusable, so without this the title,
+    // score and synopsis were gone for good once the page had scrolled.
+    val page = rememberLazyListState()
     var placedEpisodeRow by remember(anilistId) { mutableStateOf(false) }
     // Where focus enters that row; see the row itself.
     val selectedTile = remember { FocusRequester() }
@@ -323,6 +330,19 @@ fun TvDetailScreen(
     // Measured on the box: focus sat at y=316 with an 800px hero above it and
     // nothing else in the tree, so the list had moved with everything visible
     // and no reason to.
+    // The two rows at the foot of the page pin themselves near the top when
+    // focused instead, the way the home shelves do. Left to the rule below they
+    // sat against the bottom edge, which is where they already were, so nothing
+    // scrolled and the row beneath never came into view — and a row wholly off
+    // screen cannot take focus, so Recommended was unreachable from Related.
+    val density = LocalDensity.current
+    val pinRow = remember(density) {
+        val above = with(density) { 38.dp.toPx() }
+        object : BringIntoViewSpec {
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float) =
+                offset - above
+        }
+    }
     val onlyScrollWhenNeeded = remember {
         object : BringIntoViewSpec {
             override fun calculateScrollDistance(
@@ -351,6 +371,7 @@ fun TvDetailScreen(
     // column — is named as the thing not to do.
     CompositionLocalProvider(LocalBringIntoViewSpec provides onlyScrollWhenNeeded) {
     LazyColumn(
+        state = page,
         modifier = Modifier.fillMaxSize().pageBackground(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -384,7 +405,7 @@ fun TvDetailScreen(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(360.dp)
+                .height(320.dp)
                 .clipToBounds()
         ) {
             // The show's own wide art at the top right, at its natural shape —
@@ -511,7 +532,20 @@ fun TvDetailScreen(
         item {
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(horizontal = OVERSCAN)
+            modifier = Modifier
+                .padding(horizontal = OVERSCAN)
+                // Coming back up to this row means coming back to the top of
+                // the page: the hero above it holds nothing focusable, so the
+                // list would otherwise stay where the episodes left it.
+                .onFocusChanged {
+                    if (it.hasFocus) scope.launch {
+                        // After the scroll that focus itself asks for, not
+                        // during it: both move the same list, and the later
+                        // one wins — which was this one losing every time.
+                        delay(120)
+                        page.animateScrollToItem(0)
+                    }
+                }
         ) {
             // The primary action in the accent, so it reads as the thing to
             // press; everything else soft beside it.
@@ -618,7 +652,12 @@ fun TvDetailScreen(
                     modifier = if (selected) Modifier.focusRequester(selectedTile) else Modifier
                 ) {
                     Box(
-                        Modifier.size(width = 104.dp, height = 84.dp)
+                        // Small enough that a dozen fit across the panel and the
+                        // row clears the bottom of the screen: these hold a
+                        // number and sometimes a four-letter tag, and at 104x84
+                        // eight filled the width while the row ran off the
+                        // bottom edge.
+                        Modifier.size(width = 72.dp, height = 58.dp)
                             .background(
                                 if (selected) Ink.palette.selected else Ink.palette.chip
                             ),
@@ -627,7 +666,7 @@ fun TvDetailScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 ep.toString(),
-                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
                                 // Watched ones recede rather than shout.
                                 color = when {
                                     selected -> Color.White
@@ -681,6 +720,7 @@ fun TvDetailScreen(
         }
 
         item {
+        CompositionLocalProvider(LocalBringIntoViewSpec provides pinRow) {
         if (relations.isNotEmpty()) {
             Text(
                 "Related",
@@ -726,6 +766,7 @@ fun TvDetailScreen(
             }
         }
         }
+        }
 
         // What people who liked this went on to like. Distinct from Related,
         // which is the same story — sequels and side stories — where this is
@@ -736,6 +777,7 @@ fun TvDetailScreen(
         // use here than there. The row simply goes away if that leaves
         // nothing, which is the honest outcome.
         item {
+        CompositionLocalProvider(LocalBringIntoViewSpec provides pinRow) {
         val unseen = recommended.filter { it.id !in listed }
         if (unseen.isNotEmpty()) {
             Text(
@@ -781,6 +823,7 @@ fun TvDetailScreen(
                     }
                 }
             }
+        }
         }
         }
 
