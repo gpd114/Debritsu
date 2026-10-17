@@ -325,6 +325,7 @@ private fun PlaybackSection() {
     var maxRes by remember { mutableStateOf(Settings.maxResolution) }
     var maxSize by remember { mutableStateOf(Settings.maxSizeMb) }
     var english by remember { mutableStateOf(Settings.preferEnglish) }
+    var dubs by remember { mutableStateOf(Settings.preferDubs) }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Play the best match automatically", Modifier.weight(1f),
@@ -371,6 +372,18 @@ private fun PlaybackSection() {
             style = MaterialTheme.typography.bodyMedium)
         Switch(checked = english, onCheckedChange = { english = it; Settings.preferEnglish = it })
     }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Watch dubbed", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Switch(checked = dubs, onCheckedChange = { dubs = it; Settings.preferDubs = it })
+    }
+    Text(
+        "Puts releases carrying an English dub first, plays the English audio, and " +
+            "shows the signs and songs subtitles rather than the dialogue a dub already " +
+            "speaks.",
+        color = SetMuted,
+        style = MaterialTheme.typography.bodySmall
+    )
 
     LanguageSection()
 }

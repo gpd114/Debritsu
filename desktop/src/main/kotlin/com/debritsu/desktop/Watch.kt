@@ -370,7 +370,8 @@ object Watch {
         url = target.url,
         subtitles = target.subtitles,
         startAtMs = target.resumeFromMs,
-        audioLanguage = Settings.preferredAudioLanguage,
+        // Watching dubbed means the English track whatever else is stored.
+        audioLanguage = if (Settings.preferDubs) "eng" else Settings.preferredAudioLanguage,
         subtitleLanguage = Settings.store.getString("sub_lang", "eng")
     )
 

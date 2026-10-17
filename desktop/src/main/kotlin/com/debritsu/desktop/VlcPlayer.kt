@@ -388,6 +388,23 @@ class VlcPlayer(vlcDirectory: java.io.File, extraOptions: List<String> = emptyLi
 
         fun usable(name: String) = !isForced(name) && !isDescriptive(name)
 
+        // Watching dubbed, this runs the other way: the signs-and-songs track is
+        // the wanted one and the dialogue is redundant, since the dub speaks
+        // it. Nothing is selected where a release has no signs track — falling
+        // back to dialogue would put the spoken words back on screen.
+        if (com.debritsu.app.data.Settings.preferDubs) {
+            val signs = real.firstOrNull { isEnglish(it.second) && isForced(it.second) }
+                ?: real.firstOrNull { isForced(it.second) }
+            if (signs == null) {
+                BuildInfo.log("DebritsuVlc", "watching dubbed, no signs track: subtitles off")
+                setSubtitleTrack(-1)
+                return
+            }
+            BuildInfo.log("DebritsuVlc", "selecting signs subtitles: ${signs.second}")
+            setSubtitleTrack(signs.first)
+            return
+        }
+
         val wanted = real.firstOrNull { isEnglish(it.second) && usable(it.second) }
             ?: real.firstOrNull { isEnglish(it.second) && !isForced(it.second) }
             ?: real.firstOrNull { usable(it.second) }
