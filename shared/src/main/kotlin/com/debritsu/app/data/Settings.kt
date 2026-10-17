@@ -132,8 +132,25 @@ object Settings {
         get() = store.getBoolean("prefer_dubs", false)
         set(v) = store.putBoolean("prefer_dubs", v)
 
+    /**
+     * Release groups found to compress their subtitle tracks.
+     *
+     * Learnt rather than listed: the player adds a group the first time one of
+     * its releases turns up compressed, and the filter ranks that group down
+     * afterwards. A hard-coded list would be wrong within a month.
+     */
+    var plainSubtitleGroups: Set<String>
+        get() = store.getString("plain_sub_groups", "").lines()
+            .map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        set(v) = store.putString("plain_sub_groups", v.joinToString("\n"))
+
+    fun rememberPlainSubtitles(group: String?) {
+        val g = group?.lowercase()?.trim().orEmpty()
+        if (g.isNotEmpty() && g !in plainSubtitleGroups) plainSubtitleGroups = plainSubtitleGroups + g
+    }
+
     val sourceFilter: SourceFilter
-        get() = SourceFilter(maxResolution, maxSizeMb, preferEnglish, preferDubs)
+        get() = SourceFilter(maxResolution, maxSizeMb, preferEnglish, preferDubs, plainSubtitleGroups)
 
     fun addAddon(url: String) {
         val n = normaliseAddon(url)

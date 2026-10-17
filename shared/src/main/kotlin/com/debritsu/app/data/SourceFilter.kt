@@ -252,7 +252,13 @@ data class SourceFilter(
     val maxSizeMb: Int,
     val preferEnglish: Boolean,
     /** Put releases that carry an English dub first. */
-    val preferDubs: Boolean = false
+    val preferDubs: Boolean = false,
+    /**
+     * Groups whose releases have been found with compressed subtitles, which
+     * the Android players can only draw as plain text. Ranked down, never
+     * excluded: the episode still plays and still has subtitles.
+     */
+    val plainSubtitleGroups: Set<String> = emptySet()
 ) {
     /**
      * @param minSizeMb the smallest this episode could plausibly be, from its
@@ -346,6 +352,11 @@ data class SourceFilter(
         // lower resolution up with it.
         if (preferDubs && meta.declaresDub) score += 300
 
+        // Enough to sink below an equally good release from anyone else, not
+        // enough to drop a resolution: a 1080p from such a group still beats a
+        // 720p from one that types its subtitles plainly.
+        if (releaseGroup(stream.filename ?: stream.name) in plainSubtitleGroups) score -= 300
+
         // Capped low for the same reason: seeders matter to whoever is fetching
         // the torrent, not to picking between two releases of the same episode.
         meta.seeders?.let { score += it.coerceAtMost(150) }
@@ -353,6 +364,19 @@ data class SourceFilter(
     }
 
     companion object {
+        /**
+         * The group that released a file: "[Ironclad] Show - 01.mkv" or
+         * "Show.S01E01.1080p-Ironclad.mkv". Null where the name says nothing,
+         * which is most addon titles.
+         */
+        fun releaseGroup(name: String?): String? {
+            val text = name?.trim().orEmpty()
+            if (text.isEmpty()) return null
+            Regex("""^[([^]]{2,30})]""").find(text)?.let { return it.groupValues[1].lowercase() }
+            return Regex("""-([A-Za-z0-9]{2,20})(?:.[a-z0-9]{2,4})?$""")
+                .find(text)?.groupValues?.get(1)?.lowercase()
+        }
+
         /**
          * Below this share of the filename explained by the show's own names,
          * the file is taken to be another show's. Half is deliberately lenient:
