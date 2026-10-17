@@ -224,7 +224,9 @@ class PlayerActivity : ComponentActivity() {
             .apply {
                 // Left alone, media3 takes the device language, so an English
                 // phone would play the dub on any dual-audio release.
-                val audio = Settings.preferredAudioLanguage
+                // Watching dubbed means the English track whatever the device
+                // language says; otherwise the stored preference stands.
+                val audio = if (Settings.preferDubs) "en" else Settings.preferredAudioLanguage
                 if (audio.isNotEmpty()) setPreferredAudioLanguage(audio)
             }
             .build()
@@ -440,9 +442,18 @@ class PlayerActivity : ComponentActivity() {
         val english = format.language?.lowercase()?.let { it.startsWith("en") } == true ||
             ENGLISH_TRACK.containsMatchIn(name)
         if (english) score += ENGLISH_SCORE
-        // "Full Subtitles + Songs" is the dialogue track, whatever else it says.
-        if (FULL_TRACK.containsMatchIn(name)) score += 10
-        else if (PARTIAL_TRACK.containsMatchIn(name)) score -= 100
+        if (Settings.preferDubs) {
+            // Watching dubbed, the signs-and-songs track is the wanted one and
+            // the dialogue track is the redundant one: the words are already
+            // being spoken, while a sign on a wall still needs translating.
+            // Exactly the rule below, inverted.
+            if (PARTIAL_TRACK.containsMatchIn(name) && !FULL_TRACK.containsMatchIn(name)) score += 10
+            else score -= 100
+        } else {
+            // "Full Subtitles + Songs" is the dialogue track, whatever else it says.
+            if (FULL_TRACK.containsMatchIn(name)) score += 10
+            else if (PARTIAL_TRACK.containsMatchIn(name)) score -= 100
+        }
         // The file's own track is timed to this release; an addon's may be
         // timed to another one.
         if (!fromAddon) score += 5

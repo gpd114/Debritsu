@@ -41,6 +41,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     var maxRes by remember { mutableStateOf(Settings.maxResolution) }
     var maxSize by remember { mutableStateOf(Settings.maxSizeMb) }
     var preferEnglish by remember { mutableStateOf(Settings.preferEnglish) }
+    var preferDubs by remember { mutableStateOf(Settings.preferDubs) }
     var audioLang by remember { mutableStateOf(Settings.preferredAudioLanguage) }
     var subSize by remember { mutableStateOf(Settings.subtitleSizeSp) }
     var subBg by remember { mutableStateOf(Settings.subtitleBackground) }
@@ -289,6 +290,15 @@ fun SettingsScreen(onBack: () -> Unit) {
                             "English. Most releases say nothing either way, so this ranks " +
                             "more than it excludes — turn it off if you watch in another " +
                             "language."
+                    )
+                    SwitchRow("Watch dubbed", preferDubs) {
+                        preferDubs = it; Settings.preferDubs = it
+                    }
+                    Hint(
+                        "Puts releases that carry an English dub first, plays the English " +
+                            "audio, and shows the signs and songs subtitles instead of the " +
+                            "dialogue ones — a dub already speaks those. Subtitles stay off " +
+                            "where a release has no signs track."
                     )
                 }
             }

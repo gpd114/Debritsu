@@ -120,8 +120,20 @@ object Settings {
         get() = store.getBoolean("filter_english", SourceFilter.Default.preferEnglish)
         set(v) = store.putBoolean("filter_english", v)
 
+    /**
+     * Watch dubbed: put releases carrying an English dub first, pick the
+     * English audio track, and show the signs-and-songs subtitles rather than
+     * the dialogue ones, which a dub makes redundant.
+     *
+     * Off, everything behaves as it always has — this flips the three choices
+     * that assume someone is reading subtitles, and nothing else.
+     */
+    var preferDubs: Boolean
+        get() = store.getBoolean("prefer_dubs", false)
+        set(v) = store.putBoolean("prefer_dubs", v)
+
     val sourceFilter: SourceFilter
-        get() = SourceFilter(maxResolution, maxSizeMb, preferEnglish)
+        get() = SourceFilter(maxResolution, maxSizeMb, preferEnglish, preferDubs)
 
     fun addAddon(url: String) {
         val n = normaliseAddon(url)
