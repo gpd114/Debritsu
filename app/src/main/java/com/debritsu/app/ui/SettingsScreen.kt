@@ -291,14 +291,17 @@ fun SettingsScreen(onBack: () -> Unit) {
                             "more than it excludes — turn it off if you watch in another " +
                             "language."
                     )
-                    SwitchRow("Watch dubbed", preferDubs) {
-                        preferDubs = it; Settings.preferDubs = it
-                    }
+                    SectionTitle("Preference")
+                    ChoiceRow(
+                        listOf("sub" to "Sub", "dub" to "Dub"),
+                        if (preferDubs) "dub" else "sub",
+                        { preferDubs = it == "dub"; Settings.preferDubs = preferDubs }
+                    )
                     Hint(
-                        "Puts releases that carry an English dub first, plays the English " +
+                        "Dub puts releases carrying an English dub first, plays the English " +
                             "audio, and shows the signs and songs subtitles instead of the " +
-                            "dialogue ones — a dub already speaks those. Subtitles stay off " +
-                            "where a release has no signs track."
+                            "dialogue ones, which a dub already speaks — off where a release " +
+                            "has no signs track. Sub leaves every choice as you set it below."
                     )
                 }
             }
