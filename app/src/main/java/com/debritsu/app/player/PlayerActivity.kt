@@ -454,6 +454,17 @@ class PlayerActivity : ComponentActivity() {
             if (FULL_TRACK.containsMatchIn(name)) score += 10
             else if (PARTIAL_TRACK.containsMatchIn(name)) score -= 100
         }
+        // The FORCED flag, but only as a tie-break.
+        //
+        // Names are read first because the signs track is routinely flagged
+        // DEFAULT and FORCED and would win outright on flags alone. But a
+        // release that calls both of its English tracks simply "English" says
+        // nothing in the name, and then the flag is all there is: one was
+        // forced, the player took it, and it showed signs and song lyrics
+        // while the dialogue track sat beside it. Small enough that a track
+        // naming itself full or dialogue still beats an unflagged one.
+        if (!Settings.preferDubs && format.selectionFlags and C.SELECTION_FLAG_FORCED != 0) score -= 8
+
         // The file's own track is timed to this release; an addon's may be
         // timed to another one.
         if (!fromAddon) score += 5
