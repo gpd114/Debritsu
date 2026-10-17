@@ -287,9 +287,48 @@ class LenientPgsParser : SubtitleParser {
                         "lang=${format.language} label=${format.label} " +
                         "codecs=${format.codecs} init=${format.initializationData.size}"
                 )
+                // An ASS track declares its styles in the header. A signs-only
+                // track names them Sign, Caption, OP, ED and nothing resembling
+                // dialogue, which is the one thing about it knowable before a
+                // frame has played.
+                format.initializationData.forEach { data ->
+                    val text = runCatching { String(data) }.getOrDefault("")
+                    val styles = text.lineSequence()
+                        .filter { it.startsWith("Style:") || it.startsWith("Title:") }
+                        .map { it.take(60) }
+                        .joinToString(" / ")
+                    if (styles.isNotEmpty()) {
+                        Log.d("DebritsuSubs", "header ${format.language}/${format.label}: $styles")
+                    }
+                }
             }
             return Forgiving(parser, format)
         }
+    }
+
+    /**
+     * Tracks whose samples turned up zlib-compressed, by track.
+     *
+     * Matroska lets a track be compressed; media3 supports only header
+     * stripping, so such a track reaches libass as packed bytes and nothing is
+     * drawn — every language silent, with no error anywhere. The samples are
+     * inflated here instead and parsed as ordinary text, which costs the
+     * typesetting libass would have done: it was handed the packed copy long
+     * before this point and cannot be given another.
+     *
+     * The picker reads this to say so rather than leaving someone to wonder.
+     */
+    object Compressed {
+        private val seen = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+        private fun key(format: Format) = format.id ?: "${format.language}/${format.label}"
+
+        fun mark(format: Format) { seen += key(format) }
+
+        operator fun contains(format: Format) = key(format) in seen
+
+        /** Cleared when a new file loads, since it is about this file only. */
+        fun forget() = seen.clear()
     }
 
     /**
@@ -314,6 +353,16 @@ class LenientPgsParser : SubtitleParser {
      */
     @UnstableApi
     private class Forgiving(private val inner: SubtitleParser, private val format: Format) : SubtitleParser {
+        // Only built if a compressed sample actually turns up.
+        private val plain by lazy(LazyThreadSafetyMode.NONE) {
+            runCatching { DefaultSubtitleParserFactory().create(format) }.getOrNull()
+        }
+        private val inflater = Inflater()
+        // Debug only: how many lines this track has produced. Every track is
+        // parsed as the file is read, selected or not, so this counts them all
+        // — a dialogue track runs to hundreds where a signs one runs to a few.
+        private var lines = 0
+
         override fun parse(
             data: ByteArray,
             offset: Int,
@@ -321,6 +370,32 @@ class LenientPgsParser : SubtitleParser {
             outputOptions: SubtitleParser.OutputOptions,
             output: Consumer<CuesWithTiming>
         ) {
+            if (BuildConfig.DEBUG) {
+                lines++
+                if (lines < 3) {
+                    val head = String(data, offset, minOf(length, 70)).replace(Regex("[\r\n]+"), " ")
+                    Log.d("DebritsuSubs", "line $lines ${format.language}/${format.label}: $head")
+                } else if (lines % 25 == 0) {
+                    Log.d("DebritsuSubs", "lines $lines for ${format.language}/${format.label}")
+                }
+            }
+            // A compressed sample goes to the ordinary parser, inflated. The
+            // ASS parser in front of libass would only discard it: libass draws
+            // those tracks itself, and what it was handed is the packed copy.
+            val packed = zlibStart(data, offset, length)
+            if (packed >= 0) {
+                val body = inflate(inflater, data, packed, offset + length)
+                val parser = plain
+                if (body != null && parser != null) {
+                    Compressed.mark(format)
+                    val head = packed - offset
+                    val line = ByteArray(head + body.size)
+                    System.arraycopy(data, offset, line, 0, head)
+                    System.arraycopy(body, 0, line, head, body.size)
+                    runCatching { parser.parse(line, 0, line.size, outputOptions, output) }
+                    return
+                }
+            }
             try {
                 inner.parse(data, offset, length, outputOptions, output)
             } catch (e: RuntimeException) {
@@ -343,4 +418,59 @@ class LenientPgsParser : SubtitleParser {
         const val SECTION_TYPE_END = 0x80
         const val INFLATE_HEADER = 0x78
     }
+}
+
+/**
+ * Where the zlib stream starts inside a subtitle sample, or -1.
+ *
+ * media3 rebuilds an SSA line as "Dialogue: <start>,<end>," and then the
+ * track's own bytes, so a compressed track carries the packed data after that
+ * prefix rather than at the front; a compressed SRT has it at the front. Both
+ * are looked for.
+ *
+ * The two-byte zlib header carries its own check — read big-endian, the pair
+ * is a multiple of 31 — which keeps ordinary text beginning with "x" out of
+ * it.
+ */
+private fun zlibStart(data: ByteArray, offset: Int, length: Int): Int {
+    val end = offset + length
+
+    fun looksZlib(at: Int): Boolean {
+        if (at + 1 >= end) return false
+        if (data[at] != 0x78.toByte()) return false
+        val header = (data[at].toInt() and 0xFF shl 8) or (data[at + 1].toInt() and 0xFF)
+        return header % 31 == 0
+    }
+
+    if (looksZlib(offset)) return offset
+    var commas = 0
+    var i = offset
+    while (i < end && i - offset <= 64) {
+        if (data[i] == ','.code.toByte()) {
+            commas++
+            // "Dialogue: <start>,<end>," — the track's own bytes follow.
+            if (commas == 2) return if (looksZlib(i + 1)) i + 1 else -1
+        }
+        i++
+    }
+    return -1
+}
+
+/** The zlib stream from [from] to [end], or null if it will not inflate. */
+private fun inflate(inflater: Inflater, data: ByteArray, from: Int, end: Int): ByteArray? {
+    inflater.reset()
+    inflater.setInput(data, from, end - from)
+    val out = java.io.ByteArrayOutputStream(maxOf(64, (end - from) * 4))
+    val chunk = ByteArray(1024)
+    return runCatching {
+        while (!inflater.finished()) {
+            val n = inflater.inflate(chunk)
+            if (n == 0) {
+                if (inflater.needsInput() || inflater.needsDictionary()) break
+            } else {
+                out.write(chunk, 0, n)
+            }
+        }
+        out.toByteArray().takeIf { it.isNotEmpty() }
+    }.getOrNull()
 }
