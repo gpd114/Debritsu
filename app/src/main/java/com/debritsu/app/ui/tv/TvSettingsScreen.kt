@@ -227,10 +227,15 @@ fun TvSettingsScreen(onBack: () -> Unit) {
             TvSecondaryButton(onClick = { preferEnglish = !preferEnglish; Settings.preferEnglish = preferEnglish }) {
                 Text(if (preferEnglish) "English only: on" else "English only: off")
             }
-            // Dubs first, English audio, and the signs-and-songs subtitles
-            // rather than the dialogue a dub already speaks.
-            TvSecondaryButton(onClick = { preferDubs = !preferDubs; Settings.preferDubs = preferDubs }) {
-                Text(if (preferDubs) "Watch dubbed: on" else "Watch dubbed: off")
+            // Dub puts dubbed releases first, takes the English audio and shows
+            // the signs-and-songs subtitles rather than the dialogue it speaks.
+            Heading("Preference")
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(false to "Sub", true to "Dub").forEach { (dub, label) ->
+                    TvChoice(label, dub == preferDubs) {
+                        preferDubs = dub; Settings.preferDubs = dub
+                    }
+                }
             }
         }
 
