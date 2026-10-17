@@ -438,7 +438,7 @@ class PlayerActivity : ComponentActivity() {
         // forced, the player took it, and it showed signs and song lyrics
         // while the dialogue track sat beside it. Small enough that a track
         // naming itself full or dialogue still beats an unflagged one.
-        if (format.selectionFlags and C.SELECTION_FLAG_FORCED != 0) score -= 8
+        if (!Settings.preferDubs && format.selectionFlags and C.SELECTION_FLAG_FORCED != 0) score -= 8
         // The file's own track is timed to this release; an addon's may be
         // timed to another one.
         if (!fromAddon) score += 5
