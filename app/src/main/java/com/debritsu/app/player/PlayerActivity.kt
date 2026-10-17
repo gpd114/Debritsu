@@ -52,6 +52,7 @@ import com.debritsu.app.data.Debrid
 import com.debritsu.app.data.Downloads
 import com.debritsu.app.data.Mappings
 import com.debritsu.app.data.Progress
+import com.debritsu.app.data.SourceFilter
 import com.debritsu.app.data.Settings
 import com.debritsu.app.data.SourceHandoff
 import com.debritsu.app.data.StreamMeta
@@ -298,6 +299,8 @@ class PlayerActivity : ComponentActivity() {
 
     private fun load(url: String) {
         val exo = player ?: return
+        // Whether a track arrived compressed is about this file alone.
+        LenientPgsParser.Compressed.forget()
         subtitleConfigs = subtitleTracks()
         subtitlePickedByHand = false
         sourceStarted = false
@@ -434,6 +437,27 @@ class PlayerActivity : ComponentActivity() {
     /** Set by [load] while subtitles are held off for [chooseSubtitleTrack]. */
     private var awaitingSubtitleChoice = false
 
+    /**
+     * Notes the group behind a release whose subtitles had to be unpacked, so
+     * the source list ranks it below equally good releases next time. Learnt
+     * from what actually played rather than from a list of names, which would
+     * be out of date within a month.
+     */
+    private fun rememberIfCompressed() {
+        val source = sources.getOrNull(currentSourceIndex) ?: return
+        val compressed = player?.currentTracks?.groups.orEmpty()
+            .filter { it.type == C.TRACK_TYPE_TEXT }
+            .any { group ->
+                (0 until group.length).any { group.getTrackFormat(it) in LenientPgsParser.Compressed }
+            }
+        if (!compressed) return
+        val group = SourceFilter.releaseGroup(source.filename ?: source.name)
+        if (group != null && group !in Settings.plainSubtitleGroups) {
+            Settings.rememberPlainSubtitles(group)
+            if (BuildConfig.DEBUG) Log.d("DebritsuSubs", "compressed subtitles from $group, ranked down from now on")
+        }
+    }
+
     private fun subtitleScore(format: Format): Int {
         val label = format.label.orEmpty()
         val name = label.lowercase()
@@ -493,7 +517,10 @@ class PlayerActivity : ComponentActivity() {
             )
         }
 
-        override fun onTracksChanged(tracks: Tracks) = chooseSubtitleTrack(tracks)
+        override fun onTracksChanged(tracks: Tracks) {
+            chooseSubtitleTrack(tracks)
+            rememberIfCompressed()
+        }
 
         // Cues as they are handed to the view. Silence here with a track
         // selected means the parser produced nothing; cues here and nothing on
@@ -671,7 +698,14 @@ class PlayerActivity : ComponentActivity() {
         if (label.startsWith(ADDON_MARKER)) {
             return lang to "From ${label.removePrefix(ADDON_MARKER).trim()}"
         }
-        return label.ifEmpty { lang } to "In this file · $lang"
+        // A track the file compressed is drawn as plain text: libass was handed
+        // the packed copy and cannot be given another, so its typesetting is
+        // gone. Said here rather than leaving someone to wonder why this one
+        // release looks unstyled.
+        val detail =
+            if (format in LenientPgsParser.Compressed) "In this file · $lang · plain text"
+            else "In this file · $lang"
+        return label.ifEmpty { lang } to detail
     }
 
     private fun displayLanguage(code: String?): String =
