@@ -76,6 +76,7 @@ fun TvSettingsScreen(onBack: () -> Unit) {
     var maxRes by remember { mutableStateOf(Settings.maxResolution) }
     var maxSize by remember { mutableStateOf(Settings.maxSizeMb) }
     var preferEnglish by remember { mutableStateOf(Settings.preferEnglish) }
+    var preferDubs by remember { mutableStateOf(Settings.preferDubs) }
     var theme by remember { mutableStateOf(Settings.theme) }
     var tokenTick by remember { mutableStateOf(0) }
     val signedIn = remember(tokenTick) { Settings.aniListToken.isNotEmpty() }
@@ -225,6 +226,11 @@ fun TvSettingsScreen(onBack: () -> Unit) {
             }
             TvSecondaryButton(onClick = { preferEnglish = !preferEnglish; Settings.preferEnglish = preferEnglish }) {
                 Text(if (preferEnglish) "English only: on" else "English only: off")
+            }
+            // Dubs first, English audio, and the signs-and-songs subtitles
+            // rather than the dialogue a dub already speaks.
+            TvSecondaryButton(onClick = { preferDubs = !preferDubs; Settings.preferDubs = preferDubs }) {
+                Text(if (preferDubs) "Watch dubbed: on" else "Watch dubbed: off")
             }
         }
 

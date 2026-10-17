@@ -22,6 +22,13 @@ data class StreamMeta(
     /** It names some other language and never mentions English. */
     val declaresOtherLanguageOnly: Boolean,
     /**
+     * The release says it carries an English dub — "dual audio", "dubbed", and
+     * the rest of what encoders write. Separate from [declaresEnglish], which
+     * cannot tell a dub from subtitles: a release marked "english" is usually
+     * subtitled, and someone who wants the dub needs the ones that say so.
+     */
+    val declaresDub: Boolean,
+    /**
      * Whether the debrid provider already holds this, when the addon says so.
      * Null means it didn't. The provider's own API offers no usable answer —
      * Real-Debrid retired its instant-availability endpoint — but debrid-aware
@@ -49,6 +56,13 @@ data class StreamMeta(
         private val SIZE = Regex("""(\d+(?:[.,]\d+)?)\s*(tib|tb|gib|gb|mib|mb)\b""", RegexOption.IGNORE_CASE)
         private val SEEDERS = Regex("""(?:👤\s*|\b)(\d+)\s*(?:seeders?|seeds)?""")
         private val SEEDERS_EMOJI = Regex("""👤\s*(\d+)""")
+
+        // Only what names an English audio track. "english" alone is not here:
+        // it is on nearly every subtitled release.
+        private val DUB = listOf(
+            "dual audio", "dualaudio", "dual-audio", "dub", "dubbed", "eng dub",
+            "engdub", "english dub", "multi-audio", "multi audio"
+        )
 
         private val ENGLISH = listOf(
             "english", "[eng]", "(eng)", "eng sub", "engsub", "eng-sub",
@@ -130,6 +144,11 @@ data class StreamMeta(
             val seeders = SEEDERS_EMOJI.find(text)?.groupValues?.get(1)?.toIntOrNull()
 
             val english = ENGLISH.any { it in lower }
+            // Word-bounded, or "dub" would match "dubious" and, more to the
+            // point, the many release groups with it inside their name.
+            val dub = DUB.any { marker ->
+                Regex("(?<![a-z])" + Regex.escape(marker) + "(?![a-z])").containsMatchIn(lower)
+            }
             val other = OTHER_LANGUAGES.any { it in lower }
 
             val cached = when {
@@ -144,6 +163,7 @@ data class StreamMeta(
                 seeders = seeders,
                 declaresEnglish = english,
                 declaresOtherLanguageOnly = other && !english,
+                declaresDub = dub,
                 cached = cached,
                 packSizeMb = packSizeMb,
                 isPack = isPack,
@@ -230,7 +250,9 @@ object TitleMatch {
 data class SourceFilter(
     val maxResolution: Int,
     val maxSizeMb: Int,
-    val preferEnglish: Boolean
+    val preferEnglish: Boolean,
+    /** Put releases that carry an English dub first. */
+    val preferDubs: Boolean = false
 ) {
     /**
      * @param minSizeMb the smallest this episode could plausibly be, from its
@@ -316,6 +338,13 @@ data class SourceFilter(
         // and the marker cannot tell a dub from subtitles. It breaks ties now
         // rather than deciding.
         if (preferEnglish && meta.declaresEnglish) score += 200
+
+        // Bigger than the English marker, and deliberately so: that one breaks
+        // ties between releases that are all subtitled anyway, where this is
+        // the difference between hearing the language you asked for and not.
+        // Still under the 360 between 1080p and 720p, so it does not drag a
+        // lower resolution up with it.
+        if (preferDubs && meta.declaresDub) score += 300
 
         // Capped low for the same reason: seeders matter to whoever is fetching
         // the torrent, not to picking between two releases of the same episode.

@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.media.AudioManager
 import android.net.Uri
+import android.util.Log
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.GestureDetector
@@ -18,6 +19,7 @@ import androidx.annotation.OptIn
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.lifecycleScope
+import com.debritsu.app.BuildConfig
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -233,7 +235,9 @@ class PlayerActivity : ComponentActivity() {
             .apply {
                 // Left alone, media3 takes the device language, so an English
                 // phone would play the dub on any dual-audio release.
-                val audio = Settings.preferredAudioLanguage
+                // Watching dubbed means the English track whatever the device
+                // language says; otherwise the stored preference stands.
+                val audio = if (Settings.preferDubs) "en" else Settings.preferredAudioLanguage
                 if (audio.isNotEmpty()) setPreferredAudioLanguage(audio)
             }
             .build()
@@ -364,6 +368,7 @@ class PlayerActivity : ComponentActivity() {
      * track worth choosing; otherwise media3's own choice stands.
      */
     private fun chooseSubtitleTrack(tracks: Tracks) {
+        logTextTracks(tracks)
         if (subtitlePickedByHand || !awaitingSubtitleChoice) return
         val exo = player ?: return
         // Nothing known about the item yet: wait for the tracks to arrive.
@@ -382,6 +387,28 @@ class PlayerActivity : ComponentActivity() {
     /** Set by [load] while subtitles are held off for [chooseSubtitleTrack]. */
     private var awaitingSubtitleChoice = false
 
+/**
+     * Every text track as it arrives, and whether it was chosen: the only way
+     * to tell a track that was never selected from one that was selected and
+     * produced nothing. Costs nothing in release.
+     */
+    private fun logTextTracks(tracks: Tracks) {
+        if (!BuildConfig.DEBUG) return
+        tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.forEach { group ->
+            (0 until group.length).forEach { i ->
+                val f = group.getTrackFormat(i)
+                Log.d(
+                    "DebritsuSubs",
+                    "track mime=${f.sampleMimeType} lang=${f.language} label=${f.label} " +
+                        "default=${f.selectionFlags and C.SELECTION_FLAG_DEFAULT != 0} " +
+                        "forced=${f.selectionFlags and C.SELECTION_FLAG_FORCED != 0} " +
+                        "supported=${group.isTrackSupported(i)} selected=${group.isTrackSelected(i)} " +
+                        "score=${subtitleScore(f)}"
+                )
+            }
+        }
+    }
+
     private fun subtitleScore(format: Format): Int {
         val label = format.label.orEmpty()
         val name = label.lowercase()
@@ -390,9 +417,28 @@ class PlayerActivity : ComponentActivity() {
         val english = format.language?.lowercase()?.let { it.startsWith("en") } == true ||
             ENGLISH_TRACK.containsMatchIn(name)
         if (english) score += ENGLISH_SCORE
-        // "Full Subtitles + Songs" is the dialogue track, whatever else it says.
-        if (FULL_TRACK.containsMatchIn(name)) score += 10
-        else if (PARTIAL_TRACK.containsMatchIn(name)) score -= 100
+        if (Settings.preferDubs) {
+            // Watching dubbed, the signs-and-songs track is the wanted one and
+            // the dialogue track is the redundant one: the words are already
+            // being spoken, while a sign on a wall still needs translating.
+            // Exactly the rule below, inverted.
+            if (PARTIAL_TRACK.containsMatchIn(name) && !FULL_TRACK.containsMatchIn(name)) score += 10
+            else score -= 100
+        } else {
+            // "Full Subtitles + Songs" is the dialogue track, whatever else it says.
+            if (FULL_TRACK.containsMatchIn(name)) score += 10
+            else if (PARTIAL_TRACK.containsMatchIn(name)) score -= 100
+        }
+        // The FORCED flag, but only as a tie-break.
+        //
+        // Names are read first because the signs track is routinely flagged
+        // DEFAULT and FORCED and would win outright on flags alone. But a
+        // release that calls both of its English tracks simply "English" says
+        // nothing in the name, and then the flag is all there is: one was
+        // forced, the player took it, and it showed signs and song lyrics
+        // while the dialogue track sat beside it. Small enough that a track
+        // naming itself full or dialogue still beats an unflagged one.
+        if (format.selectionFlags and C.SELECTION_FLAG_FORCED != 0) score -= 8
         // The file's own track is timed to this release; an addon's may be
         // timed to another one.
         if (!fromAddon) score += 5
@@ -422,6 +468,18 @@ class PlayerActivity : ComponentActivity() {
         }
 
         override fun onTracksChanged(tracks: Tracks) = chooseSubtitleTrack(tracks)
+
+        // Cues as they reach the view. Silence with a track selected means the
+        // parser produced nothing; cues here and nothing on screen means the
+        // renderer is at fault, and the two look identical from the sofa.
+        override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+            if (!BuildConfig.DEBUG) return
+            Log.d(
+                "DebritsuSubs",
+                "cues=${cueGroup.cues.size} at ${cueGroup.presentationTimeUs / 1000}ms" +
+                    cueGroup.cues.take(2).joinToString("") { " | ${it.text ?: "(bitmap)"}" }
+            )
+        }
 
         /**
          * A dead link would otherwise be a black screen that never resolves.
