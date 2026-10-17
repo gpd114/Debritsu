@@ -291,19 +291,25 @@ fun SettingsScreen(onBack: () -> Unit) {
                             "more than it excludes — turn it off if you watch in another " +
                             "language."
                     )
-                    SectionTitle("Preference")
-                    ChoiceRow(
-                        listOf("sub" to "Sub", "dub" to "Dub"),
-                        if (preferDubs) "dub" else "sub",
-                        { preferDubs = it == "dub"; Settings.preferDubs = preferDubs }
-                    )
-                    Hint(
-                        "Dub puts releases carrying an English dub first, plays the English " +
-                            "audio, and shows the signs and songs subtitles instead of the " +
-                            "dialogue ones, which a dub already speaks — off where a release " +
-                            "has no signs track. Sub leaves every choice as you set it below."
-                    )
                 }
+            }
+
+            // Its own panel, not a line under the source filters: it decides
+            // the audio track and the subtitles as much as it decides which
+            // release is picked.
+            Panel {
+                SectionTitle("Preference")
+                ChoiceRow(
+                    listOf("sub" to "Sub", "dub" to "Dub"),
+                    if (preferDubs) "dub" else "sub",
+                    { preferDubs = it == "dub"; Settings.preferDubs = preferDubs }
+                )
+                Hint(
+                    "Dub puts releases carrying an English dub first, plays the English " +
+                        "audio, and shows the signs and songs subtitles instead of the " +
+                        "dialogue ones, which a dub already speaks — off where a release " +
+                        "has no signs track. Sub leaves the choices below as you set them."
+                )
             }
 
             Panel {
