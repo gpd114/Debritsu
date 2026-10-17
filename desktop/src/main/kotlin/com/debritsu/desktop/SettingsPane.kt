@@ -373,14 +373,22 @@ private fun PlaybackSection() {
         Switch(checked = english, onCheckedChange = { english = it; Settings.preferEnglish = it })
     }
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Watch dubbed", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-        Switch(checked = dubs, onCheckedChange = { dubs = it; Settings.preferDubs = it })
+    Text("Preference", style = MaterialTheme.typography.bodySmall)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        listOf(false to "Sub", true to "Dub").forEach { (dub, label) ->
+            TextButton(onClick = { dubs = dub; Settings.preferDubs = dub }) {
+                Text(
+                    label,
+                    color = if (dub == dubs) SetViolet else SetMuted,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
     }
     Text(
-        "Puts releases carrying an English dub first, plays the English audio, and " +
+        "Dub puts releases carrying an English dub first, plays the English audio, and " +
             "shows the signs and songs subtitles rather than the dialogue a dub already " +
-            "speaks.",
+            "speaks. Sub leaves every choice as you set it.",
         color = SetMuted,
         style = MaterialTheme.typography.bodySmall
     )
