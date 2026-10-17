@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -151,7 +152,7 @@ fun TvSettingsScreen(onBack: () -> Unit) {
         // While the on-screen keyboard is up it owns the d-pad entirely: the app
         // receives nothing, so up and down do not move the selection and there
         // is no way for this screen to make them.
-        Caption("Press Back to close the keyboard before moving on.")
+        Caption("Press OK on a field to type, Back to close the keyboard.")
         fun addAddon() {
             if (newAddon.isBlank()) return
             Settings.addAddon(newAddon)
@@ -227,14 +228,16 @@ fun TvSettingsScreen(onBack: () -> Unit) {
             TvSecondaryButton(onClick = { preferEnglish = !preferEnglish; Settings.preferEnglish = preferEnglish }) {
                 Text(if (preferEnglish) "English only: on" else "English only: off")
             }
-            // Dub puts dubbed releases first, takes the English audio and shows
-            // the signs-and-songs subtitles rather than the dialogue it speaks.
-            Heading("Preference")
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(false to "Sub", true to "Dub").forEach { (dub, label) ->
-                    TvChoice(label, dub == preferDubs) {
-                        preferDubs = dub; Settings.preferDubs = dub
-                    }
+        }
+
+        // Outside the automatic-selection block: it decides the audio track and
+        // the subtitles as well as which release is picked, so it still applies
+        // to a source chosen by hand.
+        Caption("Preference — Dub puts dubbed releases first, takes the English audio and shows the signs and songs subtitles.")
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            listOf(false to "Sub", true to "Dub").forEach { (dub, label) ->
+                TvChoice(label, dub == preferDubs) {
+                    preferDubs = dub; Settings.preferDubs = dub
                 }
             }
         }
@@ -290,9 +293,22 @@ private fun Field(
 ) {
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
+    // A field that is merely passed over should not summon the keyboard. Left
+    // to itself an editable field opens it the moment focus lands, which on a
+    // television covers the screen — so every trip down the settings fought a
+    // keyboard nobody asked for. Read-only until OK is pressed on it.
+    var editing by remember { mutableStateOf(false) }
+    // Asked for after the field has stopped being read-only, not in the same
+    // frame: the keyboard will not open for a field that is still read-only.
+    androidx.compose.runtime.LaunchedEffect(editing) { if (editing) keyboard?.show() }
+
+    fun stopEditing() {
+        editing = false
+        keyboard?.hide()
+    }
 
     fun leave(direction: FocusDirection): Boolean {
-        keyboard?.hide()
+        stopEditing()
         focusManager.moveFocus(direction)
         return true
     }
@@ -307,26 +323,37 @@ private fun Field(
         keyboardOptions = KeyboardOptions(
             imeAction = if (onDone != null) ImeAction.Done else ImeAction.Next
         ),
+        readOnly = !editing,
         keyboardActions = KeyboardActions(
             onDone = {
-                keyboard?.hide()
+                stopEditing()
                 onDone?.invoke()
             },
             onNext = { leave(FocusDirection.Down) }
         ),
         modifier = Modifier
             .fillMaxWidth()
+            // Focus leaving puts it back to read-only, so coming past it again
+            // is as quiet as the first time.
+            .onFocusChanged { if (!it.isFocused) stopEditing() }
             .onPreviewKeyEvent { e ->
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                // Back closes the keyboard rather than leaving the screen.
+                if (e.key == Key.Back && editing) { stopEditing(); return@onPreviewKeyEvent true }
                 when (e.key) {
                     Key.DirectionDown -> leave(FocusDirection.Down)
                     Key.DirectionUp -> leave(FocusDirection.Up)
                     // A remote's centre and a keyboard's Enter both arrive here,
                     // and on a field with an action they should perform it
                     // rather than doing nothing.
-                    Key.Enter, Key.NumPadEnter -> {
-                        if (onDone == null) false
-                        else { keyboard?.hide(); onDone(); true }
+                    // A remote's centre arrives as DirectionCenter, a keyboard's
+                    // Enter as Enter. Both mean "start typing here".
+                    Key.Enter, Key.NumPadEnter, Key.DirectionCenter -> {
+                        // The first press opens the keyboard; once typing, it
+                        // performs the field's action if it has one.
+                        if (!editing) { editing = true; true }
+                        else if (onDone == null) false
+                        else { stopEditing(); onDone(); true }
                     }
                     else -> false
                 }
