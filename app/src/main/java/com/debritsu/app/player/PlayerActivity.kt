@@ -16,6 +16,9 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.annotation.OptIn
 import androidx.compose.ui.graphics.toArgb
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.lifecycleScope
 import com.debritsu.app.BuildConfig
@@ -135,6 +138,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        goFullscreen()
         val url = intent.getStringExtra(PlayerActivity.EXTRA_URL) ?: run { finish(); return }
         currentUrl = url
         currentTitle = intent.getStringExtra(PlayerActivity.EXTRA_TITLE).orEmpty()
@@ -432,6 +436,34 @@ class PlayerActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+/**
+     * Hides the status and navigation bars for the whole of playback.
+     *
+     * The theme hides the status bar and nothing else, so on a tablet the
+     * navigation bar sat across the bottom of the picture throughout. They come
+     * back on a swipe from an edge and go again on their own, which is what
+     * every other video app does.
+     */
+    private fun goFullscreen() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, videoLayoutRoot()).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+
+    private fun videoLayoutRoot() = window.decorView
+
+    /**
+     * Asked for again whenever the window comes back: leaving the app, or any
+     * dialog over it, lets the bars return.
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) goFullscreen()
     }
 
     /** Set by [load] while subtitles are held off for [chooseSubtitleTrack]. */
