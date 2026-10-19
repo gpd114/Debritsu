@@ -365,16 +365,34 @@ data class SourceFilter(
 
     companion object {
         /**
+         * "[Ironclad] Show - 01.mkv" — the name in brackets at the front.
+         *
+         * Plain letters, digits and the punctuation a group name uses, which
+         * is what keeps an addon's own title out: "[TB⚡] Comet 1080p" would
+         * otherwise read as a group called "tb⚡" and rank down every cached
+         * source the provider offers.
+         */
+        private val BRACKETED_GROUP = Regex("""^\[([A-Za-z0-9][A-Za-z0-9 ._-]{1,29})]""")
+
+        /** "Show.S01E01.1080p-Ironclad.mkv" — the name after the last dash. */
+        private val TRAILING_GROUP = Regex("""-([A-Za-z0-9]{2,20})(?:\.[A-Za-z0-9]{2,4})?$""")
+
+        /**
          * The group that released a file: "[Ironclad] Show - 01.mkv" or
          * "Show.S01E01.1080p-Ironclad.mkv". Null where the name says nothing,
          * which is most addon titles.
+         *
+         * Both patterns are held as fields so a malformed one fails the tests
+         * rather than every search: these were written with the escapes eaten,
+         * which threw from inside scoring and crashed the app on Resume in
+         * v1.3.48 — the first release in this project's history that could not
+         * play anything at all.
          */
         fun releaseGroup(name: String?): String? {
             val text = name?.trim().orEmpty()
             if (text.isEmpty()) return null
-            Regex("""^[([^]]{2,30})]""").find(text)?.let { return it.groupValues[1].lowercase() }
-            return Regex("""-([A-Za-z0-9]{2,20})(?:.[a-z0-9]{2,4})?$""")
-                .find(text)?.groupValues?.get(1)?.lowercase()
+            BRACKETED_GROUP.find(text)?.let { return it.groupValues[1].lowercase() }
+            return TRAILING_GROUP.find(text)?.groupValues?.get(1)?.lowercase()
         }
 
         /**
