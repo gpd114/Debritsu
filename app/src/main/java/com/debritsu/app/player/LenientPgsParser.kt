@@ -321,7 +321,13 @@ class LenientPgsParser : SubtitleParser {
     object Compressed {
         private val seen = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
-        private fun key(format: Format) = format.id ?: "${format.language}/${format.label}"
+        // Language and label, never the id: the track the parser is handed and
+        // the track the player reports are the same track in two shapes — the
+        // first text/x-ssa, the second x-media3-cues once parsed during
+        // extraction — and their ids do not agree. Matching on the id meant the
+        // player never recognised a track it had itself just unpacked, so the
+        // group behind it was never learnt.
+        private fun key(format: Format) = "${format.language}/${format.label}"
 
         fun mark(format: Format) { seen += key(format) }
 
