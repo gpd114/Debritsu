@@ -305,6 +305,7 @@ class PlayerActivity : ComponentActivity() {
         val exo = player ?: return
         // Whether a track arrived compressed is about this file alone.
         LenientPgsParser.Compressed.forget()
+        compressionNoted = false
         subtitleConfigs = subtitleTracks()
         subtitlePickedByHand = false
         sourceStarted = false
@@ -475,14 +476,27 @@ class PlayerActivity : ComponentActivity() {
      * from what actually played rather than from a list of names, which would
      * be out of date within a month.
      */
+    private var compressionNoted = false
+
     private fun rememberIfCompressed() {
-        val source = sources.getOrNull(currentSourceIndex) ?: return
+        if (compressionNoted) return
+        val source = sources.getOrNull(currentSourceIndex)
+        if (source == null) {
+            if (BuildConfig.DEBUG) {
+                Log.d("DebritsuSubs", "no source to learn from: index=$currentSourceIndex of ${sources.size}")
+            }
+            return
+        }
         val compressed = player?.currentTracks?.groups.orEmpty()
             .filter { it.type == C.TRACK_TYPE_TEXT }
             .any { group ->
                 (0 until group.length).any { group.getTrackFormat(it) in LenientPgsParser.Compressed }
             }
         if (!compressed) return
+        compressionNoted = true
+        if (BuildConfig.DEBUG) {
+            Log.d("DebritsuSubs", "compressed in ${source.filename ?: source.name}")
+        }
         val group = SourceFilter.releaseGroup(source.filename ?: source.name)
         if (group != null && group !in Settings.plainSubtitleGroups) {
             Settings.rememberPlainSubtitles(group)
@@ -597,6 +611,10 @@ class PlayerActivity : ComponentActivity() {
                         positionText.text = clock(time)
                         durationText.text = clock(length)
                         maybePushProgress(time, length)
+                        // Here rather than with the track list: whether a track
+                        // is compressed is only known once a sample of it has
+                        // been read, which is after the tracks are announced.
+                        rememberIfCompressed()
                     }
                 }
                 delay(500)
